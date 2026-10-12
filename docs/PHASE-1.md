@@ -70,7 +70,8 @@ All of the above passed locally (Linux, Python 3.12.13, Node 22). CI runs the sa
 
 ## Known limitations
 
-- **Not yet run on Windows.** This environment is Linux. Windows-specific code (Job Object, registry GPU probe, `CREATE_NO_WINDOW`, title-bar overlay) is written and type-checked, and CI runs everything on `windows-latest`, but it has not executed on Windows yet. The first CI run will tell.
+- **Not yet run on Windows.** This environment is Linux. Windows-specific code (Job Object, registry GPU probe, `CREATE_NO_WINDOW`, title-bar overlay) is written and type-checked, and CI is set up to run everything on `windows-latest`, but it has not executed on Windows yet.
+- **CI didn't start on GitHub.** The first run of `.github/workflows/ci.yml` ended in `startup_failure` before any job ran. The workflow passes `actionlint` 1.7.7, so the block is on the GitHub side for this private repo: usually Actions being restricted to certain actions (Settings → Actions → General → "Allow all actions"), or Actions minutes/billing on the account. Windows runners count double against private-repo minutes. The run page shows the exact reason.
 - **No real model was used.** Ollama's model registry is blocked from this environment, so chat was verified against `tests/support/fake_ollama.py`, a protocol-faithful stand-in. The client uses Ollama's documented OpenAI-compatible streaming endpoint; your first real chat is the check.
 - **Model shortlist unverified.** Tags and sizes in `services/models/.../loadouts.yaml` come from web search (Hugging Face and ollama.com were blocked). Each entry is marked `verified: false` and shown as such in the UI.
 - **The `pre-universe` tag** exists locally but this environment's git proxy refused to push tags. The old landing page is still on `main` and in history. To publish the tag: `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`.
