@@ -236,7 +236,9 @@
         "required": [
           "tag",
           "family",
-          "license"
+          "license",
+          "approx_download_gb",
+          "installed"
         ],
         "title": "Candidate",
         "type": "object"
@@ -560,10 +562,17 @@
         },
         "required": [
           "id",
+          "seq",
           "ts",
           "type",
           "source",
-          "actor"
+          "actor",
+          "subject_type",
+          "subject_id",
+          "correlation_id",
+          "causation_id",
+          "payload",
+          "v"
         ],
         "title": "Event",
         "type": "object"
@@ -635,6 +644,9 @@
         },
         "required": [
           "name",
+          "vram_bytes",
+          "driver",
+          "cuda_driver",
           "source"
         ],
         "title": "GpuInfo",
@@ -742,7 +754,12 @@
           "cpu_model",
           "cpu_cores",
           "cpu_threads",
-          "ram_bytes"
+          "ram_bytes",
+          "gpus",
+          "disks",
+          "has_battery",
+          "on_ac_power",
+          "notes"
         ],
         "title": "HardwareInfo",
         "type": "object"
@@ -775,6 +792,8 @@
           }
         },
         "required": [
+          "status",
+          "service",
           "version",
           "safe_mode",
           "pid"
@@ -841,7 +860,12 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "size_bytes",
+          "family",
+          "parameter_size",
+          "quantization",
+          "capabilities"
         ],
         "title": "InstalledModel",
         "type": "object"
@@ -999,7 +1023,9 @@
           "ollama",
           "installed",
           "assignments",
-          "chat_model"
+          "chat_model",
+          "chat_model_error",
+          "chat_model_hint"
         ],
         "title": "ModelsInfo",
         "type": "object"
@@ -1039,7 +1065,9 @@
         },
         "required": [
           "reachable",
-          "url"
+          "version",
+          "url",
+          "error"
         ],
         "title": "OllamaStatus",
         "type": "object"

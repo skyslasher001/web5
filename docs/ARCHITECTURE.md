@@ -1,6 +1,6 @@
 # UNIVERSE — Architecture (Phase 0 Blueprint)
 
-Status: **Phase 0 approved 2026-10-12 · Phase 1 (Foundation) implemented** · Source of requirements: [`SPEC.md`](../SPEC.md)
+Status: **Phase 0 approved 2026-10-12 · Phase 1 (Foundation) implemented, fixes in Phase 1.5** · Source of requirements: [`SPEC.md`](../SPEC.md)
 
 This is the living architecture document. Forge keeps it current from Phase 5 on; every material change also gets an ADR in [`docs/adr/`](adr/).
 It covers Phase 0 deliverables 1–7 (SPEC §27). Deliverables 8–9 (hardware info, questions) are in [`docs/PHASE-0.md`](PHASE-0.md). What Phase 1 actually built, and where it changed this design, is in [`docs/PHASE-1.md`](PHASE-1.md).
@@ -71,7 +71,7 @@ Changes from the SPEC §4 sketch, and why:
 | Electron main | TS | user / login item | — | Owns windows, tray, hotkeys, consent state, kill switch. Launches the supervisor and restarts it if it dies. |
 | Renderer | TS/React | Electron main | reload on crash | Never talks to the OS directly. Typed IPC only. |
 | Supervisor | Python 3.12 stdlib only | Electron main | restarted by main | Imports nothing from the app venv, so a broken dependency upgrade can't break it. Holds child processes in a Windows Job Object so nothing is orphaned. |
-| Core | Python (FastAPI/uvicorn) | supervisor | backoff 0.5 s → 30 s | Single process. Agents run here as asyncio tasks. |
+| Core | Python (FastAPI/uvicorn) | supervisor | backoff 0.5 s → 30 s | Single process. Agents run here as asyncio tasks. All request handlers are `async`, so app state is only touched on the event loop. Exits by itself if its parent process disappears, so it can never be left holding its port. |
 | Workers ×N | Python | supervisor | backoff | N = governor-controlled (default 2). Background priority (`BELOW_NORMAL_PRIORITY_CLASS`). Started lazily when jobs exist. |
 | Voice | Python | supervisor | backoff | Started only when the mic is turned on. STT + VAD + wake word + TTS. |
 | Models | Python (ONNX Runtime) | supervisor | backoff | Lazy-loads each model on first use. Evicted under VRAM pressure. |

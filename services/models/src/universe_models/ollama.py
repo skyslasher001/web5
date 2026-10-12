@@ -3,12 +3,13 @@
 import time
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from universe_common.egress import EgressGate
+from universe_common.schema import ApiModel
 
 
-class InstalledModel(BaseModel):
+class InstalledModel(ApiModel):
     name: str
     size_bytes: int | None = None
     family: str | None = None
@@ -17,7 +18,7 @@ class InstalledModel(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
-class OllamaStatus(BaseModel):
+class OllamaStatus(ApiModel):
     reachable: bool
     version: str | None = None
     url: str
@@ -30,6 +31,7 @@ class OllamaClient:
         self._http = gate.async_client(purpose="ollama", local_only=True, base_url=self.base_url, timeout=10.0)
         self._cache_s = cache_s
         self._models: tuple[float, list[InstalledModel]] | None = None
+        self._capability_cache: dict[tuple[str, str], list[str]] = {}  # (name, digest) -> capabilities
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -42,16 +44,23 @@ class OllamaClient:
         except (httpx.HTTPError, ValueError) as exc:
             return OllamaStatus(reachable=False, url=self.base_url, error=str(exc) or type(exc).__name__)
 
-    async def _capabilities(self, name: str, family: str | None) -> list[str]:
+    async def _capabilities(self, raw: dict, name: str, family: str | None) -> list[str]:
+        listed = raw.get("capabilities")
+        if isinstance(listed, list):  # Ollama ≥ 0.12 includes capabilities in /api/tags
+            return [str(c) for c in listed]
+        key = (name, str(raw.get("digest") or ""))
+        if key in self._capability_cache:
+            return self._capability_cache[key]
         try:
             response = await self._http.post("/api/show", json={"model": name})
             response.raise_for_status()
             caps = response.json().get("capabilities")
             if isinstance(caps, list):
-                return [str(c) for c in caps]
+                self._capability_cache[key] = [str(c) for c in caps]
+                return self._capability_cache[key]
         except (httpx.HTTPError, ValueError):
             pass
-        # Older Ollama builds don't report capabilities; BERT-family models are embedders.
+        # Older Ollama builds don't report capabilities; BERT-family models are embedders. Not cached.
         return ["embedding"] if family and "bert" in family.lower() else ["completion"]
 
     async def list_models(self, *, refresh: bool = False) -> list[InstalledModel]:
@@ -72,7 +81,7 @@ class OllamaClient:
                     family=family,
                     parameter_size=details.get("parameter_size"),
                     quantization=details.get("quantization_level"),
-                    capabilities=await self._capabilities(name, family),
+                    capabilities=await self._capabilities(raw, name, family),
                 )
             )
         self._models = (now, models)

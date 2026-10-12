@@ -539,12 +539,14 @@ version = "0.1.0"
 source = { editable = "services/common" }
 dependencies = [
     { name = "httpx" },
+    { name = "pydantic" },
     { name = "structlog" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "pydantic", specifier = ">=2.14" },
     { name = "structlog", specifier = ">=26.1" },
 ]
 

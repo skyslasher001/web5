@@ -1,6 +1,8 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildCsp, contentType, resolveAppFile } from './protocol';
+import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
 
 const root = resolve('/srv/ui/dist');
 
@@ -18,6 +20,16 @@ describe('app:// protocol', () => {
       const file = resolveAppFile(root, url);
       expect(file === null || file.startsWith(root + '/') || file.startsWith(root + '\\')).toBe(true);
     }
+  });
+
+  it('serves regular files only', () => {
+    const dist = mkdtempSync(join(tmpdir(), 'ui-'));
+    mkdirSync(join(dist, 'assets'));
+    writeFileSync(join(dist, 'index.html'), '<!doctype html>');
+    expect(isServableFile(resolveAppFile(dist, 'app://universe/'))).toBe(true);
+    expect(isServableFile(resolveAppFile(dist, 'app://universe/assets'))).toBe(false); // a directory
+    expect(isServableFile(resolveAppFile(dist, 'app://universe/missing.js'))).toBe(false);
+    expect(isServableFile(resolveAppFile(dist, 'app://evil/index.html'))).toBe(false);
   });
 
   it('serves a strict CSP that only reaches Core on loopback', () => {

@@ -4,10 +4,9 @@ import json
 import sqlite3
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
 from universe_common.ids import uuid7
 from universe_common.log import get_logger
+from universe_common.schema import ApiModel
 from universe_common.timeutil import utcnow
 from universe_core.events import EventBus
 
@@ -16,7 +15,7 @@ log = get_logger(__name__)
 Severity = Literal["warning", "error", "critical"]
 
 
-class ErrorRecord(BaseModel):
+class ErrorRecord(ApiModel):
     id: str
     fingerprint: str
     service: str

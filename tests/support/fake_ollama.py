@@ -26,6 +26,9 @@ class FakeOllama(ThreadingHTTPServer):
         self.delay_s = delay_s
         self.with_models = with_models
         self.chat_requests: list[dict] = []
+        self.show_requests = 0
+        self.capabilities_in_tags = False  # Ollama >= 0.12 lists capabilities in /api/tags
+        self.tags_status = 200  # set to 500 to make /api/tags fail while /api/version still answers
 
     @property
     def url(self) -> str:
@@ -63,6 +66,8 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/api/version":
             self._json(200, {"version": "0.0.0-fake"})
+        elif self.path == "/api/tags" and self.srv.tags_status != 200:
+            self._json(self.srv.tags_status, {"error": "simulated failure"})
         elif self.path == "/api/tags":
             models = []
             if self.srv.with_models:
@@ -70,10 +75,14 @@ class _Handler(BaseHTTPRequestHandler):
                     {
                         "name": CHAT_MODEL,
                         "size": 1_000_000,
+                        "digest": "aaa",
                         "details": {"family": "fake", "parameter_size": "1B", "quantization_level": "Q4_K_M"},
                     },
-                    {"name": EMBED_MODEL, "size": 100_000, "details": {"family": "nomic-bert"}},
+                    {"name": EMBED_MODEL, "size": 100_000, "digest": "bbb", "details": {"family": "nomic-bert"}},
                 ]
+                if self.srv.capabilities_in_tags:
+                    models[0]["capabilities"] = ["completion", "tools"]
+                    models[1]["capabilities"] = ["embedding"]
             self._json(200, {"models": models})
         else:
             self._json(404, {"error": "not found"})
@@ -81,6 +90,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         body = self._body()
         if self.path == "/api/show":
+            self.srv.show_requests += 1
             caps = ["embedding"] if body.get("model") == EMBED_MODEL else ["completion"]
             self._json(200, {"capabilities": caps})
             return

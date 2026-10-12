@@ -1,6 +1,7 @@
 // Small shared HUD primitives.
 import { Check, Copy } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { attempt } from '../lib/attempt';
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
@@ -32,10 +33,13 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
     <button
       type="button"
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        });
+        attempt(
+          'Copy',
+          navigator.clipboard.writeText(text).then(() => {
+            setDone(true);
+            setTimeout(() => setDone(false), 1500);
+          }),
+        );
       }}
       className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs text-ink-2 transition-colors duration-150 hover:text-accent"
       aria-label={`${label}: ${text}`}

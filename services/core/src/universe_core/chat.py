@@ -10,14 +10,13 @@ import time
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel
-
 from universe_agents.providers import ChatMessage, ChatProvider, ProviderError
 from universe_agents.registry import AgentDefinition
 from universe_agents.router import ModelRouter, NoModelAvailable
 from universe_common.errors import capture_exception
 from universe_common.ids import uuid7
 from universe_common.log import get_logger
+from universe_common.schema import ApiModel
 from universe_common.timeutil import utcnow
 from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
@@ -38,7 +37,7 @@ class ChatUnavailable(RuntimeError):
     """Chat can't run right now (safe mode). User-presentable."""
 
 
-class Conversation(BaseModel):
+class Conversation(ApiModel):
     id: str
     title: str
     agent_id: str
@@ -46,7 +45,7 @@ class Conversation(BaseModel):
     updated_at: str
 
 
-class Message(BaseModel):
+class Message(ApiModel):
     id: str
     conversation_id: str
     role: Literal["user", "assistant", "system"]

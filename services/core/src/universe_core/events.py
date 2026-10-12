@@ -10,9 +10,10 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from universe_common.ids import uuid7
+from universe_common.schema import ApiModel
 from universe_common.timeutil import utcnow
 
 
@@ -137,7 +138,7 @@ class UnknownEventType(ValueError):
     pass
 
 
-class Event(BaseModel):
+class Event(ApiModel):
     id: str
     seq: int | None = None
     ts: str

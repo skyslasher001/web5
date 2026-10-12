@@ -5,12 +5,14 @@ import sys
 from pathlib import Path
 
 import psutil
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from universe_common.schema import ApiModel
 
 GIB = 1024**3
 
 
-class GpuInfo(BaseModel):
+class GpuInfo(ApiModel):
     name: str
     vram_bytes: int | None = None
     driver: str | None = None
@@ -18,14 +20,14 @@ class GpuInfo(BaseModel):
     source: str  # "nvml" | "windows-registry"
 
 
-class DiskInfo(BaseModel):
+class DiskInfo(ApiModel):
     mount: str
     fstype: str
     total_bytes: int
     free_bytes: int
 
 
-class HardwareInfo(BaseModel):
+class HardwareInfo(ApiModel):
     os: str
     os_version: str
     machine: str

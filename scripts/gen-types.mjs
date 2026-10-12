@@ -1,6 +1,7 @@
 // Regenerates packages/shared-types from the backend: OpenAPI → TypeScript, event catalog → TypeScript.
 // `node scripts/gen-types.mjs --check` fails when the committed files are stale (CI).
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { mkdtempSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
@@ -12,10 +13,12 @@ const check = process.argv.includes('--check');
 const out = check ? mkdtempSync(join(tmpdir(), 'shared-types-')) : pkg;
 mkdirSync(join(out, 'src'), { recursive: true });
 
-const run = (cmd, args) =>
-  execFileSync(cmd, args, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' });
+// No shell anywhere: shell-joined arguments break on paths with spaces (e.g. a Windows profile folder).
+const run = (cmd, args) => execFileSync(cmd, args, { cwd: root, stdio: 'inherit' });
+const require = createRequire(import.meta.url);
+const openapiCli = join(dirname(require.resolve('openapi-typescript/package.json')), 'bin', 'cli.js');
 run('uv', ['run', '--quiet', 'python', '-m', 'universe_core.schema_export', out]);
-run('pnpm', ['exec', 'openapi-typescript', join(out, 'openapi.json'), '-o', join(out, 'src', 'api.ts')]);
+run(process.execPath, [openapiCli, join(out, 'openapi.json'), '-o', join(out, 'src', 'api.ts')]);
 
 if (check) {
   const files = ['openapi.json', 'src/api.ts', 'src/events.ts'];

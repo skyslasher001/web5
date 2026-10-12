@@ -370,7 +370,7 @@ export interface components {
         /** Candidate */
         Candidate: {
             /** Approx Download Gb */
-            approx_download_gb?: number | null;
+            approx_download_gb: number | null;
             /** Family */
             family: string;
             /**
@@ -486,23 +486,23 @@ export interface components {
             /** Actor */
             actor: string;
             /** Causation Id */
-            causation_id?: string | null;
+            causation_id: string | null;
             /** Correlation Id */
-            correlation_id?: string | null;
+            correlation_id: string | null;
             /** Id */
             id: string;
             /** Payload */
-            payload?: {
+            payload: {
                 [key: string]: unknown;
             };
             /** Seq */
-            seq?: number | null;
+            seq: number | null;
             /** Source */
             source: string;
             /** Subject Id */
-            subject_id?: string | null;
+            subject_id: string | null;
             /** Subject Type */
-            subject_type?: string | null;
+            subject_type: string | null;
             /** Ts */
             ts: string;
             /** Type */
@@ -523,15 +523,15 @@ export interface components {
         /** GpuInfo */
         GpuInfo: {
             /** Cuda Driver */
-            cuda_driver?: string | null;
+            cuda_driver: string | null;
             /** Driver */
-            driver?: string | null;
+            driver: string | null;
             /** Name */
             name: string;
             /** Source */
             source: string;
             /** Vram Bytes */
-            vram_bytes?: number | null;
+            vram_bytes: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -547,9 +547,9 @@ export interface components {
             /** Cpu Threads */
             cpu_threads: number | null;
             /** Disks */
-            disks?: components["schemas"]["DiskInfo"][];
+            disks: components["schemas"]["DiskInfo"][];
             /** Gpus */
-            gpus?: components["schemas"]["GpuInfo"][];
+            gpus: components["schemas"]["GpuInfo"][];
             /**
              * Has Battery
              * @default false
@@ -558,9 +558,9 @@ export interface components {
             /** Machine */
             machine: string;
             /** Notes */
-            notes?: string[];
+            notes: string[];
             /** On Ac Power */
-            on_ac_power?: boolean | null;
+            on_ac_power: boolean | null;
             /** Os */
             os: string;
             /** Os Version */
@@ -592,17 +592,17 @@ export interface components {
         /** InstalledModel */
         InstalledModel: {
             /** Capabilities */
-            capabilities?: string[];
+            capabilities: string[];
             /** Family */
-            family?: string | null;
+            family: string | null;
             /** Name */
             name: string;
             /** Parameter Size */
-            parameter_size?: string | null;
+            parameter_size: string | null;
             /** Quantization */
-            quantization?: string | null;
+            quantization: string | null;
             /** Size Bytes */
-            size_bytes?: number | null;
+            size_bytes: number | null;
         };
         /** Message */
         Message: {
@@ -642,9 +642,9 @@ export interface components {
             /** Chat Model */
             chat_model: string | null;
             /** Chat Model Error */
-            chat_model_error?: string | null;
+            chat_model_error: string | null;
             /** Chat Model Hint */
-            chat_model_hint?: string | null;
+            chat_model_hint: string | null;
             /** Installed */
             installed: components["schemas"]["InstalledModel"][];
             ollama: components["schemas"]["OllamaStatus"];
@@ -652,13 +652,13 @@ export interface components {
         /** OllamaStatus */
         OllamaStatus: {
             /** Error */
-            error?: string | null;
+            error: string | null;
             /** Reachable */
             reachable: boolean;
             /** Url */
             url: string;
             /** Version */
-            version?: string | null;
+            version: string | null;
         };
         /** Project */
         Project: {

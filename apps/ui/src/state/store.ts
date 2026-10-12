@@ -44,6 +44,7 @@ interface UniverseState {
   setPaletteOpen(open: boolean): void;
   setPanel(panel: Panel): void;
   toggleZen(): void;
+  addNotice(tone: ActivityItem['tone'], text: string): void;
 }
 
 const ACTIVITY_LIMIT = 40;
@@ -114,4 +115,11 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   setPanel: (panel) => set({ panel }),
   toggleZen: () => set((s) => ({ zen: !s.zen, paletteOpen: false })),
+  addNotice: (tone, text) =>
+    set((s) => ({
+      activity: [
+        { id: `local-${crypto.randomUUID()}`, ts: new Date().toISOString(), tone, text },
+        ...s.activity,
+      ].slice(0, ACTIVITY_LIMIT),
+    })),
 }));

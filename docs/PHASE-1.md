@@ -1,6 +1,6 @@
 # Phase 1 — Foundation delivery
 
-Status: **delivered 2026-10-12, awaiting your go-ahead for Phase 2.**
+Status: **delivered 2026-10-12.** Bugs found afterwards are fixed in [Phase 1.5](PHASE-1.5.md), which also lists the limitations that are still open.
 
 SPEC §25 "done when": *I launch the app, chat with streaming replies, kill the backend and watch it auto-restart, and all tests pass.* Each part is covered by an automated end-to-end test against the real Electron app (`tests/e2e/app.spec.ts`), and the demo script below walks you through it by hand.
 
@@ -72,7 +72,7 @@ All of the above passed locally (Linux, Python 3.12.13, Node 22). CI runs the sa
 
 - **Not yet run on Windows.** This environment is Linux. Windows-specific code (Job Object, registry GPU probe, `CREATE_NO_WINDOW`, title-bar overlay) is written and type-checked, and CI is set up to run everything on `windows-latest`, but it has not executed on Windows yet.
 - **CI didn't start on GitHub.** The first run of `.github/workflows/ci.yml` ended in `startup_failure` before any job ran. The workflow passes `actionlint` 1.7.7, so the block is on the GitHub side for this private repo: usually Actions being restricted to certain actions (Settings → Actions → General → "Allow all actions"), or Actions minutes/billing on the account. Windows runners count double against private-repo minutes. The run page shows the exact reason.
-- **No real model was used.** Ollama's model registry is blocked from this environment, so chat was verified against `tests/support/fake_ollama.py`, a protocol-faithful stand-in. The client uses Ollama's documented OpenAI-compatible streaming endpoint; your first real chat is the check.
+- **No real model was used.** Ollama's model registry is blocked from this environment, so chat was verified against `tests/support/fake_ollama.py`, a protocol-faithful stand-in. The client uses Ollama's documented OpenAI-compatible streaming endpoint; your first real chat is the check. *(Phase 1.5 added a test against a real Ollama 0.40 server with a generated toy model.)*
 - **Model shortlist unverified.** Tags and sizes in `services/models/.../loadouts.yaml` come from web search (Hugging Face and ollama.com were blocked). Each entry is marked `verified: false` and shown as such in the UI.
 - **The `pre-universe` tag** exists locally but this environment's git proxy refused to push tags. The old landing page is still on `main` and in history. To publish the tag: `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`.
 - **Safe-mode LKG** works for git checkouts (dev). Installed builds get their own release scheme in Phase 12.

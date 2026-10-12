@@ -3,7 +3,7 @@
 import { tokens } from '@universe/design-tokens';
 import type { Project } from '@universe/shared-types';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { createContext, useContext, useMemo, useRef, useState, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -104,6 +104,12 @@ function Galaxy({ project, index, total }: { project: Project; index: number; to
   const selected = useUniverse((s) => s.selectedProjectId === project.id);
   const select = useUniverse((s) => s.selectProject);
   const [hover, setHover] = useState(false);
+  useEffect(() => {
+    if (!hover) return;
+    return () => {
+      document.body.style.cursor = ''; // never leave a stuck pointer if we unmount while hovered
+    };
+  }, [hover]);
   const color = hueHex(project.color_token);
   const texture = useMemo(() => galaxyTexture(color, project.layout_seed + 1), [color, project.layout_seed]);
   // An ellipse around the Core that stays inside the HUD's free centre area at the default camera.

@@ -1,4 +1,5 @@
 // The app:// protocol that serves the built renderer, with a strict Content-Security-Policy.
+import { statSync } from 'node:fs';
 import { extname, normalize, resolve, sep } from 'node:path';
 
 const TYPES: Record<string, string> = {
@@ -28,6 +29,16 @@ export function resolveAppFile(root: string, requestUrl: string): string | null 
   const base = resolve(root);
   const file = resolve(base, normalize('.' + pathname));
   return file === base || file.startsWith(base + sep) ? file : null;
+}
+
+/** Only regular files are served: directories and missing paths get a 404. */
+export function isServableFile(file: string | null): file is string {
+  if (!file) return false;
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export function buildCsp(corePort: number): string {

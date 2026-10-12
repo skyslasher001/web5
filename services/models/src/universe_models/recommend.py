@@ -5,8 +5,8 @@ from importlib import resources
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel
 
+from universe_common.schema import ApiModel
 from universe_models.hardware import GIB, HardwareInfo
 
 Tier = Literal["cpu", "le-8gb", "12-16gb", "24gb-plus"]
@@ -15,7 +15,7 @@ Tier = Literal["cpu", "le-8gb", "12-16gb", "24gb-plus"]
 _TIER_THRESHOLDS: list[tuple[float, Tier]] = [(21.0, "24gb-plus"), (11.5, "12-16gb"), (3.5, "le-8gb")]
 
 
-class Candidate(BaseModel):
+class Candidate(ApiModel):
     tag: str
     family: str
     license: str
@@ -23,7 +23,7 @@ class Candidate(BaseModel):
     installed: bool = False
 
 
-class Recommendation(BaseModel):
+class Recommendation(ApiModel):
     tier: Tier
     tier_label: str
     reason: str

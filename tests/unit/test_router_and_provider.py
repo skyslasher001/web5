@@ -13,6 +13,28 @@ def _router(url: str, *, assignment: str | None = None, override: str | None = N
     return ModelRouter(client, assignment=lambda _t: assignment, override=override, preferences=lambda _t: prefs or [])
 
 
+async def test_capabilities_are_looked_up_once_per_model_version(fake_ollama: FakeOllama) -> None:
+    client = OllamaClient(fake_ollama.url, EgressGate(), cache_s=0)
+    models = await client.list_models(refresh=True)
+    for _ in range(2):
+        models = await client.list_models(refresh=True)
+    assert {m.name: m.capabilities for m in models} == {
+        "fake-chat:latest": ["completion"],
+        "fake-embed:latest": ["embedding"],
+    }
+    assert fake_ollama.show_requests == 2  # not 6: cached by (name, digest)
+    await client.aclose()
+
+
+async def test_capabilities_listed_in_tags_need_no_show_calls(fake_ollama: FakeOllama) -> None:
+    fake_ollama.capabilities_in_tags = True
+    client = OllamaClient(fake_ollama.url, EgressGate(), cache_s=0)
+    models = await client.list_models(refresh=True)
+    assert models[0].capabilities == ["completion", "tools"]
+    assert fake_ollama.show_requests == 0
+    await client.aclose()
+
+
 async def test_router_falls_back_to_any_installed_chat_model(fake_ollama: FakeOllama) -> None:
     assert await _router(fake_ollama.url).resolve("local-fast") == CHAT_MODEL
 

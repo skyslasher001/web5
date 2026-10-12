@@ -33,8 +33,11 @@ def events_ts() -> str:
 
 def main() -> int:
     out = Path(sys.argv[1])
-    (out / "openapi.json").write_text(json.dumps(openapi(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (out / "src" / "events.ts").write_text(events_ts(), encoding="utf-8")
+    # newline="\n": text mode would write CRLF on Windows and fail the drift check against LF files.
+    (out / "openapi.json").write_text(
+        json.dumps(openapi(), indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+    (out / "src" / "events.ts").write_text(events_ts(), encoding="utf-8", newline="\n")
     return 0
 
 

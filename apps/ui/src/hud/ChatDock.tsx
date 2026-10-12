@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { History, MessageSquarePlus, Send, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ApiError } from '../lib/api';
+import { attempt } from '../lib/attempt';
 import { useApi } from '../lib/api-context';
 import { useModels } from '../lib/queries';
 import { fromStored, type ChatMessage } from '../state/reducers';
@@ -163,7 +164,10 @@ function ChatPanel() {
           onClick={() => {
             setHistoryOpen(!historyOpen);
             if (!historyOpen)
-              void api.conversations().then((c) => setHistory(c.map(({ id, title }) => ({ id, title }))));
+              attempt(
+                'Loading conversations',
+                api.conversations().then((c) => setHistory(c.map(({ id, title }) => ({ id, title })))),
+              );
           }}
           className="rounded-md p-1.5 text-ink-3 hover:text-ink-1"
         >
@@ -196,7 +200,10 @@ function ChatPanel() {
                 className="w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-ink-2 hover:bg-space-3/60 hover:text-ink-1"
                 onClick={() => {
                   setHistoryOpen(false);
-                  void api.messages(c.id).then((m) => openConversation(c.id, m.map(fromStored)));
+                  attempt(
+                    'Opening the conversation',
+                    api.messages(c.id).then((m) => openConversation(c.id, m.map(fromStored))),
+                  );
                 }}
               >
                 {c.title}
@@ -236,7 +243,7 @@ function ChatPanel() {
           {streaming ? (
             <button
               type="button"
-              onClick={() => conversationId && void api.cancelChat(conversationId)}
+              onClick={() => conversationId && attempt('Stopping the reply', api.cancelChat(conversationId))}
               className="grid size-9 place-items-center rounded-md border border-hairline-2 text-ink-2 hover:border-danger hover:text-danger"
               aria-label="Stop reply"
             >

@@ -4,11 +4,13 @@ import os
 import platform
 from typing import Annotated, Any, Literal
 
+import httpx
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from universe_common.errors import MAX_MESSAGE, MAX_STACK, fingerprint_from_text
+from universe_common.schema import ApiModel
 from universe_core import __version__
 from universe_core.chat import Conversation, Message
 from universe_core.context import ROUTER_TIERS, CoreContext
@@ -20,6 +22,11 @@ from universe_models.ollama import InstalledModel, OllamaStatus
 from universe_models.recommend import Recommendation
 
 _process = psutil.Process(os.getpid())
+_process.cpu_percent(interval=None)  # prime: the first reading is always 0.0
+
+# Every handler is `async def`: Core state (event-bus queues, asyncio tasks, the shared SQLite
+# connections) may only be touched on the event-loop thread. FastAPI runs plain `def` handlers in a
+# thread pool. tests/integration/test_core_threading.py enforces this.
 
 
 def get_ctx(request: Request) -> CoreContext:
@@ -32,7 +39,7 @@ Ctx = Annotated[CoreContext, Depends(get_ctx)]
 # ---------- schemas ----------
 
 
-class Health(BaseModel):
+class Health(ApiModel):
     status: Literal["ok"] = "ok"
     service: Literal["core"] = "core"
     version: str
@@ -40,12 +47,12 @@ class Health(BaseModel):
     pid: int
 
 
-class WsTicket(BaseModel):
+class WsTicket(ApiModel):
     ticket: str
     expires_in_s: float
 
 
-class Vitals(BaseModel):
+class Vitals(ApiModel):
     version: str
     pid: int
     uptime_s: float
@@ -60,7 +67,7 @@ class Vitals(BaseModel):
     ollama: OllamaStatus
 
 
-class Project(BaseModel):
+class Project(ApiModel):
     id: str
     name: str
     slug: str
@@ -71,7 +78,7 @@ class Project(BaseModel):
     created_at: str
 
 
-class AgentInfo(BaseModel):
+class AgentInfo(ApiModel):
     id: str
     name: str
     purpose: str
@@ -82,7 +89,7 @@ class AgentInfo(BaseModel):
     status: Literal["idle", "working", "disabled"]
 
 
-class ModelsInfo(BaseModel):
+class ModelsInfo(ApiModel):
     ollama: OllamaStatus
     installed: list[InstalledModel]
     assignments: dict[str, str]
@@ -102,17 +109,17 @@ class ChatSendRequest(BaseModel):
     agent_id: str = "core"
 
 
-class ChatSendResponse(BaseModel):
+class ChatSendResponse(ApiModel):
     conversation_id: str
     user_message_id: str
     assistant_message_id: str
 
 
-class CancelResponse(BaseModel):
+class CancelResponse(ApiModel):
     cancelled: bool
 
 
-class EventPage(BaseModel):
+class EventPage(ApiModel):
     events: list[Event]
     last_seq: int
 
@@ -133,12 +140,12 @@ router = APIRouter(prefix="/api/v1")
 
 
 @public.get("/health", response_model=Health)
-def health(ctx: Ctx) -> Health:
+async def health(ctx: Ctx) -> Health:
     return Health(version=__version__, safe_mode=ctx.settings.safe_mode, pid=ctx.pid)
 
 
 @router.post("/session/ws-ticket", response_model=WsTicket)
-def ws_ticket(ctx: Ctx) -> WsTicket:
+async def ws_ticket(ctx: Ctx) -> WsTicket:
     return WsTicket(ticket=ctx.tickets.issue(), expires_in_s=ctx.tickets.ttl_s)
 
 
@@ -179,7 +186,10 @@ async def models(ctx: Ctx) -> ModelsInfo:
     status_ = await ctx.ollama.status()
     installed: list[InstalledModel] = []
     if status_.reachable:
-        installed = await ctx.ollama.list_models(refresh=True)
+        try:
+            installed = await ctx.ollama.list_models(refresh=True)
+        except httpx.HTTPError as exc:
+            status_ = OllamaStatus(reachable=False, url=status_.url, error=str(exc) or type(exc).__name__)
     info = ModelsInfo(ollama=status_, installed=installed, assignments=ctx.assignments(), chat_model=None)
     try:
         info.chat_model = await ctx.router.resolve("local-fast")
@@ -190,7 +200,11 @@ async def models(ctx: Ctx) -> ModelsInfo:
 
 @router.put("/models/assignments", response_model=ModelsInfo)
 async def set_assignment(ctx: Ctx, body: AssignmentRequest) -> ModelsInfo:
-    names = {m.name for m in await ctx.ollama.list_models(refresh=True) if "completion" in m.capabilities}
+    try:
+        installed = await ctx.ollama.list_models(refresh=True)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama is not reachable") from exc
+    names = {m.name for m in installed if "completion" in m.capabilities}
     if body.model not in names:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{body.model}' is not an installed chat model")
     if body.tier not in ROUTER_TIERS:
@@ -200,7 +214,7 @@ async def set_assignment(ctx: Ctx, body: AssignmentRequest) -> ModelsInfo:
 
 
 @router.get("/agents", response_model=list[AgentInfo])
-def agents(ctx: Ctx) -> list[AgentInfo]:
+async def agents(ctx: Ctx) -> list[AgentInfo]:
     out = []
     for agent in ctx.agents.values():
         if ctx.settings.safe_mode:
@@ -223,7 +237,7 @@ def agents(ctx: Ctx) -> list[AgentInfo]:
 
 
 @router.get("/projects", response_model=list[Project])
-def projects(ctx: Ctx) -> list[Project]:
+async def projects(ctx: Ctx) -> list[Project]:
     rows = ctx.dbs.universe.execute("SELECT * FROM projects ORDER BY layout_seed, created_at")
     return [Project(**{k: r[k] for k in Project.model_fields}) for r in rows]
 
@@ -235,22 +249,22 @@ async def chat_send(ctx: Ctx, body: ChatSendRequest) -> ChatSendResponse:
 
 
 @router.get("/conversations", response_model=list[Conversation])
-def conversations(ctx: Ctx, limit: int = Query(50, ge=1, le=500)) -> list[Conversation]:
+async def conversations(ctx: Ctx, limit: int = Query(50, ge=1, le=500)) -> list[Conversation]:
     return ctx.chat.conversations(limit)
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=list[Message])
-def conversation_messages(ctx: Ctx, conversation_id: str) -> list[Message]:
+async def conversation_messages(ctx: Ctx, conversation_id: str) -> list[Message]:
     return ctx.chat.messages(conversation_id)
 
 
 @router.post("/conversations/{conversation_id}/cancel", response_model=CancelResponse)
-def cancel(ctx: Ctx, conversation_id: str) -> CancelResponse:
+async def cancel(ctx: Ctx, conversation_id: str) -> CancelResponse:
     return CancelResponse(cancelled=ctx.chat.cancel(conversation_id))
 
 
 @router.get("/events", response_model=EventPage)
-def events(
+async def events(
     ctx: Ctx,
     since_seq: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=5000),
@@ -262,7 +276,7 @@ def events(
 
 
 @router.post("/errors", response_model=ErrorRecord | None, status_code=status.HTTP_201_CREATED)
-def report_error(ctx: Ctx, body: ErrorReport) -> ErrorRecord | None:
+async def report_error(ctx: Ctx, body: ErrorReport) -> ErrorRecord | None:
     return ctx.errors.record(
         service=body.service,
         kind=body.kind,
@@ -275,15 +289,15 @@ def report_error(ctx: Ctx, body: ErrorReport) -> ErrorRecord | None:
 
 
 @router.get("/errors", response_model=list[ErrorRecord])
-def list_errors(ctx: Ctx, limit: int = Query(100, ge=1, le=1000)) -> list[ErrorRecord]:
+async def list_errors(ctx: Ctx, limit: int = Query(100, ge=1, le=1000)) -> list[ErrorRecord]:
     return ctx.errors.list(limit=limit)
 
 
 @router.get("/audit", response_model=list[AuditEntry])
-def audit(ctx: Ctx, limit: int = Query(100, ge=1, le=1000), action: str | None = None) -> list[AuditEntry]:
+async def audit(ctx: Ctx, limit: int = Query(100, ge=1, le=1000), action: str | None = None) -> list[AuditEntry]:
     return ctx.audit.list(limit=limit, action=action)
 
 
 @router.get("/audit/verify", response_model=AuditVerification)
-def audit_verify(ctx: Ctx) -> AuditVerification:
+async def audit_verify(ctx: Ctx) -> AuditVerification:
     return ctx.audit.verify()

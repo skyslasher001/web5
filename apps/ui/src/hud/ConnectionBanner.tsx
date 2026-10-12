@@ -1,11 +1,12 @@
 import { RotateCw, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
+import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
 import { useUniverse } from '../state/store';
 
 export function ConnectionBanner() {
   const connection = useUniverse((s) => s.connection);
-  const attempt = useUniverse((s) => s.reconnectAttempt);
+  const reconnectAttempt = useUniverse((s) => s.reconnectAttempt);
   const supervisor = useUniverse((s) => s.desktop?.supervisor);
   const process = useUniverse((s) => s.desktop?.process);
   const [busy, setBusy] = useState(false);
@@ -27,9 +28,12 @@ export function ConnectionBanner() {
           disabled={busy}
           onClick={() => {
             setBusy(true);
-            void bridge()
-              .exitSafeMode()
-              .finally(() => setBusy(false));
+            attempt(
+              'Normal start',
+              bridge()
+                .exitSafeMode()
+                .finally(() => setBusy(false)),
+            );
           }}
           className="rounded-full border border-hairline-2 px-3 py-0.5 text-xs hover:border-accent disabled:opacity-50"
         >
@@ -53,7 +57,9 @@ export function ConnectionBanner() {
     >
       <RotateCw className="size-4 orb-spin text-amber" aria-hidden />
       <span>
-        {connection === 'connecting' ? 'Connecting to Core…' : `Reconnecting to Core (attempt ${attempt})…`}
+        {connection === 'connecting'
+          ? 'Connecting to Core…'
+          : `Reconnecting to Core (attempt ${reconnectAttempt})…`}
       </span>
       <span className="font-mono text-xs text-ink-3">{detail}</span>
     </div>

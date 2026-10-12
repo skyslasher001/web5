@@ -12,6 +12,7 @@ import {
   Telescope,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
 import { useProjects } from '../lib/queries';
 import { useUniverse } from '../state/store';
@@ -121,18 +122,18 @@ export function CommandPalette() {
           <Item
             icon={<RotateCw className="size-4" />}
             label="Restart Core"
-            onSelect={run(() => void bridge().restartService('core'))}
+            onSelect={run(() => attempt('Restart Core', bridge().restartService('core')))}
           />
           <Item
             icon={<Bomb className="size-4" />}
             label="Simulate a Core crash"
             hint="the supervisor brings it back"
-            onSelect={run(() => void bridge().killService('core'))}
+            onSelect={run(() => attempt('Simulated crash', bridge().killService('core')))}
           />
           <Item
             icon={<FolderOpen className="size-4" />}
             label="Open logs folder"
-            onSelect={run(() => void bridge().openLogsFolder())}
+            onSelect={run(() => attempt('Open logs folder', bridge().openLogsFolder()))}
           />
           <Item
             icon={<RefreshCw className="size-4" />}

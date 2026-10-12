@@ -31,11 +31,9 @@ async function startFakeOllama(port: number): Promise<ChildProcess> {
   const child = spawn(
     'uv',
     ['run', '--quiet', 'python', 'tests/support/fake_ollama.py', '--port', String(port), '--delay-ms', '15'],
-    {
-      cwd: root,
-      stdio: ['ignore', 'pipe', 'inherit'],
-      shell: process.platform === 'win32',
-    },
+    // No shell: on Windows `uv` resolves to uv.exe directly, and kill() then stops the server itself
+    // instead of an intermediate cmd.exe (which would leave the fake server running).
+    { cwd: root, stdio: ['ignore', 'pipe', 'inherit'] },
   );
   await new Promise<void>((ready, fail) => {
     createInterface({ input: child.stdout! }).once('line', () => ready());

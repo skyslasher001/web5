@@ -12,9 +12,11 @@ import type {
   ServiceName,
 } from '@universe/shared-types';
 import { CH } from './channels';
+import { createErrorQueue } from './errorQueue';
 import { createLogger } from './logger';
+import { isAllowedNavigation } from './navigation';
 import { resolvePaths } from './paths';
-import { buildCsp, contentType, resolveAppFile } from './protocol';
+import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
 import { SupervisorProcess } from './protected/supervisor';
 
 const env = process.env;
@@ -46,36 +48,27 @@ protocol.registerSchemesAsPrivileged([
 
 // ---------- error capture (forwarded to Core's error store once it is up) ----------
 
-const pendingErrors: Array<Record<string, unknown>> = [];
-
-async function flushErrors(): Promise<void> {
-  while (pendingErrors.length) {
-    const report = pendingErrors[0];
-    try {
-      const response = await net.fetch(`${coreUrl}/api/v1/errors`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(report),
-      });
-      if (!response.ok) return;
-      pendingErrors.shift();
-    } catch {
-      return; // Core not reachable yet; retried on the next healthy status
-    }
-  }
-}
+const errorQueue = createErrorQueue(
+  async (report) => {
+    const response = await net.fetch(`${coreUrl}/api/v1/errors`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+    return response.status;
+  },
+  (status) => log.warn('error_report_rejected', { status }),
+);
 
 function captureError(service: 'desktop' | 'renderer', input: ErrorReportInput): void {
   log.error('error_captured', { service, kind: input.kind, message: input.message });
-  if (pendingErrors.length < 50) {
-    pendingErrors.push({
-      service,
-      kind: String(input.kind).slice(0, 200) || 'Error',
-      message: String(input.message ?? '').slice(0, 2000),
-      stack: String(input.stack ?? '').slice(0, 20000),
-    });
-  }
-  void flushErrors();
+  errorQueue.push({
+    service,
+    kind: String(input.kind).slice(0, 200) || 'Error',
+    message: String(input.message ?? '').slice(0, 2000),
+    stack: String(input.stack ?? '').slice(0, 20000),
+  });
+  void errorQueue.flush();
 }
 
 process.on('uncaughtException', (err) =>
@@ -119,7 +112,7 @@ function send(state: DesktopState): void {
 supervisor.on('state', (state: DesktopState) => {
   send(state);
   const core = state.supervisor?.services.core;
-  if (core?.state === 'healthy') void flushErrors();
+  if (core?.state === 'healthy') void errorQueue.flush();
   if (state.supervisor?.safe_mode.active && core?.state === 'failed') showSafeMode('core-failed');
 });
 
@@ -162,11 +155,10 @@ function createWindow(): void {
   win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => {
-    const allowed =
-      url.startsWith('app://universe/') ||
-      url.startsWith('file://') ||
-      (devUiUrl && url.startsWith(devUiUrl));
-    if (!allowed) event.preventDefault();
+    if (!isAllowedNavigation(url, { devUiUrl, safeModeDir: paths.safeModeDir })) {
+      log.warn('navigation_blocked', { url: url.slice(0, 200) });
+      event.preventDefault();
+    }
   });
   win.webContents.on('did-fail-load', (_e, code, description, url) => {
     log.error('ui_failed_to_load', { code, description, url });
@@ -243,7 +235,7 @@ if (!app.requestSingleInstanceLock()) {
     const csp = buildCsp(corePort);
     protocol.handle('app', async (request) => {
       const file = resolveAppFile(paths.uiDist, request.url);
-      if (!file || !existsSync(file)) return new Response('Not found', { status: 404 });
+      if (!isServableFile(file)) return new Response('Not found', { status: 404 });
       const upstream = await net.fetch(pathToFileURL(file).toString());
       return new Response(upstream.body, {
         headers: { 'content-type': contentType(file), 'content-security-policy': csp },

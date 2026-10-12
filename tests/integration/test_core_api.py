@@ -187,6 +187,23 @@ def test_model_assignment_is_validated_and_audited(client: TestClient) -> None:
     assert client.get("/api/v1/audit/verify", headers=AUTH).json()["ok"]
 
 
+def test_model_assignment_when_ollama_is_down_is_a_clear_503(make_settings: Callable[..., CoreSettings]) -> None:
+    with TestClient(create_app(make_settings(ollama_url="http://127.0.0.1:9")), base_url=BASE) as c:
+        response = c.put("/api/v1/models/assignments", json={"tier": "local-fast", "model": "x"}, headers=AUTH)
+        assert response.status_code == 503 and "not reachable" in response.json()["detail"]
+        assert c.get("/api/v1/models", headers=AUTH).json()["ollama"]["reachable"] is False
+        assert c.get("/api/v1/errors", headers=AUTH).json() == []  # an offline Ollama is not a bug
+
+
+def test_models_reports_ollama_unreachable_when_listing_fails(client: TestClient, fake_ollama: FakeOllama) -> None:
+    fake_ollama.tags_status = 500  # /api/version answers, /api/tags fails
+    response = client.get("/api/v1/models", headers=AUTH)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ollama"]["reachable"] is False and "500" in body["ollama"]["error"]
+    assert body["chat_model"] is None and body["chat_model_error"]
+
+
 def test_renderer_errors_are_grouped(client: TestClient) -> None:
     report = {
         "service": "renderer",

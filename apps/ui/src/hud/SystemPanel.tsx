@@ -3,6 +3,7 @@ import type { components } from '@universe/shared-types';
 import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, CircleAlert, RotateCw } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
+import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
 import { useApi } from '../lib/api-context';
 import { formatBytes, formatDuration } from '../lib/format';
@@ -68,9 +69,12 @@ function Services() {
               title="Restart Core"
               onClick={() => {
                 setBusy(true);
-                void bridge()
-                  .restartService('core')
-                  .finally(() => setBusy(false));
+                attempt(
+                  'Restart Core',
+                  bridge()
+                    .restartService('core')
+                    .finally(() => setBusy(false)),
+                );
               }}
               className="text-ink-3 hover:text-accent disabled:opacity-40"
             >
@@ -96,7 +100,7 @@ function ChatModel() {
   const [error, setError] = useState<string | null>(null);
   const data = models.data;
   if (!data) return <p className="text-xs text-ink-3">Loading…</p>;
-  const chatModels = data.installed.filter((m) => (m.capabilities ?? []).includes('completion'));
+  const chatModels = data.installed.filter((m) => m.capabilities.includes('completion'));
   return (
     <div className="space-y-2">
       {data.chat_model ? (
@@ -179,8 +183,8 @@ function HardwareAndModels() {
               {hw.cpu_cores ?? '?'} / {hw.cpu_threads ?? '?'} threads
             </Row>
             <Row label="RAM">{formatBytes(hw.ram_bytes)}</Row>
-            {(hw.gpus ?? []).length === 0 && <Row label="GPU">none detected</Row>}
-            {(hw.gpus ?? []).map((g) => (
+            {hw.gpus.length === 0 && <Row label="GPU">none detected</Row>}
+            {hw.gpus.map((g) => (
               <Row key={g.name} label="GPU">
                 {g.name} · {formatBytes(g.vram_bytes)}
               </Row>
