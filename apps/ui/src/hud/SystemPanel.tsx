@@ -1,0 +1,264 @@
+import { tokens } from '@universe/design-tokens';
+import type { components } from '@universe/shared-types';
+import { useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, CircleAlert, RotateCw } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { bridge } from '../lib/bridge';
+import { useApi } from '../lib/api-context';
+import { formatBytes, formatDuration } from '../lib/format';
+import { useHardware, useModels, useRecommendation, useVitals } from '../lib/queries';
+import { useUniverse } from '../state/store';
+import { CopyButton, Dot, SectionTitle } from './ui';
+
+type Candidate = components['schemas']['Candidate'];
+
+const SERVICE_COLOR: Record<string, string> = {
+  healthy: tokens.color.green,
+  external: tokens.color.green,
+  starting: tokens.color.amber,
+  backoff: tokens.color.amber,
+  stopped: tokens.color.slate,
+  missing: tokens.color.amber,
+  unreachable: tokens.color.amber,
+  failed: tokens.color.danger,
+};
+
+const SERVICE_LABEL: Record<string, string> = {
+  external: 'running (started outside UNIVERSE)',
+  backoff: 'restarting',
+  missing: 'not installed',
+};
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1 text-sm">
+      <span className="text-ink-3">{label}</span>
+      <span className="truncate text-right font-mono text-xs text-ink-1">{children}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="border-b border-hairline-1 pb-4 last:border-0">
+      <SectionTitle>{title}</SectionTitle>
+      {children}
+    </section>
+  );
+}
+
+function Services() {
+  const supervisor = useUniverse((s) => s.desktop?.supervisor);
+  const [busy, setBusy] = useState(false);
+  if (!supervisor) return <p className="text-xs text-ink-3">Waiting for the supervisor…</p>;
+  return (
+    <div className="space-y-2" data-testid="services">
+      {Object.entries(supervisor.services).map(([name, svc]) => (
+        <div key={name} className="flex items-center gap-3 text-sm">
+          <Dot color={SERVICE_COLOR[svc.state] ?? tokens.color.slate} />
+          <span className="w-16 capitalize">{name}</span>
+          <span className="flex-1 text-xs text-ink-2">
+            {SERVICE_LABEL[svc.state] ?? svc.state}
+            {svc.restarts ? ` · ${svc.restarts} restart${svc.restarts > 1 ? 's' : ''}` : ''}
+          </span>
+          {name === 'core' && (
+            <button
+              type="button"
+              disabled={busy}
+              title="Restart Core"
+              onClick={() => {
+                setBusy(true);
+                void bridge()
+                  .restartService('core')
+                  .finally(() => setBusy(false));
+              }}
+              className="text-ink-3 hover:text-accent disabled:opacity-40"
+            >
+              <RotateCw className="size-3.5" aria-label="Restart Core" />
+            </button>
+          )}
+        </div>
+      ))}
+      {supervisor.services.ollama?.state === 'missing' && (
+        <p className="rounded-md border border-amber/30 p-2 text-xs leading-relaxed text-ink-2">
+          Install Ollama from ollama.com/download, then pull a chat model (suggestions below). UNIVERSE starts
+          it for you.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ChatModel() {
+  const api = useApi();
+  const models = useModels();
+  const client = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const data = models.data;
+  if (!data) return <p className="text-xs text-ink-3">Loading…</p>;
+  const chatModels = data.installed.filter((m) => (m.capabilities ?? []).includes('completion'));
+  return (
+    <div className="space-y-2">
+      {data.chat_model ? (
+        <p className="flex items-center gap-2 text-sm">
+          <CheckCircle2 className="size-4 text-green" aria-hidden />
+          <span className="font-mono text-xs">{data.chat_model}</span>
+        </p>
+      ) : (
+        <div className="space-y-1 rounded-md border border-amber/30 p-2 text-xs">
+          <p className="flex items-center gap-2 text-amber">
+            <CircleAlert className="size-3.5" aria-hidden /> {data.chat_model_error}
+          </p>
+          {data.chat_model_hint && (
+            <p className="flex items-center justify-between gap-2 font-mono text-ink-2">
+              {data.chat_model_hint}
+              {data.chat_model_hint.startsWith('Run: ') && (
+                <CopyButton text={data.chat_model_hint.slice(5)} />
+              )}
+            </p>
+          )}
+        </div>
+      )}
+      {chatModels.length > 1 && (
+        <label className="block text-xs text-ink-3">
+          Use for chat
+          <select
+            className="mt-1 w-full rounded-md border border-hairline-2 bg-space-2 px-2 py-1.5 font-mono text-xs text-ink-1"
+            value={data.chat_model ?? ''}
+            onChange={(e) => {
+              setError(null);
+              api
+                .assignModel('local-fast', e.target.value)
+                .then(() => client.invalidateQueries({ queryKey: ['models'] }))
+                .catch((err: Error) => setError(err.message));
+            }}
+          >
+            {chatModels.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name} {m.parameter_size ? `· ${m.parameter_size}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function CandidateRow({ c }: { c: Candidate }) {
+  return (
+    <li className="flex items-center justify-between gap-2 py-1">
+      <span>
+        <span className="block font-mono text-xs text-ink-1">{c.tag}</span>
+        <span className="block text-[11px] text-ink-3">
+          {c.family} · {c.license}
+          {c.approx_download_gb ? ` · ~${c.approx_download_gb} GB` : ''}
+        </span>
+      </span>
+      {c.installed ? (
+        <span className="text-[11px] text-green">installed</span>
+      ) : (
+        <CopyButton text={`ollama pull ${c.tag}`} label="Copy pull" />
+      )}
+    </li>
+  );
+}
+
+function HardwareAndModels() {
+  const hardware = useHardware(true);
+  const rec = useRecommendation(true);
+  const hw = hardware.data;
+  return (
+    <>
+      <Section title="Hardware">
+        {hw ? (
+          <div data-testid="hardware">
+            <Row label="CPU">{hw.cpu_model}</Row>
+            <Row label="Cores">
+              {hw.cpu_cores ?? '?'} / {hw.cpu_threads ?? '?'} threads
+            </Row>
+            <Row label="RAM">{formatBytes(hw.ram_bytes)}</Row>
+            {(hw.gpus ?? []).length === 0 && <Row label="GPU">none detected</Row>}
+            {(hw.gpus ?? []).map((g) => (
+              <Row key={g.name} label="GPU">
+                {g.name} · {formatBytes(g.vram_bytes)}
+              </Row>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-ink-3">Detecting…</p>
+        )}
+      </Section>
+      <Section title="Recommended models">
+        {rec.data ? (
+          <div className="space-y-3">
+            <p className="text-xs leading-relaxed text-ink-2">
+              <span className="text-ink-1">{rec.data.tier_label}</span>: {rec.data.reason}.
+            </p>
+            {rec.data.warnings.map((w) => (
+              <p key={w} className="text-xs text-amber">
+                {w}
+              </p>
+            ))}
+            <div>
+              <p className="text-[11px] text-ink-3">Fast (everyday chat)</p>
+              <ul>
+                {rec.data.local_fast.map((c) => (
+                  <CandidateRow key={c.tag} c={c} />
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-[11px] text-ink-3">Large (harder tasks)</p>
+              <ul>
+                {rec.data.local_large.map((c) => (
+                  <CandidateRow key={c.tag} c={c} />
+                ))}
+              </ul>
+            </div>
+            {!rec.data.verified && (
+              <p className="text-[11px] leading-relaxed text-ink-3">
+                Shortlist from web research (2026-10-12). Check each model card before relying on it.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-ink-3">Loading…</p>
+        )}
+      </Section>
+    </>
+  );
+}
+
+export function SystemPanel() {
+  const vitals = useVitals(true);
+  const v = vitals.data;
+  return (
+    <div className="space-y-4">
+      <Section title="Core">
+        {v ? (
+          <div data-testid="vitals">
+            <Row label="Status">{v.safe_mode ? 'safe mode' : 'running'}</Row>
+            <Row label="Uptime">{formatDuration(v.uptime_s)}</Row>
+            <Row label="Memory">{formatBytes(v.rss_bytes)}</Row>
+            <Row label="Process">pid {v.pid}</Row>
+            <Row label="Events">#{v.event_seq}</Row>
+            <Row label="Version">
+              {v.version} · Python {v.python}
+            </Row>
+          </div>
+        ) : (
+          <p className="text-xs text-ink-3">Core is not reachable.</p>
+        )}
+      </Section>
+      <Section title="Services">
+        <Services />
+      </Section>
+      <Section title="Chat model">
+        <ChatModel />
+      </Section>
+      <HardwareAndModels />
+    </div>
+  );
+}

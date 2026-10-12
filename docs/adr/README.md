@@ -19,11 +19,12 @@ Template:
 
 | ADR | Title | Status |
 | --- | --- | --- |
-| [0001](0001-process-model-and-supervisor.md) | Electron shell, process model and a stdlib-only supervisor | Proposed |
-| [0002](0002-sqlite-job-queue.md) | Custom SQLite job queue instead of huey | Proposed |
-| [0003](0003-storage-layout.md) | Storage layout: vault files, three SQLite files, LanceDB, no ORM | Proposed |
-| [0004](0004-custom-agent-loop.md) | Custom agent loop instead of PydanticAI | Proposed |
-| [0005](0005-model-runtimes.md) | Model runtimes: Ollama + ONNX Runtime models service | Proposed |
-| [0006](0006-local-security-model.md) | Local security model: loopback, session token, egress gate, policy engine | Proposed |
-| [0007](0007-runtime-pins.md) | Runtime pins: Python 3.12, TypeScript 6.0, Node 24 LTS | Proposed |
-| [0008](0008-license-policy.md) | License policy and flagged components | Proposed |
+| [0001](0001-process-model-and-supervisor.md) | Electron shell, process model and a stdlib-only supervisor | Accepted |
+| [0002](0002-sqlite-job-queue.md) | Custom SQLite job queue instead of huey | Accepted |
+| [0003](0003-storage-layout.md) | Storage layout: vault files, three SQLite files, LanceDB, no ORM | Accepted |
+| [0004](0004-custom-agent-loop.md) | Custom agent loop instead of PydanticAI | Accepted |
+| [0005](0005-model-runtimes.md) | Model runtimes: Ollama + ONNX Runtime models service | Accepted |
+| [0006](0006-local-security-model.md) | Local security model: loopback, session token, egress gate, policy engine | Accepted |
+| [0007](0007-runtime-pins.md) | Runtime pins: Python 3.12, TypeScript 6.0, Node 24 LTS | Accepted |
+| [0008](0008-license-policy.md) | License policy and flagged components | Accepted |
+| [0009](0009-electron-privacy-hardening.md) | Electron privacy hardening: no outbound traffic from Chromium | Accepted |

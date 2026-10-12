@@ -1,6 +1,6 @@
 # 0001 — Electron shell, process model and a stdlib-only supervisor
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: architecture
 

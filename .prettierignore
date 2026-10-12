@@ -1,0 +1,16 @@
+# Markdown docs and specs are hand-formatted.
+*.md
+pnpm-lock.yaml
+uv.lock
+**/dist/
+**/generated/
+packages/shared-types/src/api.ts
+packages/shared-types/src/events.ts
+packages/shared-types/openapi.json
+.dev/
+.venv/
+coverage/
+playwright-report/
+test-results/
+services/
+tests/**/*.py

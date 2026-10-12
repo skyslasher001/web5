@@ -1,0 +1,78 @@
+[project]
+name = "universe"
+version = "0.1.0"
+description = "UNIVERSE: local-first digital brain (Python services workspace root)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "universe-common",
+    "universe-core",
+    "universe-agents",
+    "universe-models",
+    "universe-supervisor",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "pytest-timeout>=2.4",
+    "pytest-asyncio>=1.4",
+    "ruff>=0.17",
+    "pyright>=1.1.414",
+    "pre-commit>=4.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["services/*"]
+
+[tool.uv.sources]
+universe-common = { workspace = true }
+universe-core = { workspace = true }
+universe-agents = { workspace = true }
+universe-models = { workspace = true }
+universe-supervisor = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+timeout = 120
+markers = [
+    "slow: spawns real processes (supervisor, uvicorn)",
+]
+filterwarnings = [
+    # Starlette suggests httpx2 for its TestClient; our runtime client stays httpx (egress gate).
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["apps", "packages", "node_modules", "*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S"]
+ignore = [
+    "S101",   # assert is fine in tests and invariants
+    "S603",   # subprocess without shell is intended (supervisor, hardware probes)
+    "S607",   # partial executable paths (git, powershell) are resolved on PATH on purpose
+    "RUF001", "RUF002", "RUF003",  # typographic characters in strings/comments are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108", "S310"]
+
+[tool.pyright]
+include = ["services", "tests"]
+exclude = ["**/node_modules", "**/__pycache__", ".venv"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint.isort]
+known-first-party = ["universe_common", "universe_core", "universe_agents", "universe_models", "universe_supervisor", "tests"]

@@ -4,22 +4,73 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 0: Blueprint, delivered and awaiting approval.** No application code yet. Phase 1 (Foundation) starts after approval.
+**Phase 1 (Foundation) delivered, awaiting your go-ahead for Phase 2.** Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
+
+What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md).
+
+## Setup (Windows 10/11)
+
+Install once:
+
+| Tool | Install | Why |
+| --- | --- | --- |
+| Git | `winget install Git.Git` | source control (and Forge's last-known-good) |
+| Node.js 24 LTS (22.12+ works) | `winget install OpenJS.NodeJS.LTS` | UI and Electron tooling |
+| pnpm 12 | `npm install -g pnpm@12.11.2` | JS workspace (Corepack ≤ 0.36 can't launch pnpm 12, so install it with npm) |
+| uv | `winget install astral-sh.uv` | Python 3.12 and every Python dependency (no system Python needed) |
+| Ollama | `winget install Ollama.Ollama` | local models; UNIVERSE starts it if it isn't running |
+
+Then, from the repo root:
+
+```powershell
+uv sync                      # Python 3.12 + services (creates .venv)
+pnpm install                 # JS deps, downloads Electron
+ollama pull gemma4:e4b       # or the model the System panel recommends for your hardware
+pnpm dev                     # starts everything: Vite, Electron → supervisor → Core (+ Ollama)
+```
+
+Your data lives in `.dev/vault` while developing. To use a real vault, copy `.env.example` to `.env` and set `UNIVERSE_VAULT_DIR` (for example `D:\UniverseVault`).
+
+Optional: `uv run pre-commit install` to run the same lint, format and type checks on every commit.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | One-command dev start (hot-reloading UI) |
+| `pnpm start` | Production-like run: built UI served over `app://` |
+| `pnpm build` | Design tokens, UI bundle, Electron main/preload |
+| `pnpm test` | Python tests (pytest) + JS unit tests (Vitest) |
+| `pnpm test:e2e` | Electron end-to-end tests with Playwright (`pnpm build` first) |
+| `pnpm check` | Everything CI runs: lint, format, types, tests |
+| `pnpm gen:types` | Regenerate `packages/shared-types` from the backend's OpenAPI schema |
+| `pnpm tokens` | Regenerate CSS/TS from `packages/design-tokens/tokens.json` |
+| `powershell -ExecutionPolicy Bypass -File scripts\hardware-report.ps1` | Hardware report for model planning |
+
+## Layout
+
+```
+apps/desktop      Electron main + preload (supervisor launcher, safe-mode page, app:// protocol)
+apps/ui           React HUD + 3D universe
+services/core     FastAPI: API, WebSocket hub, event bus, chat, storage, audit log
+services/agents   agent definitions, OpenAI-compatible streaming provider, model router
+services/models   hardware detection, model recommendations, Ollama client
+services/common   config, ids, logging, error capture, egress gate, SQLite helpers
+services/supervisor  stdlib-only watchdog: restarts, last-known-good, safe mode
+agents/           agent YAML + prompts (Core for now)
+packages/         design tokens, shared types
+tests/            unit, integration, protected-core guards, Electron e2e
+```
+
+## Documents
 
 | Document | What's in it |
 | --- | --- |
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, repo tree, data model, API/events, UI concept, Forge safety design |
-| [docs/PHASE-0.md](docs/PHASE-0.md) | Phase 0 delivery note: hardware info needed, open questions, what Phase 1 delivers |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
+| [docs/PHASE-1.md](docs/PHASE-1.md) | Phase 1 delivery: setup, demo script, tests, measured numbers, known limitations |
+| [docs/PHASE-0.md](docs/PHASE-0.md) | Phase 0 delivery and the answers to its questions |
 | [docs/adr/](docs/adr/) | Architecture decision records |
 | [AGENTS.md](AGENTS.md) | Rules for AI coding assistants and Forge |
 
-Hardware report (run on the target Windows PC):
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\hardware-report.ps1
-```
-
-## Legacy
-
-`src/`, `index.html` and the Vite/Tailwind configs at the root are a pre-existing [Bolt](https://bolt.new/~/sb1-pwkbjj78) landing page that has nothing to do with UNIVERSE. They're slated for replacement in Phase 1 (see Question 1 in [docs/PHASE-0.md](docs/PHASE-0.md)).
+The previous Bolt landing page that lived in this repo is preserved in git history (tag `pre-universe`).

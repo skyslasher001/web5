@@ -1,6 +1,6 @@
 # 0005 — Model runtimes: Ollama + ONNX Runtime models service
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: cost, architecture
 
@@ -15,6 +15,7 @@ SPEC §15: local-first, $0 by default, providers behind one OpenAI-compatible in
 - **Models service** (Python + ONNX Runtime 1.31: CUDA EP on NVIDIA, DirectML EP on AMD/Intel, CPU fallback) hosts the rerankers, SigLIP image/text encoders and RapidOCR. It also runs hardware detection.
 - The **voice service** hosts STT (faster-whisper / CTranslate2), VAD, wake word and TTS (Kokoro ONNX), so realtime audio never queues behind other inference.
 - **Model broker** (in Core): one priority queue in front of every inference call, with per-class concurrency, so background work never starves voice or chat.
+- **Client:** a thin OpenAI-compatible streaming client (~60 lines, `universe_agents.providers`) over the egress gate's httpx client, instead of the `openai` SDK. It's one less dependency, every model call is visibly gated, and the same client speaks to Ollama, llama.cpp server and any opt-in cloud endpoint. (Changed during Phase 1.)
 - **Cloud:** off. It's an opt-in OpenAI-compatible provider per agent, behind hard monthly and per-agent caps enforced before each call. The key lives in Credential Manager.
 - The model shortlist per hardware tier is in ARCHITECTURE.md §2.3. Final assignments come from Phase 1 hardware detection plus local benchmarks.
 

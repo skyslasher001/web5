@@ -1,6 +1,6 @@
 # 0008 — License policy and flagged components
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: architecture (legal)
 

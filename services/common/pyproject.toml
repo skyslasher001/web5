@@ -1,0 +1,16 @@
+[project]
+name = "universe-common"
+version = "0.1.0"
+description = "Shared building blocks: config, ids, logging, error capture, egress gate, SQLite helpers"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "structlog>=26.1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/universe_common"]

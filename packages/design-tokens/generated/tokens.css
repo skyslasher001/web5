@@ -1,0 +1,56 @@
+/* GENERATED from packages/design-tokens/tokens.json by build.mjs. Do not edit. */
+@theme {
+  --color-*: initial; /* only token colors exist: no ad-hoc palette */
+  --color-space-0: #05070D;
+  --color-space-1: #0A0F1C;
+  --color-space-2: #111829;
+  --color-space-3: #1A2236;
+  --color-nebula-violet: #1B1240;
+  --color-nebula-teal: #0B2A3A;
+  --color-accent: #3EE0FF;
+  --color-accent-2: #9B7BFF;
+  --color-cyan: #3EE0FF;
+  --color-violet: #9B7BFF;
+  --color-amber: #FFB547;
+  --color-rose: #FF5FA2;
+  --color-green: #5BE49B;
+  --color-blue: #5B8CFF;
+  --color-slate: #8A97B5;
+  --color-danger: #FF5C5C;
+  --color-ink-1: #E8EEFF;
+  --color-ink-2: #A9B4D0;
+  --color-ink-3: #808CAC;
+  --color-glass-1: rgba(16, 24, 42, 0.55);
+  --color-glass-2: rgba(16, 24, 42, 0.78);
+  --color-hairline-1: rgba(160, 190, 255, 0.12);
+  --color-hairline-2: rgba(160, 190, 255, 0.24);
+  --font-display: 'Space Grotesk Variable', 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --blur-glass: 20px;
+  --ease-hud: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root {
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --motion-slow: 250ms;
+  --motion-flight-min: 600ms;
+  --motion-flight-max: 1200ms;
+  --z-universe: 0;
+  --z-hud: 10;
+  --z-panel: 20;
+  --z-command: 30;
+  --z-dialog: 40;
+  --z-consent: 50;
+}

@@ -1,6 +1,6 @@
 # 0007 — Runtime pins: Python 3.12, TypeScript 6.0, Node 24 LTS
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: none
 

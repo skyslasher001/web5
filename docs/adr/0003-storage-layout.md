@@ -1,6 +1,6 @@
 # 0003 — Storage layout: vault files, three SQLite files, LanceDB, no ORM
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: privacy, architecture
 

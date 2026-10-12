@@ -1,0 +1,19 @@
+{
+  "name": "@universe/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "UNIVERSE Electron shell: main process and preload",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@universe/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "esbuild": "0.28.2"
+  }
+}

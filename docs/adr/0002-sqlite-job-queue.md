@@ -1,6 +1,6 @@
 # 0002 — Custom SQLite job queue instead of huey
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: architecture
 

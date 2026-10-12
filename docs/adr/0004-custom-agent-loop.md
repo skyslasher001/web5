@@ -1,6 +1,6 @@
 # 0004 — Custom agent loop instead of PydanticAI
 
-- Status: Proposed
+- Status: Accepted (2026-10-12)
 - Date: 2026-10-12
 - Flags: security, architecture
 
@@ -12,7 +12,7 @@ SPEC §22 offers "lightweight custom loop or PydanticAI". The agent runtime must
 
 A custom loop (~400 lines) in `services/agents/runtime`:
 
-- Providers: the OpenAI-compatible chat API (`openai` SDK) against Ollama, llama.cpp or opt-in cloud, via the model router and broker.
+- Providers: the OpenAI-compatible chat API (thin client, see ADR-0005) against Ollama, llama.cpp or opt-in cloud, via the model router and broker.
 - Tools: a `Tool` protocol with Pydantic input models (JSON Schema for the LLM), tier, side-effect and network flags, and a timeout. MCP servers are wrapped as tools using the official `mcp` SDK.
 - Every step does a budget check → LLM call → for each tool call, `policy.check()` → run, or create an approval and park the task as `waiting_approval` → record a `task_steps` row → emit events.
 - Guardrails: step, token, time and money limits, loop detection (repeated tool + args hash), retries with backoff.

@@ -1,0 +1,49 @@
+# PROTECTED (protected-core.txt). Local hooks use the exact tool versions from uv.lock and pnpm-lock.yaml.
+# Install once: uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: prettier
+        name: prettier
+        entry: pnpm exec prettier --write --ignore-unknown
+        language: system
+        types_or: [javascript, ts, tsx, css, json, yaml]
+      - id: eslint
+        name: eslint
+        entry: pnpm exec eslint --max-warnings=0 --no-warn-ignored
+        language: system
+        types_or: [javascript, ts, tsx]
+      - id: tsc
+        name: tsc (all packages)
+        entry: pnpm -r typecheck
+        language: system
+        types_or: [ts, tsx]
+        pass_filenames: false
+      - id: design-tokens
+        name: design tokens up to date
+        entry: node packages/design-tokens/build.mjs --check
+        language: system
+        files: ^packages/design-tokens/
+        pass_filenames: false
+      - id: shared-types
+        name: shared types up to date
+        entry: node scripts/gen-types.mjs --check
+        language: system
+        files: ^(services/core/|packages/shared-types/)
+        pass_filenames: false

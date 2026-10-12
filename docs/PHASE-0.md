@@ -1,6 +1,14 @@
 # Phase 0 — Blueprint delivery
 
-Status: **delivered 2026-10-12, awaiting your approval.** Per SPEC §27, Phase 1 doesn't start until you give the go-ahead.
+Status: **approved 2026-10-12 with the default answers** ("approved use defaults initiate phase 1"). Phase 1 is delivered: see [PHASE-1.md](PHASE-1.md).
+
+Answers recorded:
+
+1. **This repo:** replaced in place by the monorepo. The old landing page is preserved in history (tag `pre-universe`; the tag could not be pushed from the build environment, see PHASE-1.md).
+2. **DevMind:** built fresh. DevMind pieces get ported once its repo is available to read.
+3. **Container runtime:** Podman + WSL2 (needed from Phase 5/6 for the sandbox and SearXNG).
+4. **Voice languages:** English only.
+5. **Cloud LLM:** none; the provider slot and caps exist with cloud switched off.
 
 ## Where each deliverable is
 

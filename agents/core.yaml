@@ -1,0 +1,18 @@
+# Core: orchestrator and your main point of contact (SPEC §8).
+# Phase 1: chat only. Tools, delegation and Critic routing arrive with the agent engine (Phase 3).
+id: core
+name: Core
+purpose: Orchestrator and your main point of contact. Plans, delegates, merges.
+model: local-fast # router tier, resolved to an installed model
+escalate_to: local-large
+voice: calm-neutral # resolved to an installed TTS voice (Phase 7)
+color: cyan
+icon: orbit
+tools: []
+permission_tier: write
+memory: [shared, core]
+triggers:
+  - manual: true
+limits: { max_steps: 1, max_tokens: 2048, timeout_s: 180 }
+requires_approval: []
+prompt: prompts/core.md
