@@ -98,6 +98,25 @@ class VectorStore:
             ]
         )
 
+    def add_many(self, name: str, rows: list[VectorRow], *, batch: int = 5000) -> None:
+        """Append rows in bulk (seed data; the pipeline uses replace_item per item)."""
+        if not rows:
+            return
+        table = self._open(name, dim=len(rows[0].vector))
+        for start in range(0, len(rows), batch):
+            table.add(
+                [
+                    {
+                        "chunk_id": r.chunk_id,
+                        "item_id": r.item_id,
+                        "item_type": r.item_type,
+                        "captured_at": r.captured_at,
+                        "vector": r.vector,
+                    }
+                    for r in rows[start : start + batch]
+                ]
+            )
+
     def delete_item(self, item_id: str, *, only: str | None = None) -> None:
         for name in [only] if only else self.names():
             table = self._open(name)
@@ -135,8 +154,45 @@ class VectorStore:
             query = query.where(" AND ".join(clauses), prefilter=True)
         return [
             VectorHit(item_id=r["item_id"], chunk_id=int(r["chunk_id"]), distance=float(r["_distance"]))
-            for r in query.select(["item_id", "chunk_id"]).to_list()
+            for r in query.select(["item_id", "chunk_id", "_distance"]).to_list()
         ]
+
+    def item_mean(self, name: str, item_id: str) -> list[float] | None:
+        """One item's mean chunk vector (for "similar items"), or None if it has no vectors in this table."""
+        table = self._open(name)
+        if table is None:
+            return None
+        rows = table.search().where(f"item_id = {_quote(item_id)}").select(["vector"]).limit(10_000).to_list()
+        if not rows:
+            return None
+        width = len(rows[0]["vector"])
+        return [sum(float(r["vector"][k]) for r in rows) / len(rows) for k in range(width)]
+
+    def item_means(self, name: str, *, batch_rows: int = 8192) -> tuple[list[str], Any]:
+        """Each item's mean chunk vector as (sorted ids, float32 matrix), streamed in batches: a big vault's
+        vectors don't fit in memory at once."""
+        import numpy as np
+
+        table = self._open(name)
+        total = int(table.count_rows()) if table is not None else 0
+        if table is None or total == 0:
+            return [], np.zeros((0, 0), dtype=np.float32)
+        sums: dict[str, Any] = {}
+        counts: dict[str, int] = {}
+        for batch in table.search().select(["item_id", "vector"]).limit(total).to_batches(batch_rows):
+            ids = batch.column("item_id").to_pylist()
+            vectors = batch.column("vector")
+            width = vectors.type.list_size
+            matrix = vectors.flatten().to_numpy(zero_copy_only=False).astype(np.float64).reshape(len(ids), width)
+            for item_id, row in zip(ids, matrix, strict=True):
+                if item_id in sums:
+                    sums[item_id] += row
+                    counts[item_id] += 1
+                else:
+                    sums[item_id] = row.copy()
+                    counts[item_id] = 1
+        ids = sorted(sums)
+        return ids, np.stack([sums[i] / counts[i] for i in ids]).astype(np.float32)
 
     def drop(self, name: str) -> None:
         with self._lock:

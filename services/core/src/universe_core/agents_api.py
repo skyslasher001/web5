@@ -248,7 +248,7 @@ async def add_rule(ctx: Ctx, body: dict[str, Any]) -> dict[str, Any]:
     try:
         return safety.permissions.add_from(body).model_dump()
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 @router.delete("/permissions/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -268,7 +268,7 @@ async def set_budget_caps(ctx: Ctx, body: dict[str, Any]) -> dict[str, Any]:
     try:
         safety.budget.set_caps_from(body)
     except ValueError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return safety.budget.status().model_dump()
 
 

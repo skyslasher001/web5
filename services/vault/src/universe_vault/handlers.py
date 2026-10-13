@@ -10,7 +10,7 @@ from typing import Any
 
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
-from universe_vault import jobs, sidecar, store
+from universe_vault import jobs, semantic, sidecar, store
 from universe_vault.ingest import add_version, deleted_outside, import_file, walk_folder
 from universe_vault.jobs import Job
 from universe_vault.layout import Vault, sha256_file
@@ -349,6 +349,34 @@ def handle_reembed(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     return {"queued": len(rows), "model": embedder.name}
 
 
+def handle_layout(ctx: WorkerContext, job: Job) -> dict[str, Any]:
+    """Compute the Semantic layout from the current embedding model's vectors and cache it (ADR-0012)."""
+    try:
+        embedder = pick_embedder(ctx.models(), assignment(ctx.conn, "embed_text"))
+    except OllamaUnavailable as exc:
+        raise Retry(str(exc), delay_s=300) from exc
+    if embedder is None:
+        return {"status": "no embedding model"}
+    name = table_name(embedder.name, embedder.digest)
+    started = time.monotonic()
+    ids, vectors = ctx.vectors.item_means(name)
+    live = {r["id"] for r in ctx.conn.execute("SELECT id FROM items WHERE trashed_at IS NULL")}
+    keep = [i for i, item_id in enumerate(ids) if item_id in live]
+    ids = [ids[i] for i in keep]
+    positions = semantic.layout(vectors[keep]) if keep else semantic.layout([])
+    data = {"ids": ids, "positions": [round(float(v), 2) for v in positions.reshape(-1)]}
+    with transaction(ctx.conn):
+        ctx.conn.execute(
+            "INSERT INTO layout_cache (kind, model, item_count, data, created_at) VALUES ('semantic', ?, ?, ?, ?)"
+            " ON CONFLICT (kind, model) DO UPDATE SET item_count = excluded.item_count, data = excluded.data,"
+            " created_at = excluded.created_at",
+            (name, len(ids), json.dumps(data, separators=(",", ":")), utcnow()),
+        )
+    seconds = round(time.monotonic() - started, 2)
+    ctx.emit("layout.updated", {"kind": "semantic", "model": embedder.name, "items": len(ids), "seconds": seconds})
+    return {"items": len(ids), "seconds": seconds}
+
+
 HANDLERS: dict[str, Callable[[WorkerContext, Job], dict[str, Any]]] = {
     "import": handle_import,
     "pipeline": handle_pipeline,
@@ -357,4 +385,5 @@ HANDLERS: dict[str, Callable[[WorkerContext, Job], dict[str, Any]]] = {
     "sidecar": handle_sidecar,
     "reembed": handle_reembed,
     "vault_file": handle_vault_file,
+    "layout": handle_layout,
 }

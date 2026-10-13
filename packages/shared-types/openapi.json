@@ -2040,6 +2040,38 @@
         "title": "Item",
         "type": "object"
       },
+      "ItemLinks": {
+        "properties": {
+          "incoming": {
+            "items": {
+              "$ref": "#/components/schemas/LinkInfo"
+            },
+            "title": "Incoming",
+            "type": "array"
+          },
+          "outgoing": {
+            "items": {
+              "$ref": "#/components/schemas/LinkInfo"
+            },
+            "title": "Outgoing",
+            "type": "array"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved",
+            "type": "array"
+          }
+        },
+        "required": [
+          "outgoing",
+          "incoming",
+          "unresolved"
+        ],
+        "title": "ItemLinks",
+        "type": "object"
+      },
       "ItemPage": {
         "properties": {
           "items": {
@@ -2692,6 +2724,51 @@
         "title": "KillSwitchStatus",
         "type": "object"
       },
+      "LinkInfo": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ItemSummary"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "item"
+        ],
+        "title": "LinkInfo",
+        "type": "object"
+      },
+      "LinkRequest": {
+        "properties": {
+          "from_id": {
+            "title": "From Id",
+            "type": "string"
+          },
+          "to_id": {
+            "title": "To Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id"
+        ],
+        "title": "LinkRequest",
+        "type": "object"
+      },
       "MCPServerInfo": {
         "properties": {
           "args": {
@@ -3124,6 +3201,49 @@
           "chat_model_hint"
         ],
         "title": "ModelsInfo",
+        "type": "object"
+      },
+      "NoteContent": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "body",
+          "version"
+        ],
+        "title": "NoteContent",
+        "type": "object"
+      },
+      "NoteEdit": {
+        "properties": {
+          "base_version": {
+            "minimum": 1.0,
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "body": {
+            "maxLength": 2000000,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "base_version"
+        ],
+        "title": "NoteEdit",
         "type": "object"
       },
       "OllamaStatus": {
@@ -3721,6 +3841,69 @@
         "title": "SearchResponse",
         "type": "object"
       },
+      "SemanticLayout": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "positions": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Positions",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "computing",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "model",
+          "stale",
+          "ids",
+          "positions"
+        ],
+        "title": "SemanticLayout",
+        "type": "object"
+      },
       "Snapshot": {
         "properties": {
           "id": {
@@ -3887,6 +4070,203 @@
           "created_at"
         ],
         "title": "TaskStep",
+        "type": "object"
+      },
+      "UniverseItems": {
+        "description": "Items as parallel columns: the renderer keeps them in typed arrays, never one object per item.",
+        "properties": {
+          "captured": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Captured",
+            "type": "array"
+          },
+          "created": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Created",
+            "type": "array"
+          },
+          "galaxies": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Galaxies",
+            "type": "array"
+          },
+          "idea_stages": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Idea Stages",
+            "type": "array"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "opened": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Opened",
+            "type": "array"
+          },
+          "opens": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Opens",
+            "type": "array"
+          },
+          "pinned": {
+            "items": {
+              "type": "boolean"
+            },
+            "title": "Pinned",
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "server_time": {
+            "title": "Server Time",
+            "type": "string"
+          },
+          "statuses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Statuses",
+            "type": "array"
+          },
+          "titles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Titles",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "types",
+          "titles",
+          "galaxies",
+          "created",
+          "captured",
+          "opened",
+          "opens",
+          "statuses",
+          "idea_stages",
+          "pinned",
+          "removed",
+          "next_cursor",
+          "total",
+          "server_time"
+        ],
+        "title": "UniverseItems",
+        "type": "object"
+      },
+      "UniverseLinks": {
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "states": {
+            "items": {
+              "type": "string"
+            },
+            "title": "States",
+            "type": "array"
+          },
+          "strengths": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids",
+          "sources",
+          "targets",
+          "kinds",
+          "states",
+          "strengths"
+        ],
+        "title": "UniverseLinks",
         "type": "object"
       },
       "ValidationError": {
@@ -5766,6 +6146,98 @@
         "summary": "Patch Item"
       }
     },
+    "/api/v1/items/{item_id}/content": {
+      "get": {
+        "operationId": "note_content_api_v1_items__item_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteContent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Note Content",
+        "tags": [
+          "universe"
+        ]
+      },
+      "put": {
+        "operationId": "edit_note_api_v1_items__item_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteContent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Note",
+        "tags": [
+          "universe"
+        ]
+      }
+    },
     "/api/v1/items/{item_id}/file": {
       "get": {
         "operationId": "item_file_api_v1_items__item_id__file_get",
@@ -5796,6 +6268,48 @@
           }
         },
         "summary": "Item File"
+      }
+    },
+    "/api/v1/items/{item_id}/links": {
+      "get": {
+        "operationId": "item_links_api_v1_items__item_id__links_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemLinks"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Links",
+        "tags": [
+          "universe"
+        ]
       }
     },
     "/api/v1/items/{item_id}/open": {
@@ -5913,6 +6427,64 @@
           }
         },
         "summary": "Restore Item"
+      }
+    },
+    "/api/v1/items/{item_id}/similar": {
+      "get": {
+        "operationId": "similar_items_api_v1_items__item_id__similar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemSummary"
+                  },
+                  "title": "Response Similar Items Api V1 Items  Item Id  Similar Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Similar Items",
+        "tags": [
+          "universe"
+        ]
       }
     },
     "/api/v1/items/{item_id}/text": {
@@ -6251,6 +6823,107 @@
           }
         },
         "summary": "Sync Killswitch"
+      }
+    },
+    "/api/v1/layout/semantic": {
+      "get": {
+        "operationId": "semantic_layout_api_v1_layout_semantic_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Semantic Layout",
+        "tags": [
+          "universe"
+        ]
+      }
+    },
+    "/api/v1/links": {
+      "post": {
+        "operationId": "add_link_api_v1_links_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Link Api V1 Links Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Link",
+        "tags": [
+          "universe"
+        ]
+      }
+    },
+    "/api/v1/links/{link_id}": {
+      "delete": {
+        "operationId": "remove_link_api_v1_links__link_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "link_id",
+            "required": true,
+            "schema": {
+              "title": "Link Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Link",
+        "tags": [
+          "universe"
+        ]
       }
     },
     "/api/v1/mcp/servers": {
@@ -7424,6 +8097,104 @@
           }
         },
         "summary": "Cancel Task"
+      }
+    },
+    "/api/v1/universe/items": {
+      "get": {
+        "operationId": "universe_items_api_v1_universe_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10000,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseItems"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Universe Items",
+        "tags": [
+          "universe"
+        ]
+      }
+    },
+    "/api/v1/universe/links": {
+      "get": {
+        "operationId": "universe_links_api_v1_universe_links_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseLinks"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Universe Links",
+        "tags": [
+          "universe"
+        ]
       }
     },
     "/api/v1/watched-folders": {

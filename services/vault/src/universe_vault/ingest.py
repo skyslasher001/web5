@@ -6,6 +6,7 @@ Every way in (drag-drop, watched folders, quick capture, clipboard, the local AP
 import contextlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 from collections.abc import Iterable, Iterator
@@ -237,7 +238,13 @@ def is_markdown(row: sqlite3.Row) -> bool:
 
 
 def add_version(
-    conn: sqlite3.Connection, vault: Vault, item_id: str, *, new_source: Path | None, actor: str
+    conn: sqlite3.Connection,
+    vault: Vault,
+    item_id: str,
+    *,
+    new_source: Path | None,
+    actor: str,
+    note: str | None = None,
 ) -> int | None:
     """Record a new version of an item whose bytes changed. Returns the version number, or None if unchanged.
 
@@ -256,7 +263,7 @@ def add_version(
     if content_hash == row["content_hash"]:
         return None
     n = int(row["current_version"]) + 1
-    note = "changed on disk"
+    note = note or "changed on disk"
     if new_source is not None:
         dest = vault.free_path(current.parent, current.name)
         tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
@@ -291,6 +298,31 @@ def add_version(
         store.reindex_item(conn, item_id)
         _queue_pipeline(conn, item_id, interactive=False)
     return n
+
+
+FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---\r?\n(?:\r?\n)?", re.DOTALL)
+
+
+def split_frontmatter(text: str) -> tuple[str, str]:
+    """(frontmatter block including its fences, body) of a Markdown note."""
+    match = FRONTMATTER.match(text)
+    return (match.group(0), text[match.end() :]) if match else ("", text)
+
+
+def edit_note(conn: sqlite3.Connection, vault: Vault, item_id: str, body: str, *, actor: str = "user") -> int | None:
+    """Replace a Markdown note's body (its frontmatter stays) and record a new version. None if unchanged."""
+    row = store.get_row(conn, item_id)
+    if row is None or row["trashed_at"] is not None:
+        raise LookupError(f"no item with id {item_id}")
+    if not is_markdown(row):
+        raise ValueError("only Markdown notes can be edited in UNIVERSE")
+    path = vault.abs(row["path"])
+    front, _old = split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+    content = front + body.rstrip() + "\n"
+    tmp = path.with_name(f".{path.name}.{uuid7()}.part")
+    tmp.write_text(content, encoding="utf-8", newline="\n")
+    os.replace(tmp, path)
+    return add_version(conn, vault, item_id, new_source=None, actor=actor, note="edited in UNIVERSE")
 
 
 def deleted_outside(conn: sqlite3.Connection, vault: Vault, rel_path: str) -> str | None:

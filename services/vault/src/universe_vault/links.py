@@ -1,0 +1,141 @@
+"""Links between items: the filaments in the universe, note backlinks and the graph layout (ADR-0012).
+
+Notes link with `[[Title]]` (Obsidian style; `[[Title|label]]` and `[[Title#heading]]` work too). A link
+whose target doesn't exist yet is kept by title and resolves when an item with that title appears.
+Plain functions over a connection; callers own transactions.
+"""
+
+import re
+import sqlite3
+from dataclasses import dataclass
+
+from universe_common.ids import uuid7
+from universe_common.timeutil import utcnow
+
+WIKILINK = re.compile(r"\[\[([^\[\]|#\n]{1,200})(?:#[^\[\]|\n]*)?(?:\|[^\[\]\n]*)?\]\]")
+MAX_LINKS_PER_NOTE = 500
+
+
+@dataclass(frozen=True)
+class LinkRow:
+    id: str
+    from_id: str
+    to_id: str
+    kind: str
+    state: str
+    strength: float
+
+
+def wikilink_targets(text: str) -> list[str]:
+    """Distinct `[[targets]]` in a note, in order of appearance."""
+    seen: dict[str, str] = {}
+    for match in WIKILINK.finditer(text):
+        target = match.group(1).strip()
+        if target and target.lower() not in seen:
+            seen[target.lower()] = target
+    return list(seen.values())[:MAX_LINKS_PER_NOTE]
+
+
+def resolve(conn: sqlite3.Connection, target: str) -> str | None:
+    """The live item a link target names: its id, title (any case) or slug."""
+    row = conn.execute(
+        "SELECT id FROM items WHERE trashed_at IS NULL AND (id = ? OR title = ? COLLATE NOCASE OR slug = ?)"
+        " ORDER BY id = ? DESC, created_at LIMIT 1",
+        (target, target, target.lower(), target),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def sync_wikilinks(conn: sqlite3.Connection, item_id: str, text: str) -> int:
+    """Make the note's wikilink rows match its text. Returns how many links it has."""
+    conn.execute("DELETE FROM links WHERE from_id = ? AND kind = 'wikilink'", (item_id,))
+    now = utcnow()
+    count = 0
+    for target in wikilink_targets(text):
+        to_id = resolve(conn, target)
+        if to_id == item_id:
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO links (id, from_id, to_id, to_title, kind, created_by, created_at)"
+            " VALUES (?, ?, ?, ?, 'wikilink', 'system', ?)",
+            (uuid7(), item_id, to_id, None if to_id else target, now),
+        )
+        count += 1
+    return count
+
+
+def resolve_pending(conn: sqlite3.Connection, item_id: str, title: str) -> int:
+    """An item with this title exists now: links that were waiting for it point to it."""
+    rows = conn.execute(
+        "SELECT id, from_id FROM links WHERE to_id IS NULL AND to_title = ? COLLATE NOCASE AND from_id != ?",
+        (title, item_id),
+    ).fetchall()
+    for row in rows:
+        exists = conn.execute(
+            "SELECT 1 FROM links WHERE from_id = ? AND to_id = ? AND kind = 'wikilink'", (row["from_id"], item_id)
+        ).fetchone()
+        if exists:
+            conn.execute("DELETE FROM links WHERE id = ?", (row["id"],))
+        else:
+            conn.execute("UPDATE links SET to_id = ?, to_title = NULL WHERE id = ?", (item_id, row["id"]))
+    return len(rows)
+
+
+def add(conn: sqlite3.Connection, from_id: str, to_id: str, *, kind: str = "manual", actor: str = "user") -> str:
+    """Link two items (idempotent). Returns the link id."""
+    if from_id == to_id:
+        raise ValueError("an item can't link to itself")
+    for item_id in (from_id, to_id):
+        if conn.execute("SELECT 1 FROM items WHERE id = ? AND trashed_at IS NULL", (item_id,)).fetchone() is None:
+            raise LookupError(f"no item with id {item_id}")
+    conn.execute(
+        "INSERT OR IGNORE INTO links (id, from_id, to_id, kind, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (uuid7(), from_id, to_id, kind, actor, utcnow()),
+    )
+    row = conn.execute(
+        "SELECT id FROM links WHERE from_id = ? AND to_id = ? AND kind = ?", (from_id, to_id, kind)
+    ).fetchone()
+    return str(row["id"])
+
+
+def remove(conn: sqlite3.Connection, link_id: str) -> bool:
+    """Remove a link you made. Wikilinks live in the note's text: edit the note instead."""
+    row = conn.execute("SELECT kind FROM links WHERE id = ?", (link_id,)).fetchone()
+    if row is None:
+        return False
+    if row["kind"] == "wikilink":
+        raise ValueError("this link comes from the note's text; remove the [[link]] there")
+    conn.execute("DELETE FROM links WHERE id = ?", (link_id,))
+    return True
+
+
+def all_links(conn: sqlite3.Connection) -> list[LinkRow]:
+    """Every resolved link between two live items."""
+    rows = conn.execute(
+        "SELECT l.id, l.from_id, l.to_id, l.kind, l.state, l.strength FROM links l"
+        " JOIN items a ON a.id = l.from_id AND a.trashed_at IS NULL"
+        " JOIN items b ON b.id = l.to_id AND b.trashed_at IS NULL"
+        " ORDER BY l.created_at"
+    ).fetchall()
+    return [LinkRow(r["id"], r["from_id"], r["to_id"], r["kind"], r["state"], float(r["strength"])) for r in rows]
+
+
+def item_links(conn: sqlite3.Connection, item_id: str) -> tuple[list[LinkRow], list[LinkRow], list[str]]:
+    """(outgoing, incoming, unresolved wikilink titles) for one item, live items only."""
+    outgoing, incoming = [], []
+    rows = conn.execute(
+        "SELECT l.id, l.from_id, l.to_id, l.kind, l.state, l.strength FROM links l"
+        " JOIN items o ON o.id = (CASE WHEN l.from_id = ? THEN l.to_id ELSE l.from_id END) AND o.trashed_at IS NULL"
+        " WHERE l.from_id = ? OR l.to_id = ? ORDER BY l.created_at",
+        (item_id, item_id, item_id),
+    ).fetchall()
+    for r in rows:
+        link = LinkRow(r["id"], r["from_id"], r["to_id"], r["kind"], r["state"], float(r["strength"]))
+        (outgoing if r["from_id"] == item_id else incoming).append(link)
+    pending = [
+        r["to_title"]
+        for r in conn.execute(
+            "SELECT to_title FROM links WHERE from_id = ? AND to_id IS NULL ORDER BY created_at", (item_id,)
+        )
+    ]
+    return outgoing, incoming, pending

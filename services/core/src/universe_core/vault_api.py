@@ -815,7 +815,7 @@ async def revoke_api_key(ctx: Ctx, key_id: str) -> ApiKeyInfo:
 
 # ---------- internal: workers report here ----------
 
-WORKER_EVENTS = {t for t in CATALOG if t.startswith(("item.", "pipeline.", "job."))}
+WORKER_EVENTS = {t for t in CATALOG if t.startswith(("item.", "pipeline.", "job."))} | {"layout.updated"}
 
 
 @internal.post("/events")

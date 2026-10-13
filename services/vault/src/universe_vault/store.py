@@ -13,6 +13,7 @@ from typing import Any
 
 from universe_common.ids import uuid7
 from universe_common.timeutil import utcnow
+from universe_vault import links
 from universe_vault.layout import Vault
 from universe_vault.schemas import Item, ItemPage, ItemSource, ItemStage, ItemSummary, ItemVersion
 
@@ -87,12 +88,21 @@ def add_to_projects(conn: sqlite3.Connection, item_id: str, project_ids: Iterabl
         )
         if cursor.rowcount:
             added.append(project_id)
+    if added:
+        touch(conn, item_id)
     return added
 
 
 def remove_from_project(conn: sqlite3.Connection, item_id: str, project_id: str) -> bool:
     cursor = conn.execute("DELETE FROM item_projects WHERE item_id = ? AND project_id = ?", (item_id, project_id))
+    if cursor.rowcount:
+        touch(conn, item_id)
     return bool(cursor.rowcount)
+
+
+def touch(conn: sqlite3.Connection, item_id: str) -> None:
+    """Mark an item changed (its galaxies, say), so the universe view's incremental refresh picks it up."""
+    conn.execute("UPDATE items SET updated_at = ? WHERE id = ?", (utcnow(), item_id))
 
 
 def set_tags(conn: sqlite3.Connection, item_id: str, names: Iterable[str], actor: str) -> list[str]:
@@ -226,6 +236,7 @@ def reindex_item(conn: sqlite3.Connection, item_id: str) -> None:
         "INSERT INTO items_trigram (item_id, title) VALUES (?, ?)",
         (item_id, f"{row['title']} {row['path'].rsplit('/', 1)[-1]}"),
     )
+    links.resolve_pending(conn, item_id, row["title"])
 
 
 # ---------- reading items for the API ----------

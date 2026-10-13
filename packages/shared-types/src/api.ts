@@ -518,6 +518,24 @@ export interface paths {
         patch: operations["patch_item_api_v1_items__item_id__patch"];
         trace?: never;
     };
+    "/api/v1/items/{item_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Note Content */
+        get: operations["note_content_api_v1_items__item_id__content_get"];
+        /** Edit Note */
+        put: operations["edit_note_api_v1_items__item_id__content_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/items/{item_id}/file": {
         parameters: {
             query?: never;
@@ -527,6 +545,23 @@ export interface paths {
         };
         /** Item File */
         get: operations["item_file_api_v1_items__item_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/items/{item_id}/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Item Links */
+        get: operations["item_links_api_v1_items__item_id__links_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -580,6 +615,23 @@ export interface paths {
         put?: never;
         /** Restore Item */
         post: operations["restore_item_api_v1_items__item_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/items/{item_id}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Similar Items */
+        get: operations["similar_items_api_v1_items__item_id__similar_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -724,6 +776,57 @@ export interface paths {
          */
         post: operations["sync_killswitch_api_v1_killswitch_sync_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/layout/semantic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Semantic Layout */
+        get: operations["semantic_layout_api_v1_layout_semantic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Link */
+        post: operations["add_link_api_v1_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/links/{link_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Link */
+        delete: operations["remove_link_api_v1_links__link_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1158,6 +1261,40 @@ export interface paths {
         put?: never;
         /** Cancel Task */
         post: operations["cancel_task_api_v1_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/universe/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Universe Items */
+        get: operations["universe_items_api_v1_universe_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/universe/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Universe Links */
+        get: operations["universe_links_api_v1_universe_links_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1907,6 +2044,15 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["ItemVersion"][];
         };
+        /** ItemLinks */
+        ItemLinks: {
+            /** Incoming */
+            incoming: components["schemas"]["LinkInfo"][];
+            /** Outgoing */
+            outgoing: components["schemas"]["LinkInfo"][];
+            /** Unresolved */
+            unresolved: string[];
+        };
         /** ItemPage */
         ItemPage: {
             /** Items */
@@ -2094,6 +2240,23 @@ export interface components {
             /** Via */
             via: string | null;
         };
+        /** LinkInfo */
+        LinkInfo: {
+            /** Id */
+            id: string;
+            item: components["schemas"]["ItemSummary"];
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+        };
+        /** LinkRequest */
+        LinkRequest: {
+            /** From Id */
+            from_id: string;
+            /** To Id */
+            to_id: string;
+        };
         /** MCPServerInfo */
         MCPServerInfo: {
             /** Args */
@@ -2236,6 +2399,22 @@ export interface components {
             /** Installed */
             installed: components["schemas"]["InstalledModel"][];
             ollama: components["schemas"]["OllamaStatus"];
+        };
+        /** NoteContent */
+        NoteContent: {
+            /** Body */
+            body: string;
+            /** Item Id */
+            item_id: string;
+            /** Version */
+            version: number;
+        };
+        /** NoteEdit */
+        NoteEdit: {
+            /** Base Version */
+            base_version: number;
+            /** Body */
+            body: string;
         };
         /** OllamaStatus */
         OllamaStatus: {
@@ -2433,6 +2612,24 @@ export interface components {
             /** Took Ms */
             took_ms: number;
         };
+        /** SemanticLayout */
+        SemanticLayout: {
+            /** Ids */
+            ids: string[];
+            /** Model */
+            model: string | null;
+            /** Positions */
+            positions: number[];
+            /** Reason */
+            reason: string | null;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "computing" | "unavailable";
+        };
         /** Snapshot */
         Snapshot: {
             /** Id */
@@ -2483,6 +2680,57 @@ export interface components {
             tokens: number;
             /** Tool */
             tool: string | null;
+        };
+        /**
+         * UniverseItems
+         * @description Items as parallel columns: the renderer keeps them in typed arrays, never one object per item.
+         */
+        UniverseItems: {
+            /** Captured */
+            captured: number[];
+            /** Created */
+            created: number[];
+            /** Galaxies */
+            galaxies: (string | null)[];
+            /** Idea Stages */
+            idea_stages: (string | null)[];
+            /** Ids */
+            ids: string[];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Opened */
+            opened: number[];
+            /** Opens */
+            opens: number[];
+            /** Pinned */
+            pinned: boolean[];
+            /** Removed */
+            removed: string[];
+            /** Server Time */
+            server_time: string;
+            /** Statuses */
+            statuses: string[];
+            /** Titles */
+            titles: string[];
+            /** Total */
+            total: number;
+            /** Types */
+            types: string[];
+        };
+        /** UniverseLinks */
+        UniverseLinks: {
+            /** Ids */
+            ids: string[];
+            /** Kinds */
+            kinds: string[];
+            /** Sources */
+            sources: string[];
+            /** States */
+            states: string[];
+            /** Strengths */
+            strengths: number[];
+            /** Targets */
+            targets: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -3606,6 +3854,72 @@ export interface operations {
             };
         };
     };
+    note_content_api_v1_items__item_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteContent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_note_api_v1_items__item_id__content_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteContent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     item_file_api_v1_items__item_id__file_get: {
         parameters: {
             query?: never;
@@ -3623,6 +3937,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    item_links_api_v1_items__item_id__links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemLinks"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -3715,6 +4060,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Item"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    similar_items_api_v1_items__item_id__similar_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemSummary"][];
                 };
             };
             /** @description Validation Error */
@@ -3974,6 +4352,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KillSwitchStatus"];
+                };
+            };
+        };
+    };
+    semantic_layout_api_v1_layout_semantic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticLayout"];
+                };
+            };
+        };
+    };
+    add_link_api_v1_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_link_api_v1_links__link_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                link_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4798,6 +5260,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    universe_items_api_v1_universe_items_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+                since?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UniverseItems"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    universe_links_api_v1_universe_links_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UniverseLinks"];
                 };
             };
         };

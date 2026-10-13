@@ -93,6 +93,24 @@ class Approval(ApiModel):
     expires_at: str
 
 
+def step_target(raw_args: str | None) -> dict[str, str] | None:
+    """What a tool call works on, for the agent's probe in the universe: an item id or a galaxy name/id."""
+    try:
+        args = json.loads(raw_args or "{}")
+    except ValueError:
+        return None
+    if not isinstance(args, dict):
+        return None
+    ids = args.get("item_ids")
+    item = args.get("item_id") or (ids[0] if isinstance(ids, list) and ids else None)
+    if isinstance(item, str) and item:
+        return {"kind": "item", "id": item[:64]}
+    project = args.get("project")
+    if isinstance(project, str) and project:
+        return {"kind": "project", "id": project[:120]}
+    return None
+
+
 def _task(row: sqlite3.Row) -> AgentTask:
     data = {k: row[k] for k in AgentTask.model_fields}
     data["tainted"] = bool(row["tainted"])
@@ -634,9 +652,11 @@ class _Hooks:
                 utcnow(),
             ),
         )
-        self.emit(
-            state, "agent.step", {"kind": kind, "tool": fields.get("tool"), "n": n, "decision": fields.get("decision")}
-        )
+        payload = {"kind": kind, "tool": fields.get("tool"), "n": n, "decision": fields.get("decision")}
+        target = step_target(fields.get("args"))
+        if target is not None:
+            payload["target"] = target
+        self.emit(state, "agent.step", payload)
 
     def update(self, state: TaskState, **fields: Any) -> None:
         sets = ["steps_used = ?", "tokens_in = ?", "tokens_out = ?", "cost_usd = ?", "tainted = ?"]

@@ -13,7 +13,7 @@ from typing import Any
 
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
-from universe_vault import jobs, store
+from universe_vault import jobs, links, store
 from universe_vault.extract import ExtractionError, chunk_sections, extract_text
 from universe_vault.filetypes import IMAGE_TYPES, TEXT_TYPES, TIME_BASED_TYPES
 from universe_vault.layout import Vault
@@ -115,6 +115,8 @@ def stage_extract(ctx: StageContext, row: sqlite3.Row) -> dict[str, Any]:
             (json.dumps(meta, default=str), utcnow(), row["id"]),
         )
         store.reindex_item(ctx.conn, row["id"])
+        if str(row["path"]).lower().endswith((".md", ".markdown")):
+            links.sync_wikilinks(ctx.conn, row["id"], path.read_text(encoding="utf-8", errors="replace"))
     if not chunks:
         raise StageSkipped(
             "no text found" + (" (scanned PDF: page OCR comes later)" if meta.get("no_text_layer") else "")
