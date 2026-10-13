@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useUniverse } from '../state/store';
+import { LAYOUTS, useUniverse } from '../state/store';
 
 function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -21,6 +21,7 @@ export function useHotkeys(): void {
         else if (s.zen) s.toggleZen();
         else if (typing(e.target)) return;
         else if (s.chatOpen) s.setChatOpen(false);
+        else if (s.view === 'universe' && s.zoomOut()) return;
         else if (s.selectedItemId) s.selectItem(null);
         else if (s.query) s.setQuery('');
         else if (s.view !== 'universe') s.setView('universe');
@@ -39,6 +40,13 @@ export function useHotkeys(): void {
       else if (key === 'g') s.setView('grid');
       else if (key === 'l') s.setView('list');
       else if (key === 'u') s.setView('universe');
+      else if (key === 'h') {
+        s.setView('universe');
+        s.flyHome();
+      } else if (key >= '1' && key <= '4') {
+        s.setLayout(LAYOUTS[Number(key) - 1]!);
+        s.setView('universe');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

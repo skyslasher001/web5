@@ -28,10 +28,13 @@ import type {
   IngestResult,
   Item,
   ItemPage,
+  ItemLinks,
   ItemPatch,
+  ItemSummary,
   ItemText,
   ItemType,
   Message,
+  NoteContent,
   ModelsInfo,
   OpenResult,
   Project,
@@ -39,7 +42,10 @@ import type {
   RecallResult,
   Recommendation,
   SearchResponse,
+  SemanticLayout,
   Snapshot,
+  UniverseItems,
+  UniverseLinks,
   VaultInfo,
   Vitals,
   WatchedFolder,
@@ -215,6 +221,23 @@ export class CoreApi {
   createApiKey = (name: string, scopes: Array<'capture' | 'search'>) =>
     this.call<ApiKeyCreated>('POST', '/api-keys', { name, scopes });
   revokeApiKey = (id: string) => this.call<ApiKeyInfo>('DELETE', `/api-keys/${id}`);
+
+  // ---------- the universe view ----------
+  universeItems = (q: { cursor?: string | null; since?: string | null; limit?: number } = {}) =>
+    this.call<UniverseItems>('GET', `/universe/items${queryString(q)}`);
+  universeLinks = () => this.call<UniverseLinks>('GET', '/universe/links');
+  semanticLayout = () => this.call<SemanticLayout>('GET', '/layout/semantic');
+  itemLinks = (id: string) => this.call<ItemLinks>('GET', `/items/${id}/links`);
+  addLink = (fromId: string, toId: string) =>
+    this.call<{ id: string }>('POST', '/links', { from_id: fromId, to_id: toId });
+  removeLink = (id: string) => this.send('DELETE', `/links/${id}`).then(() => undefined);
+  noteContent = (id: string) => this.call<NoteContent>('GET', `/items/${id}/content`);
+  saveNote = (id: string, body: string, baseVersion: number) =>
+    this.call<NoteContent>('PUT', `/items/${id}/content`, { body, base_version: baseVersion });
+  similarItems = (id: string, limit = 12) =>
+    this.call<ItemSummary[]>('GET', `/items/${id}/similar?limit=${limit}`);
+  /** The item's file as a Blob (media and PDFs need the auth header, so a plain src can't load them). */
+  itemFile = async (id: string): Promise<Blob> => (await this.send('GET', `/items/${id}/file`)).blob();
 
   // ---------- agent engine ----------
   engine = () => this.call<EngineStatus>('GET', '/engine');

@@ -73,8 +73,8 @@ export function useDebounced<T>(value: T, ms: number): T {
   return debounced;
 }
 
-/** The current 2D view's items: search results when there's a query, otherwise a paged listing. */
-export function useItemsView() {
+/** Search results for the query in the top bar (shared by the 2D views and the universe's constellation). */
+export function useSearch() {
   const api = useApi();
   const online = useUniverse((s) => s.connection === 'online');
   const query = useDebounced(
@@ -83,15 +83,25 @@ export function useItemsView() {
   );
   const types = useUniverse((s) => s.typeFilter);
   const project = useUniverse((s) => s.selectedProjectId);
-  const sort = useUniverse((s) => s.sort);
   const trashed = useUniverse((s) => s.showTrash);
-
   const search = useQuery({
     queryKey: ['search', query, types, project],
     queryFn: () => api.search({ q: query, types, project, limit: 100 }),
     enabled: online && query.length > 0 && !trashed,
     placeholderData: keepPreviousData,
   });
+  return { search, query, searching: query.length > 0 && !trashed };
+}
+
+/** The current 2D view's items: search results when there's a query, otherwise a paged listing. */
+export function useItemsView() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  const types = useUniverse((s) => s.typeFilter);
+  const project = useUniverse((s) => s.selectedProjectId);
+  const sort = useUniverse((s) => s.sort);
+  const trashed = useUniverse((s) => s.showTrash);
+  const { search, query } = useSearch();
   const listing = useInfiniteQuery({
     queryKey: ['items', types, project, sort, trashed],
     queryFn: ({ pageParam }) => api.items({ types, project, sort, trashed, cursor: pageParam, limit: 200 }),

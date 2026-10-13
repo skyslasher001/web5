@@ -1,185 +1,29 @@
-// Phase 1 universe: a parallax starfield, the Core (home star) and one galaxy per project.
-// The full celestial mapping, layouts, LOD and camera flights arrive in Phase 4.
-import { tokens } from '@universe/design-tokens';
-import type { Project } from '@universe/shared-types';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import {
-  AdditiveBlending,
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  Vector3,
-  type Group,
-  type Points,
-  type Sprite,
-} from 'three';
-import { hueHex } from '../lib/colors';
+// The universe (Phase 4, ADR-0012): every item drawn by type in one of four layouts, galaxies, filaments,
+// comets, agent probes and search constellations, with GPU picking and camera flights. Lite mode (a 2D
+// WebGL graph) takes over when WebGL is missing or the Lite quality preset is chosen.
+import { Canvas, useThree } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useApi } from '../lib/api-context';
 import { useProjects } from '../lib/queries';
-import { useUniverse } from '../state/store';
-import { galaxyTexture, glowTexture } from './textures';
+import { onCoreEvent, useUniverse } from '../state/store';
+import { CoreStar, Starfield } from './scene/Backdrop';
+import { CameraRig } from './scene/CameraRig';
+import { rig } from './scene/helpers';
+import { tuning } from './scene/interaction';
+import { Comets } from './scene/Comets';
+import { Filaments } from './scene/Filaments';
+import { Galaxies, GalaxyLabels } from './scene/Galaxies';
+import { ItemLabels } from './scene/ItemLabels';
+import { ItemPoints } from './scene/ItemPoints';
+import { LayoutController, useLayout } from './scene/layoutController';
+import { OverlayContext } from './scene/overlay';
+import { Probes } from './scene/Probes';
+import { SceneLoader, useScene } from './scene/sceneData';
+import { SelectionRing } from './scene/Selection';
+import { useConstellation } from './scene/useConstellation';
 import { webglAvailable } from './webgl';
 
-// Read once: motion preferences rarely change mid-session, and the scene stays pure during render.
-const STILL = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/** Deterministic PRNG so the starfield is identical on every render (and launch). */
-function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function Starfield({ count = 4000 }: { count?: number }) {
-  const ref = useRef<Points>(null);
-  const geometry = useMemo(() => {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const random = mulberry32(20261012);
-    const palette = [
-      tokens.color.ink['1'],
-      tokens.color.ink['2'],
-      tokens.color.cyan,
-      tokens.color.violet,
-    ].map((c) => new Color(c));
-    for (let i = 0; i < count; i++) {
-      const r = 120 + random() * 380;
-      const theta = random() * Math.PI * 2;
-      const phi = Math.acos(2 * random() - 1);
-      positions.set(
-        [r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta)],
-        i * 3,
-      );
-      const c = palette[random() < 0.82 ? Math.floor(random() * 2) : 2 + Math.floor(random() * 2)]!;
-      colors.set([c.r, c.g, c.b], i * 3);
-    }
-    const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(positions, 3));
-    g.setAttribute('color', new BufferAttribute(colors, 3));
-    return g;
-  }, [count]);
-  useFrame((_, delta) => {
-    if (ref.current && !STILL) ref.current.rotation.y += delta * 0.006;
-  });
-  return (
-    <points ref={ref} geometry={geometry}>
-      <pointsMaterial size={1.1} sizeAttenuation vertexColors transparent opacity={0.85} depthWrite={false} />
-    </points>
-  );
-}
-
-function CoreStar() {
-  const ref = useRef<Sprite>(null);
-  const activity = useUniverse((s) => s.agentActivity.core ?? 'idle');
-  const online = useUniverse((s) => s.connection === 'online');
-  const texture = useMemo(() => glowTexture(tokens.color.accent), []);
-  useFrame(({ clock }) => {
-    if (!ref.current) return;
-    const busy = activity === 'thinking' || activity === 'replying';
-    const speed = busy ? 4 : 1.2;
-    const pulse = STILL ? 1 : 1 + Math.sin(clock.elapsedTime * speed) * (busy ? 0.12 : 0.05);
-    const base = online ? 9 : 6;
-    ref.current.scale.setScalar(base * pulse);
-    ref.current.material.opacity = online ? 1 : 0.45;
-  });
-  return (
-    <sprite ref={ref}>
-      <spriteMaterial map={texture} blending={AdditiveBlending} depthWrite={false} transparent />
-    </sprite>
-  );
-}
-
-/** Galaxy labels live in a plain DOM overlay; each galaxy moves its own label from the render loop. */
-const LabelLayer = createContext<RefObject<HTMLDivElement | null> | null>(null);
-const scratch = new Vector3();
-
-function Galaxy({ project, index, total }: { project: Project; index: number; total: number }) {
-  const group = useRef<Group>(null);
-  const anchor = useRef<Group>(null);
-  const layer = useContext(LabelLayer);
-  const selected = useUniverse((s) => s.selectedProjectId === project.id);
-  const select = useUniverse((s) => s.selectProject);
-  const [hover, setHover] = useState(false);
-  useEffect(() => {
-    if (!hover) return;
-    return () => {
-      document.body.style.cursor = ''; // never leave a stuck pointer if we unmount while hovered
-    };
-  }, [hover]);
-  const color = hueHex(project.color_token);
-  const texture = useMemo(() => galaxyTexture(color, project.layout_seed + 1), [color, project.layout_seed]);
-  // An ellipse around the Core that stays inside the HUD's free centre area at the default camera.
-  const angle = (index / Math.max(total, 1)) * Math.PI * 2 + Math.PI / 4;
-  const position: [number, number, number] = [
-    Math.cos(angle) * 16,
-    Math.sin(angle) * 9,
-    -Math.sin(angle) * 4,
-  ];
-  const labelEl = useRef<HTMLElement | null>(null);
-  useFrame(({ camera, size }, delta) => {
-    if (group.current && !STILL) group.current.rotation.z += delta * 0.03;
-    // Look the label up once, not every frame (it's re-found if the overlay re-renders it).
-    if (!labelEl.current?.isConnected) {
-      labelEl.current = layer?.current?.querySelector<HTMLElement>(`[data-label="${project.id}"]`) ?? null;
-    }
-    const label = labelEl.current;
-    if (label && anchor.current) {
-      anchor.current.getWorldPosition(scratch).project(camera);
-      const x = ((scratch.x + 1) / 2) * size.width;
-      const y = ((1 - scratch.y) / 2) * size.height;
-      label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
-      label.style.opacity = scratch.z < 1 ? '1' : '0';
-    }
-  });
-  const scale = selected ? 11 : hover ? 10 : 9;
-  return (
-    <group position={position}>
-      <group ref={group}>
-        <sprite
-          scale={[scale, scale, 1]}
-          onClick={(e) => {
-            e.stopPropagation();
-            select(project.id);
-          }}
-          onPointerOver={(e) => {
-            e.stopPropagation();
-            setHover(true);
-            document.body.style.cursor = 'pointer';
-          }}
-          onPointerOut={() => {
-            setHover(false);
-            document.body.style.cursor = '';
-          }}
-        >
-          <spriteMaterial
-            map={texture}
-            blending={AdditiveBlending}
-            depthWrite={false}
-            transparent
-            opacity={selected || hover ? 1 : 0.85}
-          />
-        </sprite>
-      </group>
-      <group ref={anchor} position={[0, -5.6, 0]} />
-    </group>
-  );
-}
-
-function CameraDrift() {
-  useFrame(({ camera, pointer }) => {
-    if (STILL) return;
-    camera.position.x += (pointer.x * 4 - camera.position.x) * 0.02;
-    camera.position.y += (8 + pointer.y * 2.5 - camera.position.y) * 0.02;
-    camera.lookAt(0, 0, 0);
-  });
-  return null;
-}
-
-/** Static fallback when WebGL is unavailable: CSS stars over the nebula backdrop (Lite mode lands in Phase 4). */
+/** Static fallback when WebGL is unavailable and Lite can't run either: CSS stars over the nebula. */
 function StaticStars() {
   return <div className="static-stars absolute inset-0" aria-hidden data-testid="static-stars" />;
 }
@@ -189,52 +33,112 @@ export default function Scene() {
   return webgl ? <WebGLScene /> : <StaticStars />;
 }
 
-function WebGLScene() {
+/** Loads the scene data and keeps the chosen layout computed (shared by the 3D view and Lite). */
+function useUniverseData() {
+  const api = useApi();
   const projects = useProjects();
-  const select = useUniverse((s) => s.selectProject);
-  const list = projects.data ?? [];
-  const labels = useRef<HTMLDivElement>(null);
-  const selected = useUniverse((s) => s.selectedProjectId);
-  // Behind the grid and list the universe is a still backdrop: render on demand instead of 60 times a second,
-  // which frees the GPU and main thread for scrolling.
+  const online = useUniverse((s) => s.connection === 'online');
+  const layoutKind = useUniverse((s) => s.layout);
+  const version = useScene((s) => s.version);
+  const loader = useMemo(() => new SceneLoader(api), [api]);
+  const controller = useMemo(() => new LayoutController(api), [api]);
+
+  useEffect(() => () => controller.dispose(), [controller]);
+  useEffect(() => {
+    if (online) void loader.load();
+  }, [online, loader]);
+  useEffect(
+    () =>
+      onCoreEvent((event) => {
+        loader.onEvent(event);
+        if (event.type === 'layout.updated') controller.semanticUpdated();
+      }),
+    [loader, controller],
+  );
+  useEffect(() => {
+    if (projects.data) loader.setGalaxyOrder(projects.data.map((p) => p.id));
+  }, [projects.data, loader]);
+  useEffect(() => {
+    void controller.show(layoutKind, useScene.getState().scene, version);
+  }, [layoutKind, version, controller]);
+}
+
+/** Read-only view of the renderer for the end-to-end tests: draw calls, and named objects to time. */
+function DebugBridge() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    const w = window as unknown as Record<string, Record<string, unknown>>;
+    w.__universeDebug = {
+      ...(w.__universeDebug ?? {}),
+      renderInfo: () => ({ calls: gl.info.render.calls, points: gl.info.render.points }),
+      setPointScale: (scale: number) => {
+        tuning.pointScale = scale;
+      },
+      setVisible: (name: string, visible: boolean) => {
+        scene.traverse((o) => {
+          if (o.name === name) o.visible = visible;
+        });
+      },
+    };
+  }, [gl, scene]);
+  return null;
+}
+
+function WebGLScene() {
+  useUniverseData();
+  useConstellation();
+  const overlay = useRef<HTMLDivElement>(null);
+  // Behind the grid and list the universe is a still backdrop: render on demand instead of 60 times a second.
   const live = useUniverse((s) => s.view === 'universe');
   const smooth = useUniverse((s) => s.smooth);
+
+  // Read-only hooks for the end-to-end tests (camera pose, item count, current layout).
+  useEffect(() => {
+    const w = window as unknown as Record<string, Record<string, unknown>>;
+    w.__universeDebug = {
+      ...(w.__universeDebug ?? {}),
+      camera: () => rig.state(),
+      items: () => useScene.getState().scene.n,
+      layout: () => useLayout.getState().current?.kind ?? null,
+    };
+  }, []);
+
   return (
-    <LabelLayer.Provider value={labels}>
+    <OverlayContext.Provider value={overlay}>
       <Canvas
         className="absolute inset-0"
         frameloop={live ? 'always' : 'demand'}
-        camera={{ position: [0, 8, 62], fov: 50, near: 0.1, far: 2000 }}
-        dpr={smooth ? 1 : [1, 1.5]} // past 1.5× the stars look the same and cost up to 1.8× the pixels
+        camera={{ position: [0, 120, 320], fov: 50, near: 0.5, far: 20000 }}
+        dpr={smooth ? 1 : [1, 1.5]}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        onPointerMissed={() => select(null)}
         aria-label="Universe view"
+        data-testid="universe-canvas"
       >
         <Starfield />
-        <group position={[-3.5, 1, 0]}>
-          <CoreStar />
-          {list.map((p, i) => (
-            <Galaxy key={p.id} project={p} index={i} total={list.length} />
-          ))}
+        <CoreStar />
+        <group name="galaxies">
+          <Galaxies />
         </group>
-        <CameraDrift />
+        <group name="items">
+          <ItemPoints />
+        </group>
+        <group name="filaments">
+          <Filaments />
+        </group>
+        <group name="comets">
+          <Comets />
+        </group>
+        <SelectionRing />
+        <group name="probes">
+          <Probes />
+        </group>
+        <ItemLabels />
+        <CameraRig />
+        <DebugBridge />
       </Canvas>
-      <div ref={labels} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        {list.map((p) => (
-          <span
-            key={p.id}
-            data-label={p.id}
-            className="absolute top-0 left-0 font-display text-xs whitespace-nowrap transition-colors duration-200"
-            style={{
-              color: selected === p.id ? tokens.color.ink['1'] : tokens.color.ink['3'],
-              letterSpacing: '0.06em',
-              opacity: 0,
-            }}
-          >
-            {p.name}
-          </span>
-        ))}
+      <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <GalaxyLabels />
       </div>
-    </LabelLayer.Provider>
+    </OverlayContext.Provider>
   );
 }

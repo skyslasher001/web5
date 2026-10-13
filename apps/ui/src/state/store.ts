@@ -23,11 +23,26 @@ import {
 
 export type Panel = 'context' | 'vault' | 'agents' | 'safety' | 'system';
 export type View = 'universe' | 'grid' | 'list';
+export type Layout = 'project' | 'semantic' | 'time' | 'graph';
+export const LAYOUTS: Layout[] = ['project', 'semantic', 'time', 'graph'];
+
+/** What an agent's probe is flying to (from `agent.step` targets). */
+export interface ProbeTarget {
+  kind: 'item' | 'project';
+  id: string;
+}
 
 /** Events that change what the 2D views show. Bursts (an import of 500 files) refresh once. */
 const ITEM_EVENT = /^(item|pipeline)\./;
 const ITEMS_REFRESH_MS = 800;
 let itemsRefresh: ReturnType<typeof setTimeout> | null = null;
+
+/** Non-React consumers of Core events (the universe's scene loader). Returns an unsubscribe function. */
+const eventListeners = new Set<(event: CoreEvent) => void>();
+export function onCoreEvent(listener: (event: CoreEvent) => void): () => void {
+  eventListeners.add(listener);
+  return () => eventListeners.delete(listener);
+}
 
 interface UniverseState {
   config: BridgeConfig | null;
@@ -45,6 +60,14 @@ interface UniverseState {
   selectedTaskId: string | null;
   /** From Electron main: `available` is false until the protected kill-switch control is installed. */
   killSwitch: KillSwitchState;
+  /** The universe's arrangement (keys 1–4) and the time slider (epoch seconds; null = now). */
+  layout: Layout;
+  timeCut: number | null;
+  /** The item whose viewer is open (Item zoom level). */
+  viewerItemId: string | null;
+  /** Bumped to fly the camera home to the Core (H). */
+  homeTick: number;
+  agentTargets: Record<string, ProbeTarget>;
   conversationId: string | null;
   messages: ChatMessage[];
   selectedProjectId: string | null;
@@ -93,6 +116,13 @@ interface UniverseState {
   openAgent(id: string): void;
   selectTask(id: string | null): void;
   setKillSwitch(state: KillSwitchState): void;
+  setLayout(layout: Layout): void;
+  setTimeCut(cut: number | null): void;
+  openViewer(id: string): void;
+  closeViewer(): void;
+  flyHome(): void;
+  /** Esc in the universe: close the viewer, then deselect the item, then the galaxy. */
+  zoomOut(): boolean;
 }
 
 const ACTIVITY_LIMIT = 40;
@@ -125,6 +155,11 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   runAgentId: 'core',
   selectedTaskId: null,
   killSwitch: { available: false, engaged: false },
+  layout: 'project',
+  timeCut: null,
+  viewerItemId: null,
+  homeTick: 0,
+  agentTargets: {},
   conversationId: null,
   messages: [],
   selectedProjectId: null,
@@ -155,6 +190,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
       }, ITEMS_REFRESH_MS);
     }
     refreshForEvent(event.type);
+    eventListeners.forEach((listener) => listener(event));
     if (event.type === 'navigator.action') navigate(event.payload as { target?: string; value?: string });
     set((s) => {
       const chat = applyChatEvent({ conversationId: s.conversationId, messages: s.messages }, event);
@@ -164,6 +200,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
         messages: chat.messages,
         agentActivity: applyAgentEvent(s.agentActivity, event),
         agentSteps: applyStepEvent(s.agentSteps, event),
+        agentTargets: applyProbeTarget(s.agentTargets, event),
         killSwitch:
           event.type === 'killswitch.engaged' || event.type === 'killswitch.released'
             ? { ...s.killSwitch, engaged: event.type === 'killswitch.engaged' }
@@ -199,7 +236,8 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
     })),
   setView: (view) => set({ view }),
   selectItem: (selectedItemId) => set({ selectedItemId, panel: 'context' }),
-  setQuery: (query) => set((s) => ({ query, view: query && s.view === 'universe' ? 'list' : s.view })),
+  // In the universe view a search forms a constellation of results (Phase 4); the list is one key away (L).
+  setQuery: (query) => set({ query }),
   setTypeFilter: (typeFilter) => set({ typeFilter }),
   setSort: (sort) => set({ sort }),
   setShowTrash: (showTrash) => set({ showTrash, selectedItemId: null }),
@@ -216,7 +254,35 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   openAgent: (runAgentId) => set({ runAgentId, panel: 'agents' }),
   selectTask: (selectedTaskId) => set({ selectedTaskId, panel: 'agents' }),
   setKillSwitch: (killSwitch) => set({ killSwitch }),
+  setLayout: (layout) => set({ layout }),
+  setTimeCut: (timeCut) => set({ timeCut }),
+  openViewer: (viewerItemId) => set({ viewerItemId, selectedItemId: viewerItemId }),
+  closeViewer: () => set({ viewerItemId: null }),
+  flyHome: () => set((s) => ({ homeTick: s.homeTick + 1, selectedItemId: null, selectedProjectId: null })),
+  zoomOut: () => {
+    const s = get();
+    if (s.viewerItemId) set({ viewerItemId: null });
+    else if (s.selectedItemId) set({ selectedItemId: null });
+    else if (s.selectedProjectId) set({ selectedProjectId: null });
+    else return false;
+    return true;
+  },
 }));
+
+/** `agent.step` names what a tool works on; a finished task's probe returns to the Core. */
+export function applyProbeTarget(targets: Record<string, ProbeTarget>, event: CoreEvent) {
+  const p = event.payload as { agent_id?: string; target?: ProbeTarget };
+  if (!p.agent_id) return targets;
+  if (event.type === 'agent.step' && p.target && (p.target.kind === 'item' || p.target.kind === 'project')) {
+    return { ...targets, [p.agent_id]: { kind: p.target.kind, id: String(p.target.id) } };
+  }
+  if ((event.type === 'agent.completed' || event.type === 'agent.failed') && p.agent_id in targets) {
+    const next = { ...targets };
+    delete next[p.agent_id];
+    return next;
+  }
+  return targets;
+}
 
 /** Navigator's ui.show: an agent asked the HUD to show you something. */
 function navigate({ target, value }: { target?: string; value?: string }) {
