@@ -97,6 +97,18 @@ export interface UniverseBridge {
   focus(target: FocusTarget): void;
   /** Fired in the main window when the command bar asks to show something. */
   onFocus(callback: (target: FocusTarget) => void): () => void;
+
+  // ---------- kill switch (Phase 3; owned by protected Electron main code) ----------
+  getKillSwitch(): Promise<KillSwitchState>;
+  /** Engaging is instant. Releasing shows a native dialog you must confirm. */
+  setKillSwitch(engaged: boolean): Promise<KillSwitchState>;
+  onKillSwitch(callback: (state: KillSwitchState) => void): () => void;
+}
+
+export interface KillSwitchState {
+  /** False until the Phase 3 protected-core patch is applied. */
+  available: boolean;
+  engaged: boolean;
 }
 
 /** What the command bar can ask the main window to show. */

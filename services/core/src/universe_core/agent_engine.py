@@ -138,6 +138,7 @@ class AgentEngine:
         self._running: dict[str, asyncio.Task[Any]] = {}
         self._waiting: dict[str, asyncio.Future[bool]] = {}
         self._step_n: dict[str, int] = {}
+        self.failure_codes: dict[str, str] = {}  # task id → why it failed ("provider", "policy"…), for callers
 
     @property
     def available(self) -> bool:
@@ -245,8 +246,12 @@ class AgentEngine:
         on_token: Callable[[str], None] | None = None,
         correlation_id: str | None = None,
         parent: TaskState | None = None,
+        on_started: Callable[[], None] | None = None,
     ) -> tuple[AgentTask, Outcome | None]:
-        """Run a task to the end and return it. Task failures don't raise: they're in the task row."""
+        """Run a task to the end and return it. Task failures don't raise: they're in the task row.
+
+        `on_started` runs right after `agent.started` is published (chat publishes `chat.started` there).
+        """
         agent = self._agent(agent_id)
         state = self._new_task(
             agent, instruction, parent=parent, conversation_id=conversation_id, correlation_id=correlation_id
@@ -259,6 +264,7 @@ class AgentEngine:
             history=history,
             on_token=on_token,
             parent=parent,
+            on_started=on_started,
         )
 
     def start(self, agent_id: str, instruction: str, *, conversation_id: str | None = None) -> str:
@@ -282,6 +288,7 @@ class AgentEngine:
         history: list[dict[str, Any]] | None = None,
         on_token: Callable[[str], None] | None = None,
         parent: TaskState | None = None,
+        on_started: Callable[[], None] | None = None,
     ) -> tuple[AgentTask, Outcome | None]:
         assert self.runtime is not None
         current = asyncio.current_task()
@@ -302,6 +309,8 @@ class AgentEngine:
             details={"parent_id": state.parent_id},
             task_id=state.task_id,
         )
+        if on_started is not None:
+            on_started()
         outcome: Outcome | None = None
         try:
             outcome = await self.runtime.run(agent, state, instruction, hooks, history=history, on_token=on_token)
@@ -318,6 +327,7 @@ class AgentEngine:
             hooks.emit(state, "agent.completed", {"agent_id": agent.id, "cancelled": True})
             raise
         except TaskFailed as exc:
+            self._remember_failure(state.task_id, exc.code)
             self._finish(state, "failed", error=str(exc))
             hooks.emit(state, "agent.failed", {"agent_id": agent.id, "code": exc.code, "error": str(exc)})
         except Exception as exc:
@@ -331,6 +341,7 @@ class AgentEngine:
                 context=captured.context,
             )
             log.exception("agent_task_failed", task_id=state.task_id)
+            self._remember_failure(state.task_id, "internal")
             self._finish(state, "failed", error="Something went wrong; the error was recorded.")
             hooks.emit(state, "agent.failed", {"agent_id": agent.id, "code": "internal", "error": captured.message})
         finally:
@@ -339,6 +350,11 @@ class AgentEngine:
         task = self.task(state.task_id)
         assert task is not None
         return task, outcome
+
+    def _remember_failure(self, task_id: str, code: str) -> None:
+        self.failure_codes[task_id] = code
+        while len(self.failure_codes) > 200:  # only the caller that's waiting reads it; keep the map small
+            self.failure_codes.pop(next(iter(self.failure_codes)))
 
     def cancel(self, task_id: str) -> bool:
         task = self._running.get(task_id)

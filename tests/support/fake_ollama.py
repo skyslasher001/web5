@@ -174,7 +174,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": {"message": "simulated failure"}})
             return
         system = str(body["messages"][0].get("content", "")) if body["messages"] else ""
-        if body.get("tools") or system.startswith("You are Critic"):
+        if (body.get("tools") or system.startswith("You are Critic")) and "[[slow]]" not in last_user:
             self._stream_turn(body["model"], *scripted_turn(body))
             return
         if "[[slow]]" in last_user:

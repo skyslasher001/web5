@@ -1,5 +1,5 @@
 // Tray icon (SPEC §6: quick capture and quick search from the tray).
-import { Menu, Tray, nativeImage, type NativeImage } from 'electron';
+import { Menu, Tray, nativeImage, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import { ringPixels } from './trayPixels';
 
 function icon(): NativeImage {
@@ -14,6 +14,8 @@ export function createTray(actions: {
   show: () => void;
   quit: () => void;
   hotkey: () => string;
+  /** More items (the kill switch), rebuilt each time the menu opens. */
+  extraItems?: () => MenuItemConstructorOptions[];
 }): Tray {
   const tray = new Tray(icon());
   tray.setToolTip('UNIVERSE');
@@ -29,6 +31,7 @@ export function createTray(actions: {
         { label: 'Quick capture', click: actions.capture },
         { label: 'Save clipboard to inbox', click: actions.captureClipboard },
         { type: 'separator' },
+        ...(actions.extraItems?.() ?? []),
         { label: 'Show UNIVERSE', click: actions.show },
         { type: 'separator' },
         { label: 'Quit', click: actions.quit },

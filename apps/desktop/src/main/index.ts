@@ -272,6 +272,11 @@ function registerIpc(): void {
   });
   ipcMain.handle(CH.captureClipboard, saveClipboard);
 
+  // ---------- kill switch ----------
+  // The control lives in protected code (Phase 3 protected-core patch); until it's applied, there is none.
+  ipcMain.handle(CH.getKillSwitch, () => ({ available: false, engaged: false }));
+  ipcMain.handle(CH.setKillSwitch, () => ({ available: false, engaged: false }));
+
   // ---------- command bar ----------
   ipcMain.handle(CH.getHotkey, (): HotkeyStatus => commandBar?.status ?? noHotkey());
   ipcMain.handle(CH.setHotkey, (_e, accelerator: unknown): HotkeyStatus => {

@@ -22,5 +22,8 @@ export const CH = {
   hideCommandBar: 'universe:hide-command-bar',
   commandBarShow: 'universe:command-bar-show',
   focus: 'universe:focus',
+  getKillSwitch: 'universe:get-kill-switch',
+  setKillSwitch: 'universe:set-kill-switch',
+  killSwitchEvent: 'universe:kill-switch-event',
   focusEvent: 'universe:focus-event',
 } as const;

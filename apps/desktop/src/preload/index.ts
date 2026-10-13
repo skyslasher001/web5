@@ -1,6 +1,6 @@
 // The only bridge between the sandboxed renderer and the OS: a fixed, typed API (ARCHITECTURE.md §1.3).
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
-import type { DesktopState, FocusTarget, UniverseBridge } from '@universe/shared-types';
+import type { DesktopState, FocusTarget, KillSwitchState, UniverseBridge } from '@universe/shared-types';
 import { CH } from '../main/channels';
 
 function subscribe<T>(channel: string, callback: (value: T) => void): () => void {
@@ -34,6 +34,9 @@ const bridge: UniverseBridge = {
   onCommandBarShow: (callback) => subscribe<'search' | 'capture'>(CH.commandBarShow, callback),
   focus: (target) => ipcRenderer.send(CH.focus, target),
   onFocus: (callback) => subscribe<FocusTarget>(CH.focusEvent, callback),
+  getKillSwitch: () => ipcRenderer.invoke(CH.getKillSwitch),
+  setKillSwitch: (engaged) => ipcRenderer.invoke(CH.setKillSwitch, engaged),
+  onKillSwitch: (callback) => subscribe<KillSwitchState>(CH.killSwitchEvent, callback),
 };
 
 contextBridge.exposeInMainWorld('universe', bridge);

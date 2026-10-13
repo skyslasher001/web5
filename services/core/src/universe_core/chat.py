@@ -226,32 +226,36 @@ class ChatService:
         return [{"role": "system", "content": agent.system_prompt}, *history]
 
     async def _agent_reply(self, conversation_id: str, agent: AgentDefinition, message_id: str, text: str) -> None:
-        """A reply through the agent engine: tools, approvals, delegation and Critic, streamed as chat tokens."""
+        """A reply through the agent engine: tools, approvals, delegation and Critic, streamed as chat tokens.
+
+        Same events and stored message as a plain reply (Phase 1), plus the task and its trace.
+        """
         assert self.engine is not None
         actor = f"agent:{agent.id}"
         subject = {"subject_type": "conversation", "subject_id": conversation_id, "correlation_id": message_id}
         base = {"conversation_id": conversation_id, "message_id": message_id}
-        started = time.monotonic()
-        first: list[int] = []
-        model: str | None = None
         try:
             model = await self._router.resolve(agent.model, needs_tools=bool(agent.tools))
-        except NoModelAvailable as exc:
-            self._bus.publish(
-                "chat.failed", {**base, "code": "no_model", "error": str(exc), "hint": exc.hint}, actor=actor, **subject
-            )
+        except NoModelAvailable:
+            # No installed model can call tools: answer without them rather than not at all.
+            await self._reply(conversation_id, agent, message_id)
             return
-        self._bus.publish("chat.started", {**base, "model": model, "agent_id": agent.id}, actor=actor, **subject)
+        started = time.monotonic()
+        parts: list[str] = []
+        first: list[int] = []
+
+        def on_started() -> None:
+            self._bus.publish("chat.started", {**base, "model": model, "agent_id": agent.id}, actor=actor, **subject)
 
         def on_token(delta: str) -> None:
             if not first:
                 first.append(int((time.monotonic() - started) * 1000))
+            parts.append(delta)
             self._bus.publish("chat.token", {**base, "delta": delta}, actor=actor, **subject)
 
         history = self._history(conversation_id, agent)[1:]  # without the system prompt; the agent adds its own
         if history and history[-1]["role"] == "user":
             history.pop()  # the message being answered is the task's instruction
-        cancelled = False
         task = None
         try:
             task, _outcome = await self.engine.run(
@@ -260,18 +264,34 @@ class ChatService:
                 conversation_id=conversation_id,
                 history=[dict(m) for m in history],
                 on_token=on_token,
+                on_started=on_started,
                 correlation_id=message_id,
             )
         except asyncio.CancelledError:
-            cancelled = True
+            total_ms = int((time.monotonic() - started) * 1000)
+            first_ms = first[0] if first else None
+            if parts:  # keep what was said before you stopped it
+                message = self._insert_message(
+                    conversation_id,
+                    "assistant",
+                    agent.id,
+                    "".join(parts),
+                    model,
+                    "cancelled",
+                    first_ms,
+                    total_ms,
+                    message_id,
+                )
+                self._publish_message(message)
+            self._bus.publish(
+                "chat.cancelled",
+                {**base, "first_token_ms": first_ms, "total_ms": total_ms, "model": model},
+                actor=actor,
+                **subject,
+            )
+            raise
         total_ms = int((time.monotonic() - started) * 1000)
         timing = {"first_token_ms": first[0] if first else None, "total_ms": total_ms, "model": model}
-        if cancelled or (task is not None and task.status == "cancelled"):
-            self._bus.publish("chat.cancelled", {**base, **timing}, actor=actor, **subject)
-            if cancelled:
-                raise asyncio.CancelledError
-            return
-        assert task is not None
         if task.status == "done":
             message = self._insert_message(
                 conversation_id,
@@ -287,13 +307,18 @@ class ChatService:
             )
             self._publish_message(message)
             self._bus.publish("chat.completed", {**base, **timing, "task_id": task.id}, actor=actor, **subject)
-        else:
-            self._bus.publish(
-                "chat.failed",
-                {**base, "code": "agent", "error": task.error or "The task failed", "hint": "", "task_id": task.id},
-                actor=actor,
-                **subject,
-            )
+            return
+        if task.status == "cancelled":
+            self._bus.publish("chat.cancelled", {**base, **timing}, actor=actor, **subject)
+            return
+        code = self.engine.failure_codes.pop(task.id, "agent")
+        hint = {"provider": "Check that Ollama is running.", "policy": "", "step_limit": ""}.get(code, "")
+        self._bus.publish(
+            "chat.failed",
+            {**base, "code": code, "error": task.error or "The task failed", "hint": hint, "task_id": task.id},
+            actor=actor,
+            **subject,
+        )
 
     async def _reply(self, conversation_id: str, agent: AgentDefinition, message_id: str) -> None:
         actor = f"agent:{agent.id}"
