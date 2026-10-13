@@ -244,6 +244,50 @@ test('the vault panel shows counts and the background queue', async () => {
   await page.screenshot({ path: 'test-results/vault-panel.png' });
 });
 
+test('the list scrolls smoothly through hundreds of items', async () => {
+  await page.evaluate(async () => {
+    const config = await window.universe!.getConfig();
+    for (let i = 0; i < 300; i++) {
+      await fetch(`${config.coreUrl}/api/v1/capture`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `Harbor log entry ${i}` }),
+      });
+    }
+  });
+  await queueDrained();
+  await page.getByTestId('search-input').fill('');
+  await page.getByTestId('view-list').click();
+  await expect(page.getByTestId('items-count')).toHaveText('304 items'); // the total, not the loaded page
+
+  // Scroll one step per frame from top to bottom and record how long each frame took.
+  const gaps = await page.evaluate(async () => {
+    const list = document.querySelector<HTMLElement>('[data-testid="items-list"]')!;
+    const out: number[] = [];
+    let last = performance.now();
+    await new Promise<void>((done) => {
+      const tick = (now: number) => {
+        out.push(now - last);
+        last = now;
+        list.scrollTop += 60;
+        const atEnd = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+        if ((atEnd && out.length > 30) || out.length > 400) done();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    return out.slice(2);
+  });
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)]!;
+  const p95 = sorted[Math.floor(sorted.length * 0.95)]!;
+  console.log(`list scroll: ${gaps.length} frames, median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms`);
+  // Every page loaded while scrolling, without jumping back to the top.
+  await expect(page.getByTestId('item-row').last()).toBeVisible();
+  // Software rendering in CI: hold 30 fps at the median (the 3D scene must not render behind the list).
+  expect(median).toBeLessThan(34);
+});
+
 test('nothing leaves the machine: no requests to non-loopback hosts', async () => {
   await app.close(); // flushes the net log
   expect(existsSync(netLog)).toBe(true);

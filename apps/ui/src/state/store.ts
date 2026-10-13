@@ -1,11 +1,13 @@
 import type { AgentInfo, BridgeConfig, CoreEvent, DesktopState, ItemType } from '@universe/shared-types';
 import { create } from 'zustand';
 import type { ItemSort } from '../lib/api';
+import { refreshItemQueries } from '../lib/queryClient';
 import type { ConnectionState } from '../lib/socket';
 import {
   applyAgentEvent,
   applyChatEvent,
   describeEvent,
+  pushActivity,
   type ActivityItem,
   type AgentActivity,
   type ChatMessage,
@@ -43,11 +45,11 @@ interface UniverseState {
   typeFilter: ItemType[];
   sort: ItemSort;
   showTrash: boolean;
-  /** Bumped (throttled) by item and pipeline events so item lists refetch. */
-  itemsVersion: number;
   searchFocusTick: number;
   /** Bumped when the keyboard should move from the search field to the results. */
   resultsFocusTick: number;
+  /** Smooth mode: no backdrop blur and a 1× pixel ratio, on a machine that was dropping frames. */
+  smooth: boolean;
 
   setConfig(config: BridgeConfig): void;
   setDesktop(desktop: DesktopState): void;
@@ -72,6 +74,7 @@ interface UniverseState {
   refreshItems(): void;
   focusSearch(): void;
   focusResults(): void;
+  setSmooth(smooth: boolean): void;
 }
 
 const ACTIVITY_LIMIT = 40;
@@ -83,14 +86,12 @@ const REFRESH_TYPES = new Set([
 ]);
 
 function activityFrom(events: CoreEvent[]): ActivityItem[] {
-  return events
-    .map((e) => {
-      const line = describeEvent(e);
-      return line ? { id: e.id, ts: e.ts, ...line } : null;
-    })
-    .filter((x): x is ActivityItem => x !== null)
-    .reverse()
-    .slice(0, ACTIVITY_LIMIT);
+  let list: ActivityItem[] = [];
+  for (const e of events) {
+    const line = describeEvent(e);
+    if (line) list = pushActivity(list, { id: e.id, ts: e.ts, ...line }, ACTIVITY_LIMIT);
+  }
+  return list;
 }
 
 export const useUniverse = create<UniverseState>()((set, get) => ({
@@ -116,9 +117,9 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   typeFilter: [],
   sort: 'added',
   showTrash: false,
-  itemsVersion: 0,
   searchFocusTick: 0,
   resultsFocusTick: 0,
+  smooth: false,
 
   setConfig: (config) => set({ config }),
   setDesktop: (desktop) => set({ desktop }),
@@ -139,7 +140,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
         messages: chat.messages,
         agentActivity: applyAgentEvent(s.agentActivity, event),
         activity: line
-          ? [{ id: event.id, ts: event.ts, ...line }, ...s.activity].slice(0, ACTIVITY_LIMIT)
+          ? pushActivity(s.activity, { id: event.id, ts: event.ts, ...line }, ACTIVITY_LIMIT)
           : s.activity,
         dataVersion: REFRESH_TYPES.has(event.type) ? s.dataVersion + 1 : s.dataVersion,
         selectedItemId:
@@ -173,8 +174,14 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   setTypeFilter: (typeFilter) => set({ typeFilter }),
   setSort: (sort) => set({ sort }),
   setShowTrash: (showTrash) => set({ showTrash, selectedItemId: null }),
-  refreshItems: () => set((s) => ({ itemsVersion: s.itemsVersion + 1 })),
+  refreshItems: () => void refreshItemQueries(),
   focusSearch: () => set((s) => ({ searchFocusTick: s.searchFocusTick + 1 })),
+  setSmooth: (smooth) => {
+    document.documentElement.dataset.smooth = String(smooth);
+    set({ smooth });
+    if (smooth)
+      get().addNotice('info', 'Smooth mode on: this display was dropping frames, so the glass blur is off');
+  },
   focusResults: () =>
     set((s) => ({ resultsFocusTick: s.resultsFocusTick + 1, view: s.view === 'universe' ? 'list' : s.view })),
 }));

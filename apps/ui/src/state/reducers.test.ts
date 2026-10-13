@@ -1,6 +1,13 @@
 import type { CoreEvent } from '@universe/shared-types';
 import { describe, expect, it } from 'vitest';
-import { applyAgentEvent, applyChatEvent, describeEvent, type ChatState } from './reducers';
+import {
+  applyAgentEvent,
+  applyChatEvent,
+  describeEvent,
+  pushActivity,
+  type ActivityItem,
+  type ChatState,
+} from './reducers';
 
 let seq = 0;
 function ev(type: string, payload: Record<string, unknown>, actor = 'agent:core'): CoreEvent {
@@ -144,6 +151,7 @@ describe('activity lines', () => {
     expect(describeEvent(ev('item.created', { title: 'Budget 2026.xlsx' }))).toEqual({
       tone: 'good',
       text: 'Added Budget 2026.xlsx',
+      group: 'item.created', // bursts merge into "Added N items"
     });
     // Trashing in the app already adds its own line; only the watcher's trashing is described.
     expect(describeEvent(ev('item.trashed', { item_id: 'i1' }))).toBeNull();
@@ -163,5 +171,33 @@ describe('activity lines', () => {
       'Background work paused: on battery',
     );
     expect(describeEvent(ev('pipeline.stage.completed', { stage: 'embed' }))).toBeNull();
+  });
+});
+
+describe('activity bursts', () => {
+  const added = (id: string, ts: string): ActivityItem => ({
+    id,
+    ts,
+    tone: 'good',
+    text: `Added ${id}`,
+    group: 'item.created',
+  });
+
+  it('merges a burst of added items into one line', () => {
+    let list: ActivityItem[] = [{ id: 'x', ts: '2026-10-13T10:00:00Z', tone: 'info', text: 'Core started' }];
+    list = pushActivity(list, added('a', '2026-10-13T10:00:01Z'), 40);
+    list = pushActivity(list, added('b', '2026-10-13T10:00:02Z'), 40);
+    list = pushActivity(list, added('c', '2026-10-13T10:00:09Z'), 40);
+    expect(list.map((i) => i.text)).toEqual(['Added 3 items', 'Core started']);
+    expect(list[0]!.id).toBe('a'); // a stable key: the line updates in place instead of re-mounting
+  });
+
+  it('starts a new line after a pause or another event', () => {
+    let list = pushActivity([], added('a', '2026-10-13T10:00:00Z'), 40);
+    list = pushActivity(list, added('b', '2026-10-13T10:01:00Z'), 40);
+    expect(list.map((i) => i.text)).toEqual(['Added b', 'Added a']);
+    list = pushActivity(list, { id: 'r', ts: '2026-10-13T10:01:01Z', tone: 'info', text: 'Restored' }, 40);
+    list = pushActivity(list, added('c', '2026-10-13T10:01:02Z'), 40);
+    expect(list.map((i) => i.text)).toEqual(['Added c', 'Restored', 'Added b', 'Added a']);
   });
 });

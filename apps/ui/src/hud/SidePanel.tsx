@@ -33,7 +33,7 @@ export function SidePanel() {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="flex-1 overflow-y-auto p-4">
+      <div role="tabpanel" key={panel} className="fade-enter flex-1 overflow-y-auto p-4">
         {panel === 'context' ? <ContextPanel /> : panel === 'vault' ? <VaultPanel /> : <SystemPanel />}
       </div>
     </aside>

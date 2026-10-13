@@ -33,6 +33,30 @@ export interface ActivityItem {
   ts: string;
   tone: 'info' | 'good' | 'warn' | 'bad';
   text: string;
+  /** Lines of the same group arriving close together merge into one ("Added 37 items"). */
+  group?: string;
+  count?: number;
+}
+
+const GROUP_WINDOW_MS = 10_000;
+const GROUP_TEXT: Record<string, (count: number) => string> = {
+  'item.created': (n) => `Added ${n} items`,
+};
+
+/** Put a new line at the top, merging it into the top line when both belong to the same burst. */
+export function pushActivity(list: ActivityItem[], next: ActivityItem, limit: number): ActivityItem[] {
+  const top = list[0];
+  const text = next.group ? GROUP_TEXT[next.group] : undefined;
+  if (
+    text &&
+    top !== undefined &&
+    top.group === next.group &&
+    Math.abs(Date.parse(next.ts) - Date.parse(top.ts)) <= GROUP_WINDOW_MS
+  ) {
+    const count = (top.count ?? 1) + 1;
+    return [{ ...top, ts: next.ts, count, text: text(count) }, ...list.slice(1)];
+  }
+  return [next, ...list].slice(0, limit);
 }
 
 type Payload = Record<string, unknown>;
@@ -205,7 +229,7 @@ export function describeEvent(event: CoreEvent): Omit<ActivityItem, 'id' | 'ts'>
       return { tone: 'info', text: p.model ? `${role} set to ${str(p.model)}` : `${role} cleared` };
     }
     case 'item.created':
-      return { tone: 'good', text: `Added ${str(p.title) || 'an item'}` };
+      return { tone: 'good', text: `Added ${str(p.title) || 'an item'}`, group: 'item.created' };
     case 'item.trashed':
       // Trashing from the app already shows a line; this is the vault noticing a file was deleted.
       return p.reason ? { tone: 'warn', text: `Moved to the trash: ${str(p.reason)}` } : null;

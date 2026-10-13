@@ -178,7 +178,7 @@ function GridView({ items, onOpen, onNearEnd }: ViewProps) {
                 aria-selected={selected === item.id}
                 onClick={() => select(item.id)}
                 onDoubleClick={() => onOpen(item)}
-                className={`flex w-[164px] shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-colors duration-150 ${
+                className={`flex w-[164px] shrink-0 flex-col overflow-hidden rounded-lg border text-left transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 motion-reduce:transform-none ${
                   selected === item.id
                     ? 'border-accent/70 bg-space-3/70'
                     : 'border-hairline-1 hover:border-hairline-2'
@@ -236,7 +236,7 @@ function ListView({ items, hits, onOpen, onNearEnd }: ViewProps & { hits: Map<st
               tabIndex={-1}
               onClick={() => select(item.id)}
               onDoubleClick={() => onOpen(item)}
-              className={`absolute inset-x-0 flex cursor-default items-center gap-3 border-b border-hairline-1/60 px-4 ${
+              className={`absolute inset-x-0 flex cursor-default items-center gap-3 border-b border-hairline-1/60 px-4 transition-colors duration-100 ${
                 selected === item.id ? 'bg-space-3/70' : 'hover:bg-space-2/60'
               }`}
               style={{ top: row.start, height: ROW_H }}
@@ -294,7 +294,7 @@ export function ItemsView() {
   const trash = useUniverse((s) => s.showTrash);
   const selected = useUniverse((s) => s.selectedItemId);
   const select = useUniverse((s) => s.selectItem);
-  const { items, searching, search, listing } = useItemsView();
+  const { items, total, searching, search, listing } = useItemsView();
   const section = useRef<HTMLElement>(null);
   const resultsFocusTick = useUniverse((s) => s.resultsFocusTick);
   const firstId = items[0]?.id;
@@ -356,9 +356,9 @@ export function ItemsView() {
       tabIndex={0}
       onKeyDown={onKeyDown}
       data-testid="items-view"
-      className="glass pointer-events-auto absolute top-16 right-[24rem] bottom-28 left-[17rem] flex flex-col overflow-hidden focus:outline-none"
+      className="glass-solid hud-enter pointer-events-auto absolute top-16 right-[24rem] bottom-28 left-[17rem] flex flex-col overflow-hidden focus:outline-none"
     >
-      <Toolbar count={items.length} searching={searching} semantic={semantic} />
+      <Toolbar count={total} searching={searching} semantic={semantic} />
       {searching && search.data && search.data.parsed.chips.length > 0 && (
         <div className="flex gap-1.5 px-4 pt-2 text-[11px] text-ink-3">
           Understood:

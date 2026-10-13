@@ -1706,11 +1706,23 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
           }
         },
         "required": [
           "items",
-          "next_cursor"
+          "next_cursor",
+          "total"
         ],
         "title": "ItemPage",
         "type": "object"

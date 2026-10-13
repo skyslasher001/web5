@@ -92,6 +92,7 @@ function CommandBar() {
   const [cursor, setCursor] = useState({ q: '', index: 0, picked: false });
   const [status, setStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(0); // bumps on every show so the bar animates in each time
   const searchInput = useRef<HTMLInputElement>(null);
   const noteInput = useRef<HTMLTextAreaElement>(null);
 
@@ -110,6 +111,7 @@ function CommandBar() {
 
   useEffect(() => {
     const focus = (next: Mode) => {
+      setShown((n) => n + 1);
       setMode(next);
       setStatus(null);
       setBusy(false);
@@ -235,7 +237,8 @@ function CommandBar() {
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-xl border border-hairline-2 bg-space-1 text-ink-1"
+      key={shown}
+      className="hud-enter flex h-full flex-col overflow-hidden rounded-xl border border-hairline-2 bg-space-1 text-ink-1"
       onKeyDown={onKeyDown}
       data-testid="command-bar"
     >

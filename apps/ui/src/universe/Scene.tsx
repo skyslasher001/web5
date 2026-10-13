@@ -119,9 +119,14 @@ function Galaxy({ project, index, total }: { project: Project; index: number; to
     Math.sin(angle) * 9,
     -Math.sin(angle) * 4,
   ];
+  const labelEl = useRef<HTMLElement | null>(null);
   useFrame(({ camera, size }, delta) => {
     if (group.current && !STILL) group.current.rotation.z += delta * 0.03;
-    const label = layer?.current?.querySelector<HTMLElement>(`[data-label="${project.id}"]`);
+    // Look the label up once, not every frame (it's re-found if the overlay re-renders it).
+    if (!labelEl.current?.isConnected) {
+      labelEl.current = layer?.current?.querySelector<HTMLElement>(`[data-label="${project.id}"]`) ?? null;
+    }
+    const label = labelEl.current;
     if (label && anchor.current) {
       anchor.current.getWorldPosition(scratch).project(camera);
       const x = ((scratch.x + 1) / 2) * size.width;
@@ -190,12 +195,17 @@ function WebGLScene() {
   const list = projects.data ?? [];
   const labels = useRef<HTMLDivElement>(null);
   const selected = useUniverse((s) => s.selectedProjectId);
+  // Behind the grid and list the universe is a still backdrop: render on demand instead of 60 times a second,
+  // which frees the GPU and main thread for scrolling.
+  const live = useUniverse((s) => s.view === 'universe');
+  const smooth = useUniverse((s) => s.smooth);
   return (
     <LabelLayer.Provider value={labels}>
       <Canvas
         className="absolute inset-0"
+        frameloop={live ? 'always' : 'demand'}
         camera={{ position: [0, 8, 62], fov: 50, near: 0.1, far: 2000 }}
-        dpr={[1, 2]}
+        dpr={smooth ? 1 : [1, 1.5]} // past 1.5× the stars look the same and cost up to 1.8× the pixels
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         onPointerMissed={() => select(null)}
         aria-label="Universe view"

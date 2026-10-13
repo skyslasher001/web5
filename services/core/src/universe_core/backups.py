@@ -249,12 +249,16 @@ class BackupService:
         config = self.config(conn)
         if not config.get("target") or not config.get("enabled") or governor.state(conn).paused:
             return False
-        if now.hour < int(config.get("schedule_hour", 3)):
+        hour = int(config.get("schedule_hour", 3))
+        if now.hour < hour:
             return False
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)  # local midnight, today
-        since = midnight.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        # Today's slot is covered by any backup since the scheduled hour, manual ones included: a backup you
+        # just ran by hand must not be followed by a scheduled one (it also blocked verify and restore).
+        slot = now.replace(hour=hour, minute=0, second=0, microsecond=0)  # local time, today
+        since = slot.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         done = conn.execute(
-            "SELECT 1 FROM backups WHERE kind = 'scheduled' AND status IN ('running', 'succeeded') AND started_at >= ?",
+            "SELECT 1 FROM backups WHERE kind IN ('scheduled', 'manual') AND status IN ('running', 'succeeded')"
+            " AND started_at >= ?",
             (since,),
         ).fetchone()
         recent_failure = conn.execute(

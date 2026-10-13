@@ -15,6 +15,21 @@
   border-radius: var(--radius-lg);
 }
 
+/* For large surfaces whose content scrolls (the grid and list): a backdrop blur is recomputed on every scroll
+   frame (measured: 60 → 20 fps under software rendering), and the universe behind them is still anyway. */
+@utility glass-solid {
+  background: color-mix(in srgb, var(--color-space-1) 97%, transparent);
+  border: 1px solid var(--color-hairline-1);
+  border-radius: var(--radius-lg);
+}
+
+/* Smooth mode (lib/frameBudget.ts): drop the blur everywhere when frames run long. */
+:root[data-smooth='true'] .glass,
+:root[data-smooth='true'] .glass-strong {
+  backdrop-filter: none;
+  background: color-mix(in srgb, var(--color-space-1) 92%, transparent);
+}
+
 @utility drag {
   -webkit-app-region: drag;
 }
@@ -125,5 +140,43 @@
   .orb-spin,
   .caret {
     animation: none;
+  }
+}
+
+/* Short enter transitions so views, panels and results settle in instead of popping. */
+@keyframes hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.hud-enter {
+  animation: hud-in 180ms var(--ease-hud) both;
+}
+.fade-enter {
+  animation: fade-in 140ms ease-out both;
+}
+/* Thumbnails fade in once decoded (ItemVisual toggles data-loaded). */
+.thumb {
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+.thumb[data-loaded='true'] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-enter,
+  .fade-enter,
+  .orb-breathe {
+    animation: none; /* loading spinners keep turning: they carry meaning */
+  }
+  .thumb {
+    transition: none;
   }
 }

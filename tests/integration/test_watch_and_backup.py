@@ -4,6 +4,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable, Iterator
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -220,7 +221,10 @@ def test_backup_restore_and_verify_with_restic(rig: Rig, tmp_path: Path, memory_
     password = "correct horse battery staple"
     short = c.put("/api/v1/backups/config", json={"target": str(repo), "password": "short"}, headers=AUTH)
     assert short.status_code == 422  # a real password, please
-    configured = c.put("/api/v1/backups/config", json={"target": str(repo), "password": password}, headers=AUTH)
+    # Scheduled at midnight, so today's slot has always started: the scheduler is live during the whole test.
+    configured = c.put(
+        "/api/v1/backups/config", json={"target": str(repo), "password": password, "schedule_hour": 0}, headers=AUTH
+    )
     assert configured.status_code == 200, configured.text
     assert configured.json()["configured"] and configured.json()["password_stored"]
     assert password in memory_keyring.store.values()
@@ -233,6 +237,12 @@ def test_backup_restore_and_verify_with_restic(rig: Rig, tmp_path: Path, memory_
     assert done["last_success"]["restic_snapshot_id"]
     snapshots = c.get("/api/v1/backups/snapshots", headers=AUTH).json()
     assert len(snapshots) == 1
+    # Regression: the backup you just ran covers today's slot. The scheduler used to count only scheduled
+    # backups, start another one right away, and make verify below find a backup still running.
+    service = c.app.state.ctx.backups  # type: ignore[attr-defined]
+    now = datetime.now().astimezone()
+    assert not service._due(rig.ctx.conn, now)
+    assert service._due(rig.ctx.conn, (now + timedelta(days=1)).replace(hour=0, minute=30))
 
     assert c.post("/api/v1/backups/verify", headers=AUTH).json()["started"]
     wait_for(lambda: c.get("/api/v1/backups", headers=AUTH).json()[0]["verified_at"], timeout=60)

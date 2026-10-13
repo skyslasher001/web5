@@ -1447,6 +1447,8 @@ export interface components {
             items: components["schemas"]["ItemSummary"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total: number | null;
         };
         /** ItemPatch */
         ItemPatch: {

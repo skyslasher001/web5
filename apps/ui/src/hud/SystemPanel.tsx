@@ -324,6 +324,29 @@ function HardwareAndModels() {
   );
 }
 
+function Display() {
+  const smooth = useUniverse((s) => s.smooth);
+  const setSmooth = useUniverse((s) => s.setSmooth);
+  return (
+    <label className="flex items-start gap-2 text-xs text-ink-2">
+      <input
+        type="checkbox"
+        checked={smooth}
+        onChange={(e) => setSmooth(e.target.checked)}
+        className="mt-0.5 accent-[var(--color-accent)]"
+        data-testid="smooth-mode"
+      />
+      <span>
+        Smooth mode
+        <span className="block text-[11px] leading-relaxed text-ink-3">
+          Turns off the glass blur and renders the universe at 1× for steadier frames. It switches on by
+          itself when this display drops frames.
+        </span>
+      </span>
+    </label>
+  );
+}
+
 export function SystemPanel() {
   const vitals = useVitals(true);
   const v = vitals.data;
@@ -353,6 +376,9 @@ export function SystemPanel() {
       </Section>
       <Section title="Search models">
         <SearchModels />
+      </Section>
+      <Section title="Display">
+        <Display />
       </Section>
       <HardwareAndModels />
     </div>

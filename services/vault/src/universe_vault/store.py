@@ -376,6 +376,9 @@ def list_items(
 ) -> ItemPage:
     column, direction = SORTS.get(sort, SORTS["added"])
     where, params = filter_sql(filters)
+    total = None
+    if not cursor:
+        total = conn.execute(f"SELECT COUNT(*) FROM items i WHERE {where}", params).fetchone()[0]  # noqa: S608
     if cursor:
         value, last_id = _decode_cursor(cursor)
         op = "<" if direction == "DESC" else ">"
@@ -390,4 +393,4 @@ def list_items(
     more = len(rows) > limit
     rows = rows[:limit]
     next_cursor = _encode_cursor(rows[-1]["sort_value"], rows[-1]["id"]) if more and rows else None
-    return ItemPage(items=summaries(conn, vault, rows), next_cursor=next_cursor)
+    return ItemPage(items=summaries(conn, vault, rows), next_cursor=next_cursor, total=total)

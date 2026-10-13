@@ -264,3 +264,19 @@ def test_embedding_and_vision_model_assignments(api: Api, fake_ollama: FakeOllam
     )
     cleared = api.client.delete("/api/v1/models/assignments/vision", headers=AUTH).json()
     assert "vision" not in cleared["assignments"]
+
+
+def test_item_pages_walk_everything_once_and_count_on_the_first_page(api: Api) -> None:
+    for i in range(5):
+        api.post("/capture", {"text": f"Paging note {i}"}, 201)
+    first = api.get("/items", params={"limit": 2})
+    assert first["total"] == 5 and len(first["items"]) == 2 and first["next_cursor"]
+    seen = [i["id"] for i in first["items"]]
+    cursor = first["next_cursor"]
+    while cursor:
+        page = api.get("/items", params={"limit": 2, "cursor": cursor})
+        assert page["total"] is None  # later pages skip the count
+        seen += [i["id"] for i in page["items"]]
+        cursor = page["next_cursor"]
+    assert len(seen) == len(set(seen)) == 5
+    assert api.get("/items", params={"type": "pdf"})["total"] == 0  # the count follows the filters

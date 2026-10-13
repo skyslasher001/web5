@@ -18,7 +18,20 @@ export function TypeGlyph({ item, size = 18 }: { item: Pick<ItemSummary, 'type'>
 export function ItemVisual({ item, className = '' }: { item: ItemSummary; className?: string }) {
   const url = useThumbnail(item.id, item.has_thumbnail);
   if (url) {
-    return <img src={url} alt="" draggable={false} className={`object-cover ${className}`} />;
+    return (
+      <img
+        src={url}
+        alt=""
+        draggable={false}
+        decoding="async"
+        // Fades in once decoded; a cached image is already complete when it mounts.
+        ref={(img) => {
+          if (img?.complete) img.dataset.loaded = 'true';
+        }}
+        onLoad={(e) => (e.currentTarget.dataset.loaded = 'true')}
+        className={`thumb object-cover ${className}`}
+      />
+    );
   }
   const hue = tokens.color[ITEM_TYPES[item.type].hue];
   return (

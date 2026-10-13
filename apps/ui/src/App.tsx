@@ -1,6 +1,7 @@
 import { LoaderCircle, Orbit } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { CoreProvider } from './lib/core';
+import { useFrameBudget } from './lib/frameBudget';
 import { useHotkeys } from './lib/hotkeys';
 import { useUniverse } from './state/store';
 import { ActivityRibbon } from './hud/ActivityRibbon';
@@ -42,6 +43,7 @@ function Booting({ error }: { error: string | null }) {
 
 function Hud() {
   useHotkeys();
+  useFrameBudget();
   const zen = useUniverse((s) => s.zen);
   const view = useUniverse((s) => s.view);
   return (

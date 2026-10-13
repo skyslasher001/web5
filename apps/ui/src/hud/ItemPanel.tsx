@@ -183,7 +183,7 @@ export function ItemPanel({ id }: { id: string }) {
   const style = ITEM_TYPES[data.type];
   const trashed = !!data.trashed_at;
   return (
-    <div className="space-y-5" data-testid="item-panel">
+    <div className="fade-enter space-y-5" data-testid="item-panel" key={id}>
       <div>
         <ItemVisual item={data} className="h-40 w-full rounded-lg border border-hairline-1 bg-space-1" />
         <p className="mt-3 flex items-center gap-1.5 text-xs" style={{ color: tokens.color[style.hue] }}>

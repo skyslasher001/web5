@@ -72,6 +72,7 @@ class Item(ItemSummary):
 class ItemPage(ApiModel):
     items: list[ItemSummary]
     next_cursor: str | None = None
+    total: int | None = None  # how many match the filters; on the first page only (later pages skip the count)
 
 
 class ItemText(ApiModel):

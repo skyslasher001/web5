@@ -7,10 +7,9 @@ import { useApi } from './api-context';
 export function useProjects() {
   const api = useApi();
   const version = useUniverse((s) => s.dataVersion);
-  const items = useUniverse((s) => s.itemsVersion); // item counts per galaxy
   const online = useUniverse((s) => s.connection === 'online');
   return useQuery({
-    queryKey: ['projects', version, items],
+    queryKey: ['projects', version],
     queryFn: api.projects,
     enabled: online,
     staleTime: 60_000,
@@ -86,16 +85,15 @@ export function useItemsView() {
   const project = useUniverse((s) => s.selectedProjectId);
   const sort = useUniverse((s) => s.sort);
   const trashed = useUniverse((s) => s.showTrash);
-  const version = useUniverse((s) => s.itemsVersion);
 
   const search = useQuery({
-    queryKey: ['search', query, types, project, version],
+    queryKey: ['search', query, types, project],
     queryFn: () => api.search({ q: query, types, project, limit: 100 }),
     enabled: online && query.length > 0 && !trashed,
     placeholderData: keepPreviousData,
   });
   const listing = useInfiniteQuery({
-    queryKey: ['items', types, project, sort, trashed, version],
+    queryKey: ['items', types, project, sort, trashed],
     queryFn: ({ pageParam }) => api.items({ types, project, sort, trashed, cursor: pageParam, limit: 200 }),
     initialPageParam: null as string | null,
     getNextPageParam: (last: ItemPage) => last.next_cursor ?? undefined,
@@ -103,21 +101,21 @@ export function useItemsView() {
     placeholderData: keepPreviousData,
   });
   const searching = query.length > 0 && !trashed;
+  const listed = listing.data?.pages.flatMap((p) => p.items) ?? [];
   return {
     searching,
     search,
     listing,
-    items: searching
-      ? (search.data?.hits.map((h) => h.item) ?? [])
-      : (listing.data?.pages.flatMap((p) => p.items) ?? []),
+    /** Everything that matches (the list loads it page by page as you scroll). */
+    total: searching ? (search.data?.hits.length ?? 0) : (listing.data?.pages[0]?.total ?? listed.length),
+    items: searching ? (search.data?.hits.map((h) => h.item) ?? []) : listed,
   };
 }
 
 export function useItem(id: string | null) {
   const api = useApi();
-  const version = useUniverse((s) => s.itemsVersion);
   return useQuery({
-    queryKey: ['item', id, version],
+    queryKey: ['item', id],
     queryFn: () => api.item(id as string),
     enabled: !!id,
     placeholderData: keepPreviousData,
@@ -132,10 +130,9 @@ export function useQueueStats() {
 
 export function useVaultInfo(enabled: boolean) {
   const api = useApi();
-  const version = useUniverse((s) => s.itemsVersion);
   const online = useUniverse((s) => s.connection === 'online');
   return useQuery({
-    queryKey: ['vault-info', version],
+    queryKey: ['vault-info'],
     queryFn: api.vaultInfo,
     enabled: enabled && online,
     placeholderData: keepPreviousData,
