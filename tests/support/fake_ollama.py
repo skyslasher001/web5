@@ -25,7 +25,7 @@ from typing import cast
 CHAT_MODEL = "fake-chat:latest"
 EMBED_MODEL = "fake-embed:latest"
 VISION_MODEL = "fake-vision:latest"
-EMBED_DIM = 64
+EMBED_DIM = 1024  # like real embedders (768–4096); a small space makes unrelated words collide
 CAPTION = "A wooden dock on a calm lake at sunset"
 
 CONCEPTS = {

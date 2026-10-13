@@ -9,7 +9,7 @@ from typing import Any
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 THUMB_SIZE = 512
-OCR_MAX_SIDE = 2048
+OCR_MAX_SIDE = 1600  # ~190 dpi for a letter page: enough to read, and detection cost grows with pixels
 OCR_MIN_SIDE = 32
 OCR_MIN_SCORE = 0.5
 
@@ -58,7 +58,9 @@ class OcrEngine:
                 pixels = np.asarray(img)[:, :, ::-1].copy()  # RGB → BGR, as OpenCV expects
         except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
             return ""
-        result = self._get()(pixels)
+        # No orientation classifier: EXIF rotation is already applied and screenshots and scans are upright;
+        # it cost ~40% of OCR time for nothing (measured 2026-10-13).
+        result = self._get()(pixels, use_cls=False)
         texts = getattr(result, "txts", None) or ()
         scores = getattr(result, "scores", None) or ()
         return "\n".join(t for t, s in zip(texts, scores, strict=False) if t and s >= OCR_MIN_SCORE)
