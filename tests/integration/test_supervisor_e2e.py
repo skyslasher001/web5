@@ -101,7 +101,8 @@ def test_kill_core_and_watch_it_restart(tmp_path: Path) -> None:
         )
 
         assert http("POST", f"{control}/services/core/kill", control_token)["ok"]
-        second = wait(lambda: (s := core_state()) and s["pid"] != first["pid"] and s)
+        # A *live* new Core: right after the kill the status can still say healthy with pid None.
+        second = wait(lambda: (s := core_state()) and s["pid"] not in (None, first["pid"]) and s)
         assert second["restarts"] == 1
 
         events = http("GET", f"{core}/events?type=service.*", session_token)["events"]

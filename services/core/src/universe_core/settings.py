@@ -37,6 +37,7 @@ class CoreSettings:
     start_reason: str = "boot"  # boot|crash|health|manual|boot-retry|safe-mode (set by the supervisor)
     restart_count: int = 0
     last_exit: str = ""
+    workers: int = 1  # pipeline worker processes (0 = none; tests drain the queue in-process)
 
     @property
     def log_dir(self) -> Path:
@@ -63,6 +64,12 @@ class CoreSettings:
         ollama_url = env.get("UNIVERSE_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
         if not is_loopback(urlparse(ollama_url).hostname or ""):
             raise SettingsError("UNIVERSE_OLLAMA_URL must point at a loopback address")
+        try:
+            workers = int(env.get("UNIVERSE_WORKERS", "1"))
+        except ValueError as exc:
+            raise SettingsError("UNIVERSE_WORKERS must be an integer") from exc
+        if not 0 <= workers <= 8:
+            raise SettingsError("UNIVERSE_WORKERS must be between 0 and 8")
         repo = find_repo_root()
         agents_default = repo / "agents" if repo else Path("agents")
         return cls(
@@ -80,4 +87,5 @@ class CoreSettings:
             start_reason=env.get("UNIVERSE_START_REASON") or "boot",
             restart_count=int(env.get("UNIVERSE_RESTART_COUNT") or 0),
             last_exit=env.get("UNIVERSE_LAST_EXIT") or "",
+            workers=workers,
         )

@@ -28,3 +28,4 @@ Template:
 | [0007](0007-runtime-pins.md) | Runtime pins: Python 3.12, TypeScript 6.0, Node 24 LTS | Accepted |
 | [0008](0008-license-policy.md) | License policy and flagged components | Accepted |
 | [0009](0009-electron-privacy-hardening.md) | Electron privacy hardening: no outbound traffic from Chromium | Accepted |
+| [0010](0010-phase-2-vault-pipeline.md) | Phase 2 vault pipeline: workers under Core, Ollama embeddings, staged model roles | Accepted |

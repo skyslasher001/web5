@@ -5,8 +5,8 @@ import sys
 import uvicorn
 
 from universe_common.log import configure_logging, register_secret
+from universe_common.orphan import watch_parent
 from universe_core.app import create_app
-from universe_core.orphan import watch_parent
 from universe_core.settings import CoreSettings, SettingsError
 
 

@@ -17,6 +17,9 @@ from universe_core.chat import ChatError, ChatUnavailable
 from universe_core.context import CoreContext
 from universe_core.security import LocalGuard, TokenAuth
 from universe_core.settings import CoreSettings
+from universe_core.vault_api import internal as vault_internal
+from universe_core.vault_api import local_api as vault_local_api
+from universe_core.vault_api import router as vault_router
 from universe_core.ws import router as ws_router
 
 log = get_logger(__name__)
@@ -69,6 +72,7 @@ def create_app(settings: CoreSettings) -> FastAPI:
         if settings.safe_mode:
             ctx.bus.publish("safe_mode.entered", {"service": "core", "reason": settings.start_reason})
         warm = asyncio.create_task(ctx.hardware())  # warm the cache for model recommendations
+        await ctx.start_background()
         log.info("core_started", port=settings.port, safe_mode=settings.safe_mode, vault=str(settings.vault_dir))
         try:
             yield
@@ -79,6 +83,9 @@ def create_app(settings: CoreSettings) -> FastAPI:
     app = FastAPI(title="UNIVERSE Core", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None)
     app.include_router(public)
     app.include_router(router, dependencies=[Depends(TokenAuth(settings.session_token))])
+    app.include_router(vault_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+    app.include_router(vault_local_api)  # session token or a scoped local API key, checked per endpoint
+    app.include_router(vault_internal)  # Core's own workers (per-boot internal token)
     app.include_router(ws_router)
 
     @app.exception_handler(ChatError)

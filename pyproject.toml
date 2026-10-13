@@ -9,6 +9,7 @@ dependencies = [
     "universe-agents",
     "universe-models",
     "universe-supervisor",
+    "universe-vault",
 ]
 
 [dependency-groups]
@@ -33,6 +34,7 @@ universe-core = { workspace = true }
 universe-agents = { workspace = true }
 universe-models = { workspace = true }
 universe-supervisor = { workspace = true }
+universe-vault = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

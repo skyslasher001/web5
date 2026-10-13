@@ -39,6 +39,7 @@ def make_settings(tmp_path: Path, fake_ollama: FakeOllama) -> Callable[..., Core
             "agents_dir": REPO / "agents",
             "ollama_url": fake_ollama.url,
             "log_console": False,
+            "workers": 0,  # API tests drain the queue in-process; worker processes have their own tests
         }
         values.update(overrides)
         return CoreSettings(**values)  # type: ignore[arg-type]

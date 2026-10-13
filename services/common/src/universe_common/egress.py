@@ -74,3 +74,24 @@ class EgressGate:
             # Loopback clients must never be routed through a system proxy.
             trust_env=not local_only,
         )
+
+    def client(
+        self,
+        *,
+        purpose: str,
+        local_only: bool = False,
+        actor: str = "system",
+        timeout: float | httpx.Timeout = 30.0,
+        base_url: str = "",
+    ) -> httpx.Client:
+        """The synchronous twin of `async_client`, for worker processes."""
+
+        def on_request(request: httpx.Request) -> None:
+            self.check(request.url, purpose=purpose, local_only=local_only, actor=actor)
+
+        return httpx.Client(
+            base_url=base_url,
+            timeout=timeout,
+            event_hooks={"request": [on_request]},
+            trust_env=not local_only,
+        )

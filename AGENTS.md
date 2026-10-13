@@ -46,7 +46,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 
 ## Layout
 
-- `services/core` — FastAPI app (`app.py`), REST (`api.py`, every handler `async def`; a test enforces it), WebSocket hub (`ws.py`), event bus + catalog (`events.py`), chat (`chat.py`), parent watch (`orphan.py`), migrations (`migrations/<db>/NNNN_name.{up,down}.sql`, never edit an applied one).
+- `services/core` — FastAPI app (`app.py`), REST (`api.py`, every handler `async def`; a test enforces it), WebSocket hub (`ws.py`), event bus + catalog (`events.py`), chat (`chat.py`), migrations (`migrations/<db>/NNNN_name.{up,down}.sql`, never edit an applied one).
 - `services/agents` — agent YAML schema (`registry.py`), streaming provider, model router.
 - `services/models` — hardware detection, loadouts (`loadouts.yaml`), Ollama client.
 - `services/common` — config helpers, UUIDv7, logging, error capture, egress gate, SQLite helpers, `ApiModel` (base class for API models: fields the server always sends become required in the generated types).

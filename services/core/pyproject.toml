@@ -7,6 +7,8 @@ dependencies = [
     "universe-common",
     "universe-agents",
     "universe-models",
+    "universe-vault",
+    "python-multipart>=0.0.20",
     "fastapi>=0.143",
     "uvicorn>=0.54",
     "websockets>=17.2",
@@ -25,3 +27,4 @@ packages = ["src/universe_core"]
 universe-common = { workspace = true }
 universe-agents = { workspace = true }
 universe-models = { workspace = true }
+universe-vault = { workspace = true }

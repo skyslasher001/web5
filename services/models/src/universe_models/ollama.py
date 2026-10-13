@@ -11,6 +11,7 @@ from universe_common.schema import ApiModel
 
 class InstalledModel(ApiModel):
     name: str
+    digest: str = ""
     size_bytes: int | None = None
     family: str | None = None
     parameter_size: str | None = None
@@ -77,6 +78,7 @@ class OllamaClient:
             models.append(
                 InstalledModel(
                     name=name,
+                    digest=str(raw.get("digest") or ""),
                     size_bytes=raw.get("size"),
                     family=family,
                     parameter_size=details.get("parameter_size"),
@@ -86,3 +88,16 @@ class OllamaClient:
             )
         self._models = (now, models)
         return models
+
+    async def embed(self, model: str, texts: list[str], *, request_timeout_s: float = 10.0) -> list[list[float]]:
+        """Text embeddings via /api/embed (used for search queries; workers embed documents)."""
+        response = await self._http.post(
+            "/api/embed",
+            json={"model": model, "input": texts, "truncate": True, "keep_alive": "5m"},
+            timeout=request_timeout_s,
+        )
+        response.raise_for_status()
+        vectors = response.json().get("embeddings")
+        if not isinstance(vectors, list) or len(vectors) != len(texts):
+            raise httpx.DecodingError("unexpected embedding payload from Ollama")
+        return vectors

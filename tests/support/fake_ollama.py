@@ -1,14 +1,22 @@
 """A protocol-faithful stand-in for Ollama, used by tests and the Electron E2E run.
 
-Speaks the parts of Ollama's API that UNIVERSE uses: /api/version, /api/tags, /api/show and the
-OpenAI-compatible streaming /v1/chat/completions. Replies echo the last user message word by word.
+Speaks the parts of Ollama's API that UNIVERSE uses: /api/version, /api/tags, /api/show, /api/embed,
+/api/chat (non-streaming, for image captions) and the OpenAI-compatible streaming /v1/chat/completions.
+Replies echo the last user message word by word.
 Special inputs: "[[fail]]" → HTTP 500, "[[slow]]" → 200 tokens at 50 ms each (for cancel tests).
+
+Embeddings are deterministic "concept" vectors: words are mapped through a small synonym table, so
+"automobile" lands near "car" and "dusk" near "sunset". That lets tests check meaning-based retrieval
+without a real model (the real-model path is covered by tests/integration/test_real_ollama.py).
 
 Run standalone: python tests/support/fake_ollama.py --port 11500
 """
 
 import argparse
+import hashlib
 import json
+import math
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,6 +24,31 @@ from typing import cast
 
 CHAT_MODEL = "fake-chat:latest"
 EMBED_MODEL = "fake-embed:latest"
+VISION_MODEL = "fake-vision:latest"
+EMBED_DIM = 64
+CAPTION = "A wooden dock on a calm lake at sunset"
+
+CONCEPTS = {
+    "car": "vehicle", "automobile": "vehicle", "truck": "vehicle", "vehicle": "vehicle", "sedan": "vehicle",
+    "sunset": "dusk", "dusk": "dusk", "twilight": "dusk", "evening": "dusk",
+    "lake": "water", "pond": "water", "ocean": "water", "sea": "water", "river": "water",
+    "invoice": "bill", "bill": "bill", "receipt": "bill", "payment": "bill",
+    "dog": "pet", "puppy": "pet", "cat": "pet", "kitten": "pet", "pet": "pet",
+    "song": "music", "melody": "music", "tune": "music", "music": "music", "chorus": "music",
+    "contract": "agreement", "agreement": "agreement", "deal": "agreement",
+    "budget": "finance", "price": "finance", "pricing": "finance", "cost": "finance", "money": "finance",
+    "doctor": "health", "clinic": "health", "medicine": "health", "health": "health",
+}  # fmt: skip
+
+
+def fake_embedding(text: str) -> list[float]:
+    vector = [0.0] * EMBED_DIM
+    for raw in re.findall(r"[a-z0-9]+", text.lower()):
+        word = raw[:-1] if raw.endswith("s") and len(raw) > 3 else raw
+        concept = CONCEPTS.get(word) or word
+        vector[int(hashlib.sha256(concept.encode()).hexdigest(), 16) % EMBED_DIM] += 1.0
+    norm = math.sqrt(sum(v * v for v in vector)) or 1.0
+    return [v / norm for v in vector]
 
 
 class FakeOllama(ThreadingHTTPServer):
@@ -27,6 +60,10 @@ class FakeOllama(ThreadingHTTPServer):
         self.with_models = with_models
         self.chat_requests: list[dict] = []
         self.show_requests = 0
+        self.embed_requests = 0
+        self.caption_requests = 0
+        self.with_vision = False
+        self.embed_status = 200  # set to 500 to make /api/embed fail
         self.capabilities_in_tags = False  # Ollama >= 0.12 lists capabilities in /api/tags
         self.tags_status = 200  # set to 500 to make /api/tags fail while /api/version still answers
 
@@ -80,9 +117,15 @@ class _Handler(BaseHTTPRequestHandler):
                     },
                     {"name": EMBED_MODEL, "size": 100_000, "digest": "bbb", "details": {"family": "nomic-bert"}},
                 ]
+                if self.srv.with_vision:
+                    models.append(
+                        {"name": VISION_MODEL, "size": 2_000_000, "digest": "ccc", "details": {"family": "fake"}}
+                    )
                 if self.srv.capabilities_in_tags:
                     models[0]["capabilities"] = ["completion", "tools"]
                     models[1]["capabilities"] = ["embedding"]
+                    if self.srv.with_vision:
+                        models[2]["capabilities"] = ["completion", "vision"]
             self._json(200, {"models": models})
         else:
             self._json(404, {"error": "not found"})
@@ -91,8 +134,30 @@ class _Handler(BaseHTTPRequestHandler):
         body = self._body()
         if self.path == "/api/show":
             self.srv.show_requests += 1
-            caps = ["embedding"] if body.get("model") == EMBED_MODEL else ["completion"]
+            known = {EMBED_MODEL: ["embedding"], VISION_MODEL: ["completion", "vision"]}
+            caps = known.get(str(body.get("model")), ["completion"])
             self._json(200, {"capabilities": caps})
+            return
+        if self.path == "/api/embed":
+            self.srv.embed_requests += 1
+            if self.srv.embed_status != 200:
+                self._json(self.srv.embed_status, {"error": "simulated embed failure"})
+                return
+            if body.get("model") not in (EMBED_MODEL, "fake-embed"):
+                self._json(404, {"error": f"model '{body.get('model')}' not found"})
+                return
+            inputs = body.get("input")
+            texts = [inputs] if isinstance(inputs, str) else list(inputs or [])
+            self._json(200, {"model": body["model"], "embeddings": [fake_embedding(t) for t in texts]})
+            return
+        if self.path == "/api/chat":
+            self.srv.caption_requests += 1
+            if body.get("model") != VISION_MODEL or not self.srv.with_vision:
+                self._json(404, {"error": f"model '{body.get('model')}' not found"})
+                return
+            self._json(
+                200, {"model": body["model"], "message": {"role": "assistant", "content": CAPTION}, "done": True}
+            )
             return
         if self.path != "/v1/chat/completions":
             self._json(404, {"error": "not found"})

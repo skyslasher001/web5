@@ -1,4 +1,4 @@
-"""Exit when our parent process is gone, so Core never outlives its supervisor.
+"""Exit when our parent process is gone, so Core never outlives its supervisor (and workers never outlive Core).
 
 Two real cases: on POSIX the supervisor can be SIGKILLed (children in their own session survive), and on
 Windows the venv's python.exe is a launcher that runs the real interpreter as a *child*, so killing the

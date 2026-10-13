@@ -1,19 +1,24 @@
 """The model path against a *real* Ollama server, with a tiny generated model (nothing is downloaded).
 
 Starts a throwaway `ollama serve` on a free port with its own model store, registers the GGUF from
-tests/support/tiny_gguf.py, then checks the client, router, streaming provider and a full Core chat.
+tests/support/tiny_gguf.py (a chat model and an embedding model), then checks the client, router, streaming
+provider, a full Core chat, and the vault pipeline embedding a note plus hybrid search over it.
 Skipped when no `ollama` binary is available; point UNIVERSE_TEST_OLLAMA at one to run it anywhere.
 """
 
+import json
 import os
 import shutil
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from universe_vault.layout import Vault
+from universe_vault.worker import build_context, drain
 
 from tests.conftest import AUTH, free_port
 from tests.support.tiny_gguf import write_tiny_llama
@@ -26,6 +31,7 @@ from universe_models.ollama import OllamaClient
 
 OLLAMA = os.environ.get("UNIVERSE_TEST_OLLAMA") or shutil.which("ollama")
 MODEL = "universe-tiny:latest"
+EMBED_MODEL = "universe-tiny-embed:latest"
 MODELFILE = 'FROM ./tiny.gguf\nTEMPLATE """{{ range .Messages }}{{ .Content }}\n{{ end }}"""\n'
 
 pytestmark = [pytest.mark.slow, pytest.mark.skipif(not OLLAMA, reason="no ollama binary (set UNIVERSE_TEST_OLLAMA)")]
@@ -60,6 +66,17 @@ def real_ollama(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         (home / "Modelfile").write_text(MODELFILE, encoding="utf-8")
         created = subprocess.run(
             [OLLAMA, "create", MODEL, "-f", "Modelfile"],
+            cwd=home,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert created.returncode == 0, created.stdout + created.stderr
+        write_tiny_llama(home / "embed.gguf", embedding=True)
+        (home / "Modelfile.embed").write_text("FROM ./embed.gguf\n", encoding="utf-8")
+        created = subprocess.run(
+            [OLLAMA, "create", EMBED_MODEL, "-f", "Modelfile.embed"],
             cwd=home,
             env=env,
             capture_output=True,
@@ -148,3 +165,27 @@ def test_core_chat_end_to_end_with_a_real_model(real_ollama: str, make_settings:
         assert reply["model"] == MODEL
         assert reply["content"]
         assert reply["first_token_ms"] is not None
+
+
+def test_vault_embeds_with_a_real_embedding_model(
+    real_ollama: str, make_settings: Callable[..., CoreSettings], tmp_path: Path
+) -> None:
+    settings = make_settings(ollama_url=real_ollama)
+    with TestClient(create_app(settings), base_url=f"http://127.0.0.1:{settings.port}") as client:
+        created = client.post("/api/v1/capture", json={"text": "Heron sightings at the pond"}, headers=AUTH)
+        assert created.status_code == 201, created.text
+        item_id = created.json()["item_id"]
+        ctx = build_context(Vault(settings.vault_dir), worker_id="real", ollama_url=real_ollama)
+        try:
+            drain(ctx)
+        finally:
+            if ctx.ollama:
+                ctx.ollama.close()
+            ctx.conn.close()
+        item = client.get(f"/api/v1/items/{item_id}", headers=AUTH).json()
+        embed = next(s for s in item["stages"] if s["stage"] == "embed")
+        assert embed["status"] == "done" and embed["model"] == EMBED_MODEL, embed
+        assert json.loads(embed["detail"])["dim"] == 64
+        result = client.get("/api/v1/search", params={"q": "heron pond"}, headers=AUTH).json()
+        assert result["mode"] == "hybrid" and result["semantic"] is True
+        assert result["hits"][0]["item"]["id"] == item_id

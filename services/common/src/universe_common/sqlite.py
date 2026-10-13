@@ -3,6 +3,7 @@
 import hashlib
 import re
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -102,13 +103,43 @@ def _run_script(conn: sqlite3.Connection, sql: str) -> None:
         raise
 
 
-def migrate_up(conn: sqlite3.Connection, directory: Path, target: int | None = None) -> list[int]:
-    """Apply pending migrations up to `target` (default: latest). Returns the versions applied."""
+def snapshot(conn: sqlite3.Connection, dest: Path) -> Path:
+    """Copy a live database consistently (SQLite online backup API), even while others write to it."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    target = sqlite3.connect(dest)
+    try:
+        conn.backup(target)
+    finally:
+        target.close()
+    return dest
+
+
+def _snapshot_before_migrating(conn: sqlite3.Connection, snapshot_dir: Path, version: int, keep: int = 3) -> Path:
+    row = conn.execute("PRAGMA database_list").fetchone()
+    name = Path(row["file"]).stem if row and row["file"] else "memory"
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    dest = snapshot(conn, snapshot_dir / f"{name}.pre-{version:04d}.{stamp}.db")
+    for old in sorted(snapshot_dir.glob(f"{name}.pre-*.db"))[:-keep]:
+        old.unlink(missing_ok=True)
+    return dest
+
+
+def migrate_up(
+    conn: sqlite3.Connection, directory: Path, target: int | None = None, *, snapshot_dir: Path | None = None
+) -> list[int]:
+    """Apply pending migrations up to `target` (default: latest). Returns the versions applied.
+
+    With `snapshot_dir`, a database that already has migrations applied is copied there first
+    (SPEC §18: a snapshot before any migration). The newest three snapshots per database are kept.
+    """
     migrations = load_migrations(directory)
     applied = applied_versions(conn)
     for m in migrations:
         if m.version in applied and applied[m.version] != m.checksum:
             raise MigrationError(f"migration {m.version:04d}_{m.name} was edited after it was applied")
+    pending = [m for m in migrations if m.version not in applied and (target is None or m.version <= target)]
+    if pending and applied and snapshot_dir is not None:
+        _snapshot_before_migrating(conn, snapshot_dir, pending[0].version)
     done = []
     for m in migrations:
         if m.version in applied or (target is not None and m.version > target):

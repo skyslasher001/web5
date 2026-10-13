@@ -61,6 +61,111 @@
         "title": "AgentInfo",
         "type": "object"
       },
+      "ApiKeyCreated": {
+        "properties": {
+          "info": {
+            "$ref": "#/components/schemas/ApiKeyInfo"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "info"
+        ],
+        "title": "ApiKeyCreated",
+        "type": "object"
+      },
+      "ApiKeyInfo": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "prefix",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "ApiKeyInfo",
+        "type": "object"
+      },
+      "ApiKeyRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "enum": [
+                "capture",
+                "search"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scopes"
+        ],
+        "title": "ApiKeyRequest",
+        "type": "object"
+      },
       "AssignmentRequest": {
         "properties": {
           "model": {
@@ -72,7 +177,9 @@
           "tier": {
             "enum": [
               "local-fast",
-              "local-large"
+              "local-large",
+              "embed_text",
+              "vision"
             ],
             "title": "Tier",
             "type": "string"
@@ -189,6 +296,45 @@
         "title": "AuditVerification",
         "type": "object"
       },
+      "Body_capture_files_api_v1_capture_files_post": {
+        "properties": {
+          "files": {
+            "description": "One or more files",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source": {
+            "default": "api",
+            "enum": [
+              "clipboard",
+              "api",
+              "drop"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_capture_files_api_v1_capture_files_post",
+        "type": "object"
+      },
       "CancelResponse": {
         "properties": {
           "cancelled": {
@@ -241,6 +387,124 @@
           "installed"
         ],
         "title": "Candidate",
+        "type": "object"
+      },
+      "CaptureRequest": {
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "note",
+                  "idea",
+                  "link"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source": {
+            "default": "quick_capture",
+            "enum": [
+              "quick_capture",
+              "clipboard",
+              "api"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 60,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Tags",
+            "type": "array"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 200000,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "CaptureRequest",
+        "type": "object"
+      },
+      "CaptureResult": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "queued_files": {
+            "default": 0,
+            "title": "Queued Files",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "queued"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "queued_files",
+          "status"
+        ],
+        "title": "CaptureResult",
         "type": "object"
       },
       "ChatSendRequest": {
@@ -328,6 +592,29 @@
           "updated_at"
         ],
         "title": "Conversation",
+        "type": "object"
+      },
+      "DeleteResult": {
+        "properties": {
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "trashed": {
+            "title": "Trashed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "trashed",
+          "deleted"
+        ],
+        "title": "DeleteResult",
         "type": "object"
       },
       "DiskInfo": {
@@ -598,6 +885,34 @@
         "title": "EventPage",
         "type": "object"
       },
+      "FilterChip": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "type",
+              "date",
+              "project"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "value"
+        ],
+        "title": "FilterChip",
+        "type": "object"
+      },
       "GpuInfo": {
         "properties": {
           "cuda_driver": {
@@ -801,6 +1116,58 @@
         "title": "Health",
         "type": "object"
       },
+      "IngestRequest": {
+        "properties": {
+          "paths": {
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "IngestRequest",
+        "type": "object"
+      },
+      "IngestResult": {
+        "properties": {
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/Rejected"
+            },
+            "title": "Rejected",
+            "type": "array"
+          }
+        },
+        "required": [
+          "queued",
+          "rejected"
+        ],
+        "title": "IngestResult",
+        "type": "object"
+      },
       "InstalledModel": {
         "properties": {
           "capabilities": {
@@ -809,6 +1176,11 @@
             },
             "title": "Capabilities",
             "type": "array"
+          },
+          "digest": {
+            "default": "",
+            "title": "Digest",
+            "type": "string"
           },
           "family": {
             "anyOf": [
@@ -861,6 +1233,7 @@
         },
         "required": [
           "name",
+          "digest",
           "size_bytes",
           "family",
           "parameter_size",
@@ -868,6 +1241,795 @@
           "capabilities"
         ],
         "title": "InstalledModel",
+        "type": "object"
+      },
+      "Item": {
+        "properties": {
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_version": {
+            "title": "Current Version",
+            "type": "integer"
+          },
+          "has_thumbnail": {
+            "title": "Has Thumbnail",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "mime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "pipeline_status": {
+            "enum": [
+              "pending",
+              "processing",
+              "done",
+              "failed"
+            ],
+            "title": "Pipeline Status",
+            "type": "string"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/ItemStage"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "inbox",
+              "triaged",
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trashed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trashed At"
+          },
+          "type": {
+            "enum": [
+              "note",
+              "idea",
+              "song",
+              "audio",
+              "voice_memo",
+              "photo",
+              "video",
+              "document",
+              "pdf",
+              "spreadsheet",
+              "code_repo",
+              "code_file",
+              "link",
+              "screenshot",
+              "transcript",
+              "folder",
+              "file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ItemVersion"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "title",
+          "status",
+          "path",
+          "mime",
+          "size_bytes",
+          "captured_at",
+          "created_at",
+          "updated_at",
+          "pinned",
+          "open_count",
+          "last_opened_at",
+          "pipeline_status",
+          "has_thumbnail",
+          "project_ids",
+          "tags",
+          "trashed_at",
+          "metadata",
+          "summary",
+          "current_version",
+          "content_hash",
+          "source",
+          "stages",
+          "versions"
+        ],
+        "title": "Item",
+        "type": "object"
+      },
+      "ItemPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "ItemPage",
+        "type": "object"
+      },
+      "ItemPatch": {
+        "properties": {
+          "add_projects": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Add Projects",
+            "type": "array"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "remove_projects": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Remove Projects",
+            "type": "array"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "inbox",
+                  "triaged",
+                  "active",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 60,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "note",
+                  "idea",
+                  "song",
+                  "audio",
+                  "voice_memo",
+                  "photo",
+                  "video",
+                  "document",
+                  "pdf",
+                  "spreadsheet",
+                  "code_repo",
+                  "code_file",
+                  "link",
+                  "screenshot",
+                  "transcript",
+                  "folder",
+                  "file"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "title": "ItemPatch",
+        "type": "object"
+      },
+      "ItemSource": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          }
+        },
+        "required": [
+          "kind",
+          "origin",
+          "created_at"
+        ],
+        "title": "ItemSource",
+        "type": "object"
+      },
+      "ItemStage": {
+        "properties": {
+          "attempts": {
+            "default": 0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "done",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "status",
+          "model",
+          "model_version",
+          "attempts",
+          "error",
+          "detail",
+          "updated_at"
+        ],
+        "title": "ItemStage",
+        "type": "object"
+      },
+      "ItemSummary": {
+        "properties": {
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "has_thumbnail": {
+            "title": "Has Thumbnail",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          },
+          "mime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "pipeline_status": {
+            "enum": [
+              "pending",
+              "processing",
+              "done",
+              "failed"
+            ],
+            "title": "Pipeline Status",
+            "type": "string"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "inbox",
+              "triaged",
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trashed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trashed At"
+          },
+          "type": {
+            "enum": [
+              "note",
+              "idea",
+              "song",
+              "audio",
+              "voice_memo",
+              "photo",
+              "video",
+              "document",
+              "pdf",
+              "spreadsheet",
+              "code_repo",
+              "code_file",
+              "link",
+              "screenshot",
+              "transcript",
+              "folder",
+              "file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "title",
+          "status",
+          "path",
+          "mime",
+          "size_bytes",
+          "captured_at",
+          "created_at",
+          "updated_at",
+          "pinned",
+          "open_count",
+          "last_opened_at",
+          "pipeline_status",
+          "has_thumbnail",
+          "project_ids",
+          "tags",
+          "trashed_at"
+        ],
+        "title": "ItemSummary",
+        "type": "object"
+      },
+      "ItemText": {
+        "properties": {
+          "chunks": {
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "text",
+          "truncated",
+          "chunks"
+        ],
+        "title": "ItemText",
+        "type": "object"
+      },
+      "ItemVersion": {
+        "properties": {
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n",
+          "content_hash",
+          "size_bytes",
+          "created_by",
+          "note",
+          "created_at"
+        ],
+        "title": "ItemVersion",
+        "type": "object"
+      },
+      "JobInfo": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "priority_class": {
+            "enum": [
+              "realtime",
+              "interactive",
+              "background"
+            ],
+            "title": "Priority Class",
+            "type": "string"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "run_after": {
+            "title": "Run After",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "leased",
+              "succeeded",
+              "dead",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "item_id",
+          "priority_class",
+          "priority",
+          "status",
+          "attempts",
+          "max_attempts",
+          "run_after",
+          "progress",
+          "error",
+          "created_at",
+          "updated_at",
+          "finished_at"
+        ],
+        "title": "JobInfo",
         "type": "object"
       },
       "Message": {
@@ -1072,6 +2234,114 @@
         "title": "OllamaStatus",
         "type": "object"
       },
+      "OpenResult": {
+        "properties": {
+          "abs_path": {
+            "title": "Abs Path",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "open_count": {
+            "title": "Open Count",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "path",
+          "abs_path",
+          "open_count"
+        ],
+        "title": "OpenResult",
+        "type": "object"
+      },
+      "ParsedQuery": {
+        "properties": {
+          "chips": {
+            "items": {
+              "$ref": "#/components/schemas/FilterChip"
+            },
+            "title": "Chips",
+            "type": "array"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "enum": [
+                "note",
+                "idea",
+                "song",
+                "audio",
+                "voice_memo",
+                "photo",
+                "video",
+                "document",
+                "pdf",
+                "spreadsheet",
+                "code_repo",
+                "code_file",
+                "link",
+                "screenshot",
+                "transcript",
+                "folder",
+                "file"
+              ],
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "text",
+          "types",
+          "date_from",
+          "date_to",
+          "project_ids",
+          "chips"
+        ],
+        "title": "ParsedQuery",
+        "type": "object"
+      },
       "Project": {
         "properties": {
           "color_token": {
@@ -1118,6 +2388,152 @@
           "created_at"
         ],
         "title": "Project",
+        "type": "object"
+      },
+      "QueueStats": {
+        "properties": {
+          "by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Kind",
+            "type": "object"
+          },
+          "dead": {
+            "title": "Dead",
+            "type": "integer"
+          },
+          "leased": {
+            "title": "Leased",
+            "type": "integer"
+          },
+          "model_hold": {
+            "title": "Model Hold",
+            "type": "boolean"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "succeeded_last_hour": {
+            "title": "Succeeded Last Hour",
+            "type": "integer"
+          },
+          "workers": {
+            "title": "Workers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "leased",
+          "dead",
+          "succeeded_last_hour",
+          "by_kind",
+          "paused",
+          "pause_reason",
+          "model_hold",
+          "workers"
+        ],
+        "title": "QueueStats",
+        "type": "object"
+      },
+      "RecallRequest": {
+        "properties": {
+          "q": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Q",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "RecallRequest",
+        "type": "object"
+      },
+      "RecallResult": {
+        "properties": {
+          "action": {
+            "enum": [
+              "open_item",
+              "show_project",
+              "show_results"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "intent": {
+            "enum": [
+              "open",
+              "go_to",
+              "show",
+              "search"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "parsed": {
+            "$ref": "#/components/schemas/ParsedQuery"
+          },
+          "semantic": {
+            "title": "Semantic",
+            "type": "boolean"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "took_ms": {
+            "title": "Took Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "intent",
+          "action",
+          "confidence",
+          "target_id",
+          "parsed",
+          "hits",
+          "semantic",
+          "took_ms"
+        ],
+        "title": "RecallResult",
         "type": "object"
       },
       "Recommendation": {
@@ -1189,6 +2605,131 @@
         "title": "Recommendation",
         "type": "object"
       },
+      "Rejected": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "Rejected",
+        "type": "object"
+      },
+      "SearchHit": {
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ItemSummary"
+          },
+          "matched": {
+            "items": {
+              "enum": [
+                "title",
+                "text",
+                "trigram",
+                "vector"
+              ],
+              "type": "string"
+            },
+            "title": "Matched",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snippet"
+          }
+        },
+        "required": [
+          "item",
+          "score",
+          "snippet",
+          "matched"
+        ],
+        "title": "SearchHit",
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "keyword",
+              "hybrid"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "parsed": {
+            "$ref": "#/components/schemas/ParsedQuery"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "semantic": {
+            "title": "Semantic",
+            "type": "boolean"
+          },
+          "semantic_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Note"
+          },
+          "timings_ms": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Timings Ms",
+            "type": "object"
+          },
+          "took_ms": {
+            "title": "Took Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "query",
+          "mode",
+          "semantic",
+          "semantic_note",
+          "parsed",
+          "hits",
+          "took_ms",
+          "timings_ms"
+        ],
+        "title": "SearchResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1227,6 +2768,68 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VaultInfo": {
+        "properties": {
+          "by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Type",
+            "type": "object"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "embedder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedder"
+          },
+          "index": {
+            "title": "Index",
+            "type": "string"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "trashed": {
+            "title": "Trashed",
+            "type": "integer"
+          },
+          "workers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Workers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "root",
+          "index",
+          "items",
+          "trashed",
+          "bytes",
+          "by_type",
+          "embedder",
+          "workers"
+        ],
+        "title": "VaultInfo",
         "type": "object"
       },
       "Vitals": {
@@ -1347,6 +2950,103 @@
         "summary": "Agents"
       }
     },
+    "/api/v1/api-keys": {
+      "get": {
+        "operationId": "list_api_keys_api_v1_api_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyInfo"
+                  },
+                  "title": "Response List Api Keys Api V1 Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Api Keys"
+      },
+      "post": {
+        "operationId": "create_api_key_api_v1_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Api Key"
+      }
+    },
+    "/api/v1/api-keys/{key_id}": {
+      "delete": {
+        "operationId": "revoke_api_key_api_v1_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Api Key"
+      }
+    },
     "/api/v1/audit": {
       "get": {
         "operationId": "audit_api_v1_audit_get",
@@ -1425,6 +3125,82 @@
           }
         },
         "summary": "Audit Verify"
+      }
+    },
+    "/api/v1/capture": {
+      "post": {
+        "operationId": "capture_api_v1_capture_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture"
+      }
+    },
+    "/api/v1/capture/files": {
+      "post": {
+        "operationId": "capture_files_api_v1_capture_files_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_capture_files_api_v1_capture_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Capture Files"
       }
     },
     "/api/v1/chat": {
@@ -1793,6 +3569,830 @@
         "summary": "Health"
       }
     },
+    "/api/v1/ingest/paths": {
+      "post": {
+        "operationId": "ingest_paths_api_v1_ingest_paths_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Paths"
+      }
+    },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "list_items_api_v1_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "note",
+                      "idea",
+                      "song",
+                      "audio",
+                      "voice_memo",
+                      "photo",
+                      "video",
+                      "document",
+                      "pdf",
+                      "spreadsheet",
+                      "code_repo",
+                      "code_file",
+                      "link",
+                      "screenshot",
+                      "transcript",
+                      "folder",
+                      "file"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pipeline",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "processing",
+                    "done",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pipeline"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pinned",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pinned"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trashed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Trashed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "added",
+              "enum": [
+                "added",
+                "captured",
+                "opened",
+                "title"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Items"
+      }
+    },
+    "/api/v1/items/{item_id}": {
+      "delete": {
+        "operationId": "delete_item_api_v1_items__item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "permanent",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Permanent",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Item"
+      },
+      "get": {
+        "operationId": "get_item_api_v1_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Item"
+      },
+      "patch": {
+        "operationId": "patch_item_api_v1_items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Item"
+      }
+    },
+    "/api/v1/items/{item_id}/file": {
+      "get": {
+        "operationId": "item_file_api_v1_items__item_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item File"
+      }
+    },
+    "/api/v1/items/{item_id}/open": {
+      "post": {
+        "operationId": "open_item_api_v1_items__item_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Item"
+      }
+    },
+    "/api/v1/items/{item_id}/reprocess": {
+      "post": {
+        "operationId": "reprocess_item_api_v1_items__item_id__reprocess_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reprocess Item"
+      }
+    },
+    "/api/v1/items/{item_id}/restore": {
+      "post": {
+        "operationId": "restore_item_api_v1_items__item_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Item"
+      }
+    },
+    "/api/v1/items/{item_id}/text": {
+      "get": {
+        "operationId": "item_text_api_v1_items__item_id__text_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20000,
+              "maximum": 500000,
+              "minimum": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemText"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Text"
+      }
+    },
+    "/api/v1/items/{item_id}/thumbnail": {
+      "get": {
+        "operationId": "item_thumbnail_api_v1_items__item_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item Thumbnail"
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "leased",
+                    "succeeded",
+                    "dead",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobInfo"
+                  },
+                  "title": "Response List Jobs Api V1 Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs"
+      }
+    },
+    "/api/v1/jobs/stats": {
+      "get": {
+        "operationId": "job_stats_api_v1_jobs_stats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Job Stats"
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job"
+      }
+    },
+    "/api/v1/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "retry_job_api_v1_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Job"
+      }
+    },
     "/api/v1/models": {
       "get": {
         "operationId": "models_api_v1_models_get",
@@ -1849,6 +4449,51 @@
         "summary": "Set Assignment"
       }
     },
+    "/api/v1/models/assignments/{tier}": {
+      "delete": {
+        "operationId": "clear_assignment_api_v1_models_assignments__tier__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tier",
+            "required": true,
+            "schema": {
+              "enum": [
+                "local-fast",
+                "local-large",
+                "embed_text",
+                "vision"
+              ],
+              "title": "Tier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Assignment"
+      }
+    },
     "/api/v1/models/recommendation": {
       "get": {
         "operationId": "model_recommendation_api_v1_models_recommendation_get",
@@ -1887,6 +4532,250 @@
           }
         },
         "summary": "Projects"
+      }
+    },
+    "/api/v1/queue/pause": {
+      "post": {
+        "operationId": "pause_queue_api_v1_queue_pause_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pause Queue"
+      }
+    },
+    "/api/v1/queue/resume": {
+      "post": {
+        "operationId": "resume_queue_api_v1_queue_resume_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Resume Queue"
+      }
+    },
+    "/api/v1/recall": {
+      "post": {
+        "description": "The fast path (SPEC \u00a76): a small intent grammar plus search. No LLM call.",
+        "operationId": "recall_api_v1_recall_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recall"
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "operationId": "search_items_api_v1_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 500,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "hybrid",
+              "enum": [
+                "keyword",
+                "hybrid"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "note",
+                      "idea",
+                      "song",
+                      "audio",
+                      "voice_memo",
+                      "photo",
+                      "video",
+                      "document",
+                      "pdf",
+                      "spreadsheet",
+                      "code_repo",
+                      "code_file",
+                      "link",
+                      "screenshot",
+                      "transcript",
+                      "folder",
+                      "file"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Items"
       }
     },
     "/api/v1/session/ws-ticket": {
@@ -1945,6 +4834,24 @@
           }
         },
         "summary": "Hardware"
+      }
+    },
+    "/api/v1/system/vault": {
+      "get": {
+        "operationId": "vault_info_api_v1_system_vault_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Vault Info"
       }
     },
     "/api/v1/system/vitals": {

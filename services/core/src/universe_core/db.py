@@ -29,7 +29,7 @@ class Databases:
             directory=directory,
         )
         for name in ("universe", "events", "audit"):
-            migrate_up(getattr(dbs, name), migrations_dir(name))
+            migrate_up(getattr(dbs, name), migrations_dir(name), snapshot_dir=directory / "backups" / "migrations")
         return dbs
 
     def sizes(self) -> dict[str, int]:

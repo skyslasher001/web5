@@ -41,7 +41,8 @@ def _kv(key: str, value: object) -> bytes:
     raise TypeError(f"unsupported metadata value for {key}: {value!r}")
 
 
-def write_tiny_llama(path: Path, *, seed: int = 1) -> Path:
+def write_tiny_llama(path: Path, *, seed: int = 1, embedding: bool = False) -> Path:
+    """`embedding=True` declares mean pooling, which makes Ollama serve the model as an embedder."""
     rng = random.Random(seed)  # noqa: S311 - deterministic test weights, not security
     n_embd, n_ff, n_head, n_ctx = 64, 128, 4, 512
     tokens = ["<unk>", "<s>", "</s>"] + [f"<0x{i:02X}>" for i in range(256)] + WORDS
@@ -69,6 +70,9 @@ def write_tiny_llama(path: Path, *, seed: int = 1) -> Path:
         "tokenizer.ggml.unknown_token_id": 0,
         "tokenizer.ggml.add_bos_token": True,
     }
+    if embedding:
+        metadata["general.name"] = "universe-test-tiny-embed"
+        metadata["llama.pooling_type"] = 1  # mean
 
     def normal(count: int, scale: float = 0.02) -> array:
         return array("f", (rng.gauss(0.0, scale) for _ in range(count)))

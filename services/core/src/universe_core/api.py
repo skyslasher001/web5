@@ -13,7 +13,7 @@ from universe_common.errors import MAX_MESSAGE, MAX_STACK, fingerprint_from_text
 from universe_common.schema import ApiModel
 from universe_core import __version__
 from universe_core.chat import Conversation, Message
-from universe_core.context import ROUTER_TIERS, CoreContext
+from universe_core.context import CoreContext
 from universe_core.errors import ErrorRecord
 from universe_core.events import Event
 from universe_core.protected.audit import AuditEntry, AuditVerification
@@ -99,7 +99,7 @@ class ModelsInfo(ApiModel):
 
 
 class AssignmentRequest(BaseModel):
-    tier: Literal["local-fast", "local-large"]
+    tier: Literal["local-fast", "local-large", "embed_text", "vision"]
     model: str = Field(min_length=1, max_length=200)
 
 
@@ -131,6 +131,14 @@ class ErrorReport(BaseModel):
     stack: str = Field(default="", max_length=MAX_STACK)
     context: dict[str, Any] = Field(default_factory=dict)
     severity: Literal["warning", "error", "critical"] = "error"
+
+
+TIER_CAPABILITY = {
+    "local-fast": ("completion", "chat"),
+    "local-large": ("completion", "chat"),
+    "embed_text": ("embedding", "embedding"),
+    "vision": ("vision", "vision"),
+}
 
 
 # ---------- routers ----------
@@ -204,12 +212,20 @@ async def set_assignment(ctx: Ctx, body: AssignmentRequest) -> ModelsInfo:
         installed = await ctx.ollama.list_models(refresh=True)
     except httpx.HTTPError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama is not reachable") from exc
-    names = {m.name for m in installed if "completion" in m.capabilities}
+    needed, label = TIER_CAPABILITY[body.tier]
+    names = {m.name for m in installed if needed in m.capabilities}
     if body.model not in names:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{body.model}' is not an installed chat model")
-    if body.tier not in ROUTER_TIERS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown tier")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{body.model}' is not an installed {label} model")
     ctx.set_assignment(body.tier, body.model, actor="user")
+    if body.tier == "embed_text" and ctx.governor is not None:
+        await ctx.governor.check_embedder()  # re-embeds in the background with the new model
+    return await models(ctx)
+
+
+@router.delete("/models/assignments/{tier}", response_model=ModelsInfo)
+async def clear_assignment(ctx: Ctx, tier: Literal["local-fast", "local-large", "embed_text", "vision"]) -> ModelsInfo:
+    if ctx.clear_assignment(tier, actor="user") and tier == "embed_text" and ctx.governor is not None:
+        await ctx.governor.check_embedder()
     return await models(ctx)
 
 
