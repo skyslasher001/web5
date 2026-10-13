@@ -8,7 +8,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): the design. Follow it, or change it explicitly with an ADR.
 3. [`docs/PHASE-3.md`](docs/PHASE-3.md) (and [`PHASE-2.md`](docs/PHASE-2.md), [`PHASE-1.md`](docs/PHASE-1.md), [`PHASE-1.5.md`](docs/PHASE-1.5.md)): what exists now, what was fixed, open limitations, what's next.
 
-**Current phase:** Phase 3 (Agent engine) delivered 2026-10-13, waiting for the owner's review. Its protected-core patch ([`docs/proposals/phase-3-protected-core.md`](docs/proposals/phase-3-protected-core.md)) was approved and applied on 2026-10-13. Phases 1, 1.5 and 2 are approved, and the Phase 1.5 protected-core patch is applied.
+**Current phase:** Phase 4 (Universe interface), started 2026-10-13. Phases 1, 1.5, 2 and 3 are approved, and the Phase 1.5 and Phase 3 protected-core patches are applied.
 
 ## How to work
 
