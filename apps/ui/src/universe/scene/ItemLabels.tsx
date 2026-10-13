@@ -114,6 +114,10 @@ export function ItemLabels({ count = 18, reach = 70 }: { count?: number; reach?:
       const index = picker.pick(x, y);
       const id = index >= 0 ? useScene.getState().scene.ids[index] : undefined;
       if (id) useUniverse.getState().openViewer(id);
+      else {
+        const galaxy = galaxyAt(x, y);
+        if (galaxy) useUniverse.getState().openDashboard(galaxy);
+      }
     };
     const onLeave = () => useInteraction.getState().setHovered(-1);
     const galaxyAt = (x: number, y: number): string | null => {

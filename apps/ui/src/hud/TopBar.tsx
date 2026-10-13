@@ -14,7 +14,10 @@ import {
 import { tokens } from '@universe/design-tokens';
 import { useEffect, useRef } from 'react';
 import { formatUsd } from '../lib/format';
-import { useBudget, useEngine, useModels, useQueueStats } from '../lib/queries';
+import { useBudget, useEngine, useModels, useQueueStats, useVitals } from '../lib/queries';
+import { useInteraction } from '../universe/scene/interaction';
+import { useScene } from '../universe/scene/sceneData';
+import { formatBytes } from '../lib/format';
 import { useUniverse, type View } from '../state/store';
 import { KillSwitchButton } from './KillSwitch';
 import { Dot, Kbd } from './ui';
@@ -41,6 +44,24 @@ function BudgetMeter() {
       {data && data.spent_usd > 0
         ? `${formatUsd(data.spent_usd)} / ${formatUsd(data.monthly_cap_usd)}`
         : '$0.00 · local'}
+    </button>
+  );
+}
+
+/** System vitals in the status cluster: Core's CPU and memory (System panel has the rest). */
+function VitalsChip() {
+  const vitals = useVitals(true);
+  const setPanel = useUniverse((s) => s.setPanel);
+  if (!vitals.data) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setPanel('system')}
+      className="font-mono text-xs text-ink-3 hover:text-ink-1"
+      title="Core's CPU and memory (System → Vitals)"
+      data-testid="vitals-chip"
+    >
+      CPU {Math.round(vitals.data.cpu_percent)}% · {formatBytes(vitals.data.rss_bytes)}
     </button>
   );
 }
@@ -135,9 +156,13 @@ function SearchField() {
             if (query) setQuery('');
             else e.currentTarget.blur();
           } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
-            // Hand the keyboard to the results: arrows move, Enter opens.
             e.preventDefault();
-            useUniverse.getState().focusResults();
+            const s = useUniverse.getState();
+            const top = useInteraction.getState().results[0];
+            const id = top !== undefined ? useScene.getState().scene.ids[top] : undefined;
+            // In the universe, Enter flies to the best match; otherwise hand the keyboard to the results list.
+            if (e.key === 'Enter' && s.view === 'universe' && id) s.selectItem(id);
+            else s.focusResults();
           }
         }}
         placeholder="Search your vault…"
@@ -232,10 +257,11 @@ export function TopBar() {
         <SearchField />
         <ViewSwitch />
       </div>
-      <div className="no-drag flex items-center gap-4">
+      <div className="no-drag flex items-center gap-3 whitespace-nowrap">
         <IndexingChip />
         <CoreChip />
         <ModelChip />
+        <VitalsChip />
         <BudgetMeter />
         <ConsentOff />
         <KillSwitchButton />

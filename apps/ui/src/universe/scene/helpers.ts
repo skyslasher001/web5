@@ -116,3 +116,17 @@ export const rig = {
   home: (): void => {},
   state: () => ({ position: [0, 0, 0] as number[], target: [0, 0, 0] as number[], flying: false }),
 };
+
+/** Universe → Galaxy → System (an item and its neighbours) → Item (its viewer is open) (SPEC §7). */
+export type ZoomLevel = 'Universe' | 'Galaxy' | 'System' | 'Item';
+
+export function zoomLevel(s: {
+  viewerItemId: string | null;
+  selectedItemId: string | null;
+  selectedProjectId: string | null;
+}): ZoomLevel {
+  if (s.viewerItemId) return 'Item';
+  if (s.selectedItemId) return 'System';
+  if (s.selectedProjectId) return 'Galaxy';
+  return 'Universe';
+}

@@ -3410,6 +3410,13 @@
             "title": "Description",
             "type": "string"
           },
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectGoal"
+            },
+            "title": "Goals",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3445,9 +3452,80 @@
           "color_token",
           "layout_seed",
           "created_at",
+          "goals",
           "item_count"
         ],
         "title": "Project",
+        "type": "object"
+      },
+      "ProjectGoal": {
+        "properties": {
+          "done": {
+            "default": false,
+            "title": "Done",
+            "type": "boolean"
+          },
+          "text": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ProjectGoal",
+        "type": "object"
+      },
+      "ProjectPatch": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "goals": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProjectGoal"
+                },
+                "maxItems": 100,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goals"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "paused",
+                  "done",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "ProjectPatch",
         "type": "object"
       },
       "QueueStats": {
@@ -7595,6 +7673,55 @@
           }
         },
         "summary": "Projects"
+      }
+    },
+    "/api/v1/projects/{project_id}": {
+      "patch": {
+        "operationId": "patch_project_api_v1_projects__project_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Project"
       }
     },
     "/api/v1/queue/pause": {

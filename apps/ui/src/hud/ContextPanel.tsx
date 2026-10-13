@@ -1,4 +1,4 @@
-import { Grid2x2, Upload } from 'lucide-react';
+import { Grid2x2, LayoutDashboard, Upload } from 'lucide-react';
 import { hueHex } from '../lib/colors';
 import { useProjects } from '../lib/queries';
 import { useUniverse } from '../state/store';
@@ -39,6 +39,14 @@ export function ContextPanel() {
             <dd className="mt-1 capitalize">{galaxy.status}</dd>
           </div>
         </dl>
+        <button
+          type="button"
+          onClick={() => useUniverse.getState().openDashboard(galaxy.id)}
+          className="flex items-center gap-2 rounded-md border border-hairline-2 px-3 py-1.5 text-xs text-ink-2 hover:border-accent/60"
+          data-testid="open-dashboard"
+        >
+          <LayoutDashboard className="size-3.5" aria-hidden /> Dashboard
+        </button>
         {view === 'universe' && (
           <button
             type="button"

@@ -139,3 +139,22 @@ def test_similar_items_come_from_vectors(api: Api) -> None:
     api.drain()
     similar = api.get(f"/items/{dog}/similar", params={"limit": 2})
     assert similar[0]["id"] == puppy and dog not in [s["id"] for s in similar]
+
+
+def test_galaxy_goals_and_status_from_the_dashboard(api: Api) -> None:
+    devmind = next(p for p in api.get("/projects") if p["name"] == "DevMind")
+    assert devmind["goals"] == []
+    response = api.client.patch(
+        f"/api/v1/projects/{devmind['id']}",
+        json={"status": "paused", "goals": [{"text": "Ship the editor"}, {"text": "Write docs", "done": True}]},
+        headers=AUTH,
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated["status"] == "paused"
+    assert updated["goals"] == [{"text": "Ship the editor", "done": False}, {"text": "Write docs", "done": True}]
+    assert next(p for p in api.get("/projects") if p["id"] == devmind["id"])["goals"][1]["done"] is True
+    assert any(e["type"] == "project.updated" for e in api.get("/events", params={"tail": 20})["events"])
+    assert api.client.patch("/api/v1/projects/nope", json={"status": "done"}, headers=AUTH).status_code == 404
+    bad = api.client.patch(f"/api/v1/projects/{devmind['id']}", json={"status": "gone"}, headers=AUTH)
+    assert bad.status_code == 422

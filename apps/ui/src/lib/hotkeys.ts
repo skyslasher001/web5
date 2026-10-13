@@ -16,6 +16,14 @@ export function useHotkeys(): void {
         s.setPaletteOpen(!s.paletteOpen);
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === '.') {
+        // Approvals tray (ARCHITECTURE.md §6.5): focus the first waiting approval, or open the Agents panel.
+        e.preventDefault();
+        const approve = document.querySelector<HTMLButtonElement>('[data-testid="approve"]');
+        if (approve) approve.focus();
+        else s.setPanel('agents');
+        return;
+      }
       if (e.key === 'Escape') {
         if (s.paletteOpen) s.setPaletteOpen(false);
         else if (s.zen) s.toggleZen();

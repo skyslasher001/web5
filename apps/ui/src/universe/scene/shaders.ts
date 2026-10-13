@@ -6,6 +6,7 @@ const SHARED_VERTEX = /* glsl */ `
   attribute float aSize;
   attribute float aCreated;
   attribute float aState;
+  attribute float aHidden;
   uniform float uMix;
   uniform float uScale;
   uniform float uSizeMul;
@@ -18,7 +19,7 @@ const SHARED_VERTEX = /* glsl */ `
     float hidden = step(uTimeCut, aCreated);           // created after the time slider: not born yet
     float highlighted = step(0.5, aState);
     float size = aSize * uSizeMul * (1.0 + highlighted * 0.8) * uScale / -mv.z;
-    if (hidden > 0.5 || (size < uMinPx && highlighted < 0.5)) return 0.0;
+    if (hidden > 0.5 || aHidden > 0.5 || (size < uMinPx && highlighted < 0.5)) return 0.0;
     return clamp(size, 1.5, 44.0);
   }
 

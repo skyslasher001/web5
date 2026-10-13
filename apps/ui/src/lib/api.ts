@@ -38,6 +38,7 @@ import type {
   ModelsInfo,
   OpenResult,
   Project,
+  ProjectGoal,
   QueueStats,
   RecallResult,
   Recommendation,
@@ -152,6 +153,8 @@ export class CoreApi {
   clearModel = (tier: AssignableTier) => this.call<ModelsInfo>('DELETE', `/models/assignments/${tier}`);
   agents = () => this.call<AgentInfo[]>('GET', '/agents');
   projects = () => this.call<Project[]>('GET', '/projects');
+  patchProject = (id: string, patch: { description?: string; status?: string; goals?: ProjectGoal[] }) =>
+    this.call<Project>('PATCH', `/projects/${id}`, patch);
   conversations = () => this.call<Conversation[]>('GET', '/conversations?limit=20');
   messages = (conversationId: string) =>
     this.call<Message[]>('GET', `/conversations/${conversationId}/messages`);

@@ -37,6 +37,7 @@ describe('app:// protocol', () => {
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("connect-src 'self' http://127.0.0.1:47821 ws://127.0.0.1:47821");
     expect(csp).not.toContain('unsafe-eval');
+    expect(csp).toContain("media-src 'self' blob:"); // viewers play files Core sends with the session token
     expect(contentType('a.woff2')).toBe('font/woff2');
   });
 });

@@ -52,6 +52,7 @@ def test_seeded_universe_reads_back_with_galaxies_links_and_a_semantic_layout(
             # The files exist, so items open and notes read.
             first = scene["ids"][0]
             assert client.get(f"/api/v1/items/{first}/file", headers=AUTH).status_code == 200
+            assert [v["n"] for v in api.get(f"/items/{first}")["versions"]] == [1]
         finally:
             api.close()
 

@@ -1077,6 +1077,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Project */
+        patch: operations["patch_project_api_v1_projects__project_id__patch"];
+        trace?: never;
+    };
     "/api/v1/queue/pause": {
         parameters: {
             query?: never;
@@ -2461,6 +2478,8 @@ export interface components {
             created_at: string;
             /** Description */
             description: string;
+            /** Goals */
+            goals: components["schemas"]["ProjectGoal"][];
             /** Id */
             id: string;
             /**
@@ -2476,6 +2495,25 @@ export interface components {
             slug: string;
             /** Status */
             status: string;
+        };
+        /** ProjectGoal */
+        ProjectGoal: {
+            /**
+             * Done
+             * @default false
+             */
+            done: boolean;
+            /** Text */
+            text: string;
+        };
+        /** ProjectPatch */
+        ProjectPatch: {
+            /** Description */
+            description?: string | null;
+            /** Goals */
+            goals?: components["schemas"]["ProjectGoal"][] | null;
+            /** Status */
+            status?: ("active" | "paused" | "done" | "archived") | null;
         };
         /** QueueStats */
         QueueStats: {
@@ -4962,6 +5000,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"][];
+                };
+            };
+        };
+    };
+    patch_project_api_v1_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

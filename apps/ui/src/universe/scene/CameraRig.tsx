@@ -129,9 +129,9 @@ export function CameraRig() {
     if (position) rig.flyTo(position, 16);
   }, [selectedItem, view]);
 
-  // Search results: frame the constellation.
+  // Search results: frame the constellation (unless you've picked one: then the camera stays with it).
   useEffect(() => {
-    if (!results.length || view !== 'universe') return;
+    if (!results.length || view !== 'universe' || useUniverse.getState().selectedItemId) return;
     const points = results
       .slice(0, 40)
       .map(itemPosition)

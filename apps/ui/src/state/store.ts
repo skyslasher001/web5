@@ -8,6 +8,16 @@ import type {
 } from '@universe/shared-types';
 import { create } from 'zustand';
 import type { ItemSort } from '../lib/api';
+import {
+  detectQuality,
+  loadQualitySetting,
+  QUALITY_LABEL,
+  saveQualitySetting,
+  stepDown,
+  webglRenderer,
+  type Quality,
+  type QualitySetting,
+} from '../universe/quality';
 import { refreshForEvent, refreshItemQueries } from '../lib/queryClient';
 import type { ConnectionState } from '../lib/socket';
 import {
@@ -63,11 +73,18 @@ interface UniverseState {
   /** The universe's arrangement (keys 1–4) and the time slider (epoch seconds; null = now). */
   layout: Layout;
   timeCut: number | null;
-  /** The item whose viewer is open (Item zoom level). */
+  /** The item whose viewer is open (Item zoom level), or the galaxy whose dashboard is. */
   viewerItemId: string | null;
+  dashboardProjectId: string | null;
   /** Bumped to fly the camera home to the Core (H). */
   homeTick: number;
   agentTargets: Record<string, ProbeTarget>;
+  /** Your quality choice ('auto' by default) and what's in effect (null until the hardware is checked). */
+  qualitySetting: QualitySetting;
+  quality: Quality | null;
+  /** Accessibility (SPEC §7): text size multiplier and the high-contrast theme. */
+  textScale: number;
+  highContrast: boolean;
   conversationId: string | null;
   messages: ChatMessage[];
   selectedProjectId: string | null;
@@ -120,9 +137,16 @@ interface UniverseState {
   setTimeCut(cut: number | null): void;
   openViewer(id: string): void;
   closeViewer(): void;
+  openDashboard(projectId: string): void;
   flyHome(): void;
   /** Esc in the universe: close the viewer, then deselect the item, then the galaxy. */
   zoomOut(): boolean;
+  initQuality(webgl: boolean): void;
+  setQualitySetting(setting: QualitySetting): void;
+  /** The frame budget says this machine can't keep up: one preset down (only under Auto). */
+  degradeQuality(): void;
+  setTextScale(scale: number): void;
+  setHighContrast(on: boolean): void;
 }
 
 const ACTIVITY_LIMIT = 40;
@@ -158,8 +182,13 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   layout: 'project',
   timeCut: null,
   viewerItemId: null,
+  dashboardProjectId: null,
   homeTick: 0,
   agentTargets: {},
+  qualitySetting: loadQualitySetting(),
+  quality: null,
+  textScale: loadNumber('universe.textScale', 1),
+  highContrast: loadNumber('universe.highContrast', 0) === 1,
   conversationId: null,
   messages: [],
   selectedProjectId: null,
@@ -256,18 +285,69 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   setKillSwitch: (killSwitch) => set({ killSwitch }),
   setLayout: (layout) => set({ layout }),
   setTimeCut: (timeCut) => set({ timeCut }),
-  openViewer: (viewerItemId) => set({ viewerItemId, selectedItemId: viewerItemId }),
-  closeViewer: () => set({ viewerItemId: null }),
+  openViewer: (viewerItemId) => set({ viewerItemId, selectedItemId: viewerItemId, dashboardProjectId: null }),
+  closeViewer: () => set({ viewerItemId: null, dashboardProjectId: null }),
+  openDashboard: (dashboardProjectId) =>
+    set({ dashboardProjectId, selectedProjectId: dashboardProjectId, viewerItemId: null }),
   flyHome: () => set((s) => ({ homeTick: s.homeTick + 1, selectedItemId: null, selectedProjectId: null })),
+  initQuality: (webgl) => {
+    const s = get();
+    if (s.quality !== null) return;
+    set({ quality: s.qualitySetting === 'auto' ? detectQuality(webglRenderer(), webgl) : s.qualitySetting });
+  },
+  setQualitySetting: (qualitySetting) => {
+    saveQualitySetting(qualitySetting);
+    set({
+      qualitySetting,
+      quality: qualitySetting === 'auto' ? detectQuality(webglRenderer(), true) : qualitySetting,
+    });
+  },
+  degradeQuality: () => {
+    const s = get();
+    if (s.qualitySetting !== 'auto' || s.quality === null || s.quality === 'lite') return;
+    const next = stepDown(s.quality);
+    set({ quality: next });
+    s.addNotice(
+      'info',
+      `The universe dropped to ${QUALITY_LABEL[next]} to keep frames smooth (System → Display)`,
+    );
+  },
+  setTextScale: (textScale) => {
+    saveNumber('universe.textScale', textScale);
+    document.documentElement.style.fontSize = `${textScale * 100}%`;
+    set({ textScale });
+  },
+  setHighContrast: (highContrast) => {
+    saveNumber('universe.highContrast', highContrast ? 1 : 0);
+    document.documentElement.dataset.contrast = highContrast ? 'high' : 'normal';
+    set({ highContrast });
+  },
   zoomOut: () => {
     const s = get();
-    if (s.viewerItemId) set({ viewerItemId: null });
+    if (s.viewerItemId || s.dashboardProjectId) set({ viewerItemId: null, dashboardProjectId: null });
     else if (s.selectedItemId) set({ selectedItemId: null });
     else if (s.selectedProjectId) set({ selectedProjectId: null });
     else return false;
     return true;
   },
 }));
+
+function loadNumber(key: string, fallback: number): number {
+  try {
+    const value = Number(localStorage.getItem(key));
+    return localStorage.getItem(key) !== null && Number.isFinite(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveNumber(key: string, value: number): void {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Storage unavailable: the choice lasts for this session.
+  }
+}
 
 /** `agent.step` names what a tool works on; a finished task's probe returns to the Core. */
 export function applyProbeTarget(targets: Record<string, ProbeTarget>, event: CoreEvent) {

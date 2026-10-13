@@ -2,7 +2,17 @@
 import type { Item, ItemStage } from '@universe/shared-types';
 import { tokens } from '@universe/design-tokens';
 import { useQuery } from '@tanstack/react-query';
-import { ArchiveRestore, ExternalLink, FolderSearch, Pin, PinOff, RefreshCw, Trash2, X } from 'lucide-react';
+import {
+  ArchiveRestore,
+  ExternalLink,
+  Eye,
+  FolderSearch,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { useApi } from '../lib/api-context';
 import { attempt } from '../lib/attempt';
@@ -39,16 +49,19 @@ function Action({
   label,
   children,
   danger = false,
+  testid,
 }: {
   onClick: () => void;
   label: string;
   children: ReactNode;
   danger?: boolean;
+  testid?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={testid}
       className={`flex items-center gap-1.5 rounded-md border border-hairline-2 px-2.5 py-1 text-xs transition-colors duration-150 ${
         danger
           ? 'text-ink-2 hover:border-danger/60 hover:text-danger'
@@ -226,6 +239,9 @@ export function ItemPanel({ id }: { id: string }) {
           </>
         ) : (
           <>
+            <Action label="View" onClick={() => useUniverse.getState().openViewer(id)} testid="view-item">
+              <Eye className="size-3.5" aria-hidden />
+            </Action>
             <Action label="Open" onClick={() => openItem(api, id)}>
               <ExternalLink className="size-3.5" aria-hidden />
             </Action>

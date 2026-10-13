@@ -134,7 +134,11 @@ test('boots to a live HUD with the seed galaxies', async () => {
   for (const name of ['Ember Wolf Acquisitions', 'DevMind', 'Algo trading bot', 'UNIVERSE']) {
     await expect(galaxies).toContainText(name);
   }
-  await expect(page.locator('canvas')).toBeVisible(); // the WebGL universe rendered
+  // The WebGL universe rendered: the 3D scene, or Lite (a 2D WebGL graph), which Auto picks under software
+  // rendering like this CI runner's.
+  await expect(
+    page.locator('[data-testid="universe-canvas"] canvas, [data-testid="lite-view"] canvas.sigma-nodes'),
+  ).toBeVisible();
   await page.waitForTimeout(1500); // let the scene settle for the screenshot
   await page.screenshot({ path: 'test-results/hud.png' });
 });

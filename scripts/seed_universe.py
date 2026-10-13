@@ -134,6 +134,11 @@ def generate(
             )
             conn.executemany("INSERT INTO chunks (item_id, ord, kind, text) VALUES (?, 0, 'text', ?)", chunk_rows)
             conn.executemany(
+                "INSERT INTO versions (id, item_id, n, path, content_hash, size_bytes, created_by, created_at)"
+                " VALUES (?, ?, 1, ?, ?, ?, 'seed', ?)",
+                [(uuid7(), i[0], i[6], i[9], i[8], i[16]) for i in items],
+            )
+            conn.executemany(
                 "INSERT INTO items_fts (item_id, title, tags, meta) VALUES (?, ?, '', '')",
                 [(i[0], i[2]) for i in items],
             )

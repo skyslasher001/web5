@@ -1,7 +1,9 @@
 """REST API v1 (ARCHITECTURE.md §5.1, Phase 1 subset)."""
 
+import json
 import os
 import platform
+import sqlite3
 from typing import Annotated, Any, Literal
 
 import httpx
@@ -11,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from universe_common.errors import MAX_MESSAGE, MAX_STACK, fingerprint_from_text
 from universe_common.schema import ApiModel
+from universe_common.timeutil import utcnow
 from universe_core import __version__
 from universe_core.chat import Conversation, Message
 from universe_core.context import CoreContext
@@ -67,6 +70,11 @@ class Vitals(ApiModel):
     ollama: OllamaStatus
 
 
+class ProjectGoal(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    done: bool = False
+
+
 class Project(ApiModel):
     id: str
     name: str
@@ -76,7 +84,33 @@ class Project(ApiModel):
     color_token: str
     layout_seed: int
     created_at: str
+    goals: list[ProjectGoal] = Field(default_factory=list)  # the dashboard's checklist of goals and tasks
     item_count: int = 0
+
+
+class ProjectPatch(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["active", "paused", "done", "archived"] | None = None
+    goals: list[ProjectGoal] | None = Field(default=None, max_length=100)
+
+
+def _goals(raw: str | None) -> list[ProjectGoal]:
+    try:
+        data = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    out = []
+    for g in data if isinstance(data, list) else []:
+        if isinstance(g, str) and g.strip():
+            out.append(ProjectGoal(text=g.strip()[:300]))
+        elif isinstance(g, dict) and str(g.get("text", "")).strip():
+            out.append(ProjectGoal(text=str(g["text"]).strip()[:300], done=bool(g.get("done"))))
+    return out
+
+
+def _project(row: sqlite3.Row) -> Project:
+    data = {k: row[k] for k in Project.model_fields if k != "goals"}
+    return Project(**data, goals=_goals(row["goals"]))
 
 
 class AgentInfo(ApiModel):
@@ -266,7 +300,40 @@ async def projects(ctx: Ctx) -> list[Project]:
         " WHERE ip.project_id = p.id AND i.trashed_at IS NULL) AS item_count"
         " FROM projects p ORDER BY p.layout_seed, p.created_at"
     )
-    return [Project(**{k: r[k] for k in Project.model_fields}) for r in rows]
+    return [_project(r) for r in rows]
+
+
+@router.patch("/projects/{project_id}", response_model=Project)
+async def patch_project(ctx: Ctx, project_id: str, body: ProjectPatch) -> Project:
+    conn = ctx.dbs.universe
+    if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such galaxy")
+    updates: dict[str, Any] = {}
+    if body.description is not None:
+        updates["description"] = body.description
+    if body.status is not None:
+        updates["status"] = body.status
+    if body.goals is not None:
+        updates["goals"] = json.dumps([g.model_dump() for g in body.goals])
+    if updates:
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(
+            f"UPDATE projects SET {assignments}, updated_at = ? WHERE id = ?",  # noqa: S608 (fixed names)
+            (*updates.values(), utcnow(), project_id),
+        )
+        ctx.bus.publish(
+            "project.updated",
+            {"project_id": project_id, "changed": sorted(updates)},
+            actor="user",
+            subject_type="project",
+            subject_id=project_id,
+        )
+    row = conn.execute(
+        "SELECT p.*, (SELECT COUNT(*) FROM item_projects ip JOIN items i ON i.id = ip.item_id"
+        " WHERE ip.project_id = p.id AND i.trashed_at IS NULL) AS item_count FROM projects p WHERE p.id = ?",
+        (project_id,),
+    ).fetchone()
+    return _project(row)
 
 
 @router.post("/chat", response_model=ChatSendResponse, status_code=status.HTTP_202_ACCEPTED)

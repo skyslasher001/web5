@@ -64,6 +64,7 @@ function buildAttributes(geometry: BufferGeometry, scene: SceneData) {
   geometry.setAttribute('aSeed', new BufferAttribute(seed, 1));
   geometry.setAttribute('aCreated', new BufferAttribute(created, 1));
   geometry.setAttribute('aState', new BufferAttribute(new Float32Array(n), 1));
+  geometry.setAttribute('aHidden', new BufferAttribute(new Float32Array(n), 1));
   geometry.setAttribute('aPick', new BufferAttribute(pick, 3));
 }
 
@@ -124,6 +125,7 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
   const layout = useLayout((s) => s.current);
   const results = useInteraction((s) => s.results);
   const timeCut = useUniverse((s) => s.timeCut);
+  const typeFilter = useUniverse((s) => s.typeFilter);
   const points = useRef<Points>(null);
   const gpu = useRef<Gpu | null>(null);
   const transition = useRef<{ start: number } | null>(null);
@@ -185,6 +187,18 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
     attr.needsUpdate = true;
     g.material.uniforms.uDim!.value = results.length ? 1 : 0;
   }, [results, layout]);
+
+  // The type chips hide every other type.
+  useEffect(() => {
+    const g = gpu.current;
+    const attr = g?.geometry.getAttribute('aHidden') as BufferAttribute | undefined;
+    if (!attr) return;
+    const hidden = attr.array as Float32Array;
+    const scene = useScene.getState().scene;
+    const shown = new Set(typeFilter.map((t) => TYPE_ORDER.indexOf(t)));
+    for (let i = 0; i < hidden.length; i++) hidden[i] = shown.size && !shown.has(scene.types[i]!) ? 1 : 0;
+    attr.needsUpdate = true;
+  }, [typeFilter, layout]);
 
   useEffect(() => {
     const g = gpu.current;

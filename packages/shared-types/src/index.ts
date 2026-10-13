@@ -99,3 +99,4 @@ export type SemanticLayout = Schemas['SemanticLayout'];
 export type ItemLinks = Schemas['ItemLinks'];
 export type LinkInfo = Schemas['LinkInfo'];
 export type NoteContent = Schemas['NoteContent'];
+export type ProjectGoal = Schemas['ProjectGoal'];

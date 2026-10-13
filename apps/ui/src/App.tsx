@@ -1,10 +1,13 @@
 import { LoaderCircle, Orbit } from 'lucide-react';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { CoreProvider } from './lib/core';
 import { useFrameBudget } from './lib/frameBudget';
 import { useHotkeys } from './lib/hotkeys';
 import { useUniverse } from './state/store';
 import { ActivityRibbon } from './hud/ActivityRibbon';
+import { FilterChips } from './hud/FilterChips';
+import { NavigatorCard } from './hud/NavigatorCard';
+import { ItemViewer } from './hud/viewers/ItemViewer';
 import { AgentDock } from './hud/AgentDock';
 import { ApprovalsTray } from './hud/ApprovalsTray';
 import { ChatDock } from './hud/ChatDock';
@@ -46,6 +49,12 @@ function Booting({ error }: { error: string | null }) {
 function Hud() {
   useHotkeys();
   useFrameBudget();
+  // Accessibility choices from last time (text size, high contrast).
+  useEffect(() => {
+    const s = useUniverse.getState();
+    s.setTextScale(s.textScale);
+    s.setHighContrast(s.highContrast);
+  }, []);
   const zen = useUniverse((s) => s.zen);
   const view = useUniverse((s) => s.view);
   return (
@@ -72,8 +81,13 @@ function Hud() {
                 <ItemsView />
               </ErrorBoundary>
             )}
-            <ActivityRibbon />
+            {view === 'universe' && <FilterChips />}
+            <div className="absolute bottom-4 left-4 flex w-72 flex-col gap-2">
+              <ActivityRibbon />
+              {view === 'universe' && <NavigatorCard />}
+            </div>
             <ChatDock />
+            <ItemViewer />
             <ApprovalsTray />
           </>
         )}

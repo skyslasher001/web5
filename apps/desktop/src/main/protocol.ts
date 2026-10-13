@@ -48,6 +48,7 @@ export function buildCsp(corePort: number): string {
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
+    "media-src 'self' blob:", // audio and video viewers play the item's file as a blob URL
     "font-src 'self' data:",
     `connect-src 'self' http://${core} ws://${core}`,
     "worker-src 'self' blob:",

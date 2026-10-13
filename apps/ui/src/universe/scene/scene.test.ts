@@ -1,7 +1,14 @@
 import type { CoreEvent } from '@universe/shared-types';
 import { describe, expect, it } from 'vitest';
 import { applyProbeTarget } from '../../state/store';
-import { appearance, flightDuration, galaxyActivity, linkSegments, nearestInFront } from './helpers';
+import {
+  appearance,
+  flightDuration,
+  galaxyActivity,
+  linkSegments,
+  nearestInFront,
+  zoomLevel,
+} from './helpers';
 import { pickColor, pickIndex } from './shaders';
 import { buildScene, COMET_DAYS, ideaStageCode, type SceneRow } from './sceneData';
 import { Shape, styleFor } from './types';
@@ -143,5 +150,15 @@ describe('scene helpers', () => {
     expect(targets.librarian?.id).toBe('i1'); // a model call keeps the last target
     targets = applyProbeTarget(targets, ev('agent.completed', { agent_id: 'librarian' }));
     expect(targets).toEqual({});
+  });
+});
+
+describe('zoom levels', () => {
+  it('goes Universe → Galaxy → System → Item', () => {
+    const none = { viewerItemId: null, selectedItemId: null, selectedProjectId: null };
+    expect(zoomLevel(none)).toBe('Universe');
+    expect(zoomLevel({ ...none, selectedProjectId: 'g' })).toBe('Galaxy');
+    expect(zoomLevel({ ...none, selectedProjectId: 'g', selectedItemId: 'i' })).toBe('System');
+    expect(zoomLevel({ ...none, selectedItemId: 'i', viewerItemId: 'i' })).toBe('Item');
   });
 });

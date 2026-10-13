@@ -26,7 +26,6 @@ export function shouldGoSmooth(streak: number): boolean {
 
 export function useFrameBudget(): void {
   useEffect(() => {
-    if (useUniverse.getState().smooth) return;
     let raf = 0;
     let last = performance.now();
     let gaps: number[] = [];
@@ -38,8 +37,13 @@ export function useFrameBudget(): void {
         streak = nextSlowStreak(streak, gaps);
         gaps = [];
         if (shouldGoSmooth(streak)) {
-          useUniverse.getState().setSmooth(true);
-          return; // decided for this session; stop sampling
+          const s = useUniverse.getState();
+          streak = 0;
+          if (!s.smooth) s.setSmooth(true);
+          // In the universe, step the quality preset down too (Auto only); keep watching after each step.
+          if (s.view === 'universe' && s.qualitySetting === 'auto' && s.quality !== 'lite')
+            s.degradeQuality();
+          else if (s.smooth) return; // nothing more to give up: stop sampling
         }
       }
       raf = requestAnimationFrame(tick);

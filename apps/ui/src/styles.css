@@ -180,3 +180,68 @@
     transition: none;
   }
 }
+
+/* High contrast (System → Display): brighter secondary text and nearly opaque panels (≥ 7:1 on glass). */
+:root[data-contrast='high'] {
+  --color-ink-2: #e2e8fa;
+  --color-ink-3: #c3cce4;
+  --color-glass-1: rgba(8, 12, 22, 0.94);
+  --color-glass-2: rgba(8, 12, 22, 0.97);
+  --color-hairline-1: rgba(200, 220, 255, 0.35);
+  --color-hairline-2: rgba(200, 220, 255, 0.55);
+}
+
+/* Note previews (Markdown rendered by marked, sanitized by DOMPurify). */
+.markdown h1 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+.markdown h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin: 1rem 0 0.4rem;
+}
+.markdown h3 {
+  font-weight: 600;
+  margin: 0.8rem 0 0.3rem;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote {
+  margin: 0 0 0.6rem;
+}
+.markdown ul {
+  list-style: disc;
+  padding-left: 1.2rem;
+}
+.markdown ol {
+  list-style: decimal;
+  padding-left: 1.2rem;
+}
+.markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-space-2);
+  padding: 0 0.25rem;
+  border-radius: 4px;
+}
+.markdown pre {
+  background: var(--color-space-2);
+  padding: 0.6rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.markdown blockquote {
+  border-left: 2px solid var(--color-hairline-2);
+  padding-left: 0.6rem;
+  color: var(--color-ink-2);
+}

@@ -10,6 +10,7 @@ import { formatBytes, formatDuration } from '../lib/format';
 import type { AssignableTier } from '../lib/api';
 import { useHardware, useModels, useRecommendation, useVaultInfo, useVitals } from '../lib/queries';
 import { useUniverse } from '../state/store';
+import { QUALITY_LABEL, type QualitySetting } from '../universe/quality';
 import { CopyButton, Dot, SectionTitle } from './ui';
 
 type Candidate = components['schemas']['Candidate'];
@@ -324,26 +325,88 @@ function HardwareAndModels() {
   );
 }
 
+const TEXT_SIZES = [
+  { value: 1, label: 'Default' },
+  { value: 1.125, label: 'Larger' },
+  { value: 1.25, label: 'Largest' },
+];
+
 function Display() {
   const smooth = useUniverse((s) => s.smooth);
   const setSmooth = useUniverse((s) => s.setSmooth);
+  const qualitySetting = useUniverse((s) => s.qualitySetting);
+  const quality = useUniverse((s) => s.quality);
+  const setQualitySetting = useUniverse((s) => s.setQualitySetting);
+  const textScale = useUniverse((s) => s.textScale);
+  const setTextScale = useUniverse((s) => s.setTextScale);
+  const highContrast = useUniverse((s) => s.highContrast);
+  const setHighContrast = useUniverse((s) => s.setHighContrast);
   return (
-    <label className="flex items-start gap-2 text-xs text-ink-2">
-      <input
-        type="checkbox"
-        checked={smooth}
-        onChange={(e) => setSmooth(e.target.checked)}
-        className="mt-0.5 accent-[var(--color-accent)]"
-        data-testid="smooth-mode"
-      />
-      <span>
-        Smooth mode
-        <span className="block text-[11px] leading-relaxed text-ink-3">
-          Turns off the glass blur and renders the universe at 1× for steadier frames. It switches on by
-          itself when this display drops frames.
+    <div className="space-y-3">
+      <label className="flex items-center justify-between gap-3 text-xs text-ink-2">
+        <span>
+          Universe quality
+          <span className="block text-[11px] text-ink-3">
+            {qualitySetting === 'auto' && quality
+              ? `Auto: ${QUALITY_LABEL[quality]} for this machine`
+              : 'Lite is a 2D graph'}
+          </span>
         </span>
-      </span>
-    </label>
+        <select
+          value={qualitySetting}
+          onChange={(e) => setQualitySetting(e.target.value as QualitySetting)}
+          className="rounded-md border border-hairline-2 bg-space-2 px-2 py-1 text-xs text-ink-1"
+          data-testid="quality"
+        >
+          {(['auto', 'ultra', 'high', 'balanced', 'lite'] as const).map((q) => (
+            <option key={q} value={q}>
+              {QUALITY_LABEL[q]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center justify-between gap-3 text-xs text-ink-2">
+        Text size
+        <select
+          value={textScale}
+          onChange={(e) => setTextScale(Number(e.target.value))}
+          className="rounded-md border border-hairline-2 bg-space-2 px-2 py-1 text-xs text-ink-1"
+          data-testid="text-size"
+        >
+          {TEXT_SIZES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-xs text-ink-2">
+        <input
+          type="checkbox"
+          checked={highContrast}
+          onChange={(e) => setHighContrast(e.target.checked)}
+          className="accent-[var(--color-accent)]"
+          data-testid="high-contrast"
+        />
+        High contrast
+      </label>
+      <label className="flex items-start gap-2 text-xs text-ink-2">
+        <input
+          type="checkbox"
+          checked={smooth}
+          onChange={(e) => setSmooth(e.target.checked)}
+          className="mt-0.5 accent-[var(--color-accent)]"
+          data-testid="smooth-mode"
+        />
+        <span>
+          Smooth mode
+          <span className="block text-[11px] leading-relaxed text-ink-3">
+            Turns off the glass blur and renders the universe at 1× for steadier frames. It switches on by
+            itself when this display drops frames.
+          </span>
+        </span>
+      </label>
+    </div>
   );
 }
 
