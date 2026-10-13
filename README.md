@@ -4,7 +4,7 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 3 (Agent engine) is delivered and waiting for review**, with a protected-core patch for the owner to apply. Phases 1 (Foundation), 1.5 (fixes) and 2 (Vault + Recall) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
+**Phase 3 (Agent engine) is delivered and waiting for review**; its protected-core patch is applied. Phases 1 (Foundation), 1.5 (fixes) and 2 (Vault + Recall) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
 

@@ -9,7 +9,7 @@ from typing import Any
 
 from universe_supervisor import __version__
 from universe_supervisor.config import SupervisorConfig, find_ollama
-from universe_supervisor.health import get_json
+from universe_supervisor.health import get_json, post_json
 from universe_supervisor.jsonlog import JsonLog
 from universe_supervisor.lkg import current_commit, lkg_pythonpath, prepare_worktree
 from universe_supervisor.service import (
@@ -30,6 +30,7 @@ from universe_supervisor.state import StateFile
 from universe_supervisor.winjob import JobObject
 
 BOOT_FAILURES_FOR_SAFE_MODE = 2
+KILLSWITCH_ACK_S = 1.0  # Core must apply the kill switch within this, or it's restarted with it engaged
 EXTERNAL_RECHECK_S = 5.0
 TICK_S = 0.2
 
@@ -325,6 +326,32 @@ class Supervisor:
             kill_tree(rt.proc)
             self.log("service_killed_on_request", service=name, pid=rt.proc.pid)
             return True
+
+    def killswitch(self, engaged: bool) -> dict[str, Any]:
+        """Engage or release the kill switch (ARCHITECTURE.md §1.4).
+
+        The state file is the source of truth: Core re-reads it on /killswitch/sync and at boot. If Core
+        doesn't acknowledge an engage within a second (hung), it's restarted and comes back engaged.
+        """
+        path = self.config.data_dir / "killswitch.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".killswitch-{os.getpid()}.json")
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        tmp.write_text(json.dumps({"engaged": engaged, "since": since, "via": "supervisor"}), encoding="utf-8")
+        os.replace(tmp, path)
+        url = f"http://127.0.0.1:{self.config.core_port}/api/v1/killswitch/sync"
+        acked = post_json(url, token=self.config.session_token, timeout=KILLSWITCH_ACK_S) is not None
+        restarted = False
+        if engaged and not acked:
+            restarted = self.restart("core")
+        self.log(
+            "killswitch",
+            level="warning" if engaged else "info",
+            engaged=engaged,
+            core_acked=acked,
+            core_restarted=restarted,
+        )
+        return {"ok": True, "engaged": engaged, "core_acked": acked, "core_restarted": restarted}
 
     def exit_safe_mode(self) -> bool:
         with self.lock:

@@ -1,6 +1,6 @@
 # Proposal: Phase 3 protected core — policy engine, permission rules, budget caps, kill switch
 
-Status: **waiting for the owner** (proposed 2026-10-13). Apply it yourself, or tell the assistant "apply the Phase 3 patch".
+Status: **approved by the owner and applied on 2026-10-13** ("apply phase 3 patch"). Kept as the record of what changed and why. After applying: pytest 199 passed (1 Windows-only skip), Vitest 70, Electron e2e 13 passed.
 
 Patch: [`phase-3-protected-core.patch`](phase-3-protected-core.patch), 13 files, about 950 added lines. Design: [ADR-0011](../adr/0011-phase-3-agent-engine.md).
 

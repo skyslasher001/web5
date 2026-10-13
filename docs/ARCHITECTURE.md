@@ -427,7 +427,7 @@ Base URL `http://127.0.0.1:47821/api/v1` (port configurable). JSON everywhere. C
 | Privacy | `GET /privacy/summary` (what's stored, captured and sent where) · `POST /privacy/purge {scope}` · `POST /export {format: vault-zip\|json}` |
 | Internal | `POST /internal/events` (workers/voice/models publish; internal token) · `POST /internal/heartbeat` |
 
-**Supervisor control API** (separate loopback port, its own token, held only by Electron main). Phase 1: `GET /status` · `POST /services/{name}/restart` · `POST /services/{name}/kill` (simulates a crash) · `POST /safe-mode/exit` · `POST /shutdown` · `GET /logs/{service}?tail=`. Phase 3 (in the protected-core patch): `POST /killswitch {engaged}`. Later: `POST /releases/apply {proposal_id, head_commit, approval_nonce}` · `POST /releases/rollback {to}` (Phase 5).
+**Supervisor control API** (separate loopback port, its own token, held only by Electron main). Phase 1: `GET /status` · `POST /services/{name}/restart` · `POST /services/{name}/kill` (simulates a crash) · `POST /safe-mode/exit` · `POST /shutdown` · `GET /logs/{service}?tail=`. Phase 3: `POST /killswitch {engaged}`. Later: `POST /releases/apply {proposal_id, head_commit, approval_nonce}` · `POST /releases/rollback {to}` (Phase 5).
 
 ### 5.2 WebSocket `/ws` (multiplexed)
 

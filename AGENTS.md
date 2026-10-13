@@ -8,7 +8,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): the design. Follow it, or change it explicitly with an ADR.
 3. [`docs/PHASE-3.md`](docs/PHASE-3.md) (and [`PHASE-2.md`](docs/PHASE-2.md), [`PHASE-1.md`](docs/PHASE-1.md), [`PHASE-1.5.md`](docs/PHASE-1.5.md)): what exists now, what was fixed, open limitations, what's next.
 
-**Current phase:** Phase 3 (Agent engine) delivered 2026-10-13, waiting for the owner's review. Its protected-core patch ([`docs/proposals/phase-3-protected-core.md`](docs/proposals/phase-3-protected-core.md)) is waiting for the owner to apply; until then agents chat without tools and the engine tests skip. Phases 1, 1.5 and 2 are approved, and the Phase 1.5 protected-core patch is applied.
+**Current phase:** Phase 3 (Agent engine) delivered 2026-10-13, waiting for the owner's review. Its protected-core patch ([`docs/proposals/phase-3-protected-core.md`](docs/proposals/phase-3-protected-core.md)) was approved and applied on 2026-10-13. Phases 1, 1.5 and 2 are approved, and the Phase 1.5 protected-core patch is applied.
 
 ## How to work
 
@@ -43,7 +43,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 | JS tests / lint / types | `pnpm exec vitest run` · `pnpm exec eslint .` · `pnpm exec prettier --check .` · `pnpm -r typecheck` |
 | Electron e2e | `pnpm build && pnpm test:e2e` (Linux without a display: `xvfb-run -a pnpm test:e2e`) |
 | Regenerate | `pnpm tokens` · `pnpm gen:types` |
-| Phase 3 done-when | `uv run pytest tests/integration/test_agent_engine.py` and the e2e run (both need the protected-core patch; skipped without it) |
+| Phase 3 done-when | `uv run pytest tests/integration/test_agent_engine.py` and the e2e run |
 | Phase 2 done-when | `uv run pytest tests/integration/test_done_when.py -s` (500 files, ~3 min) · demo data: `uv run python scripts/seed_vault.py generate <empty folder>` then `bench <manifest> --key uk_…` |
 
 ## Layout

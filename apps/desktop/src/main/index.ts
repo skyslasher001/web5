@@ -4,6 +4,7 @@ import {
   app,
   clipboard,
   dialog,
+  globalShortcut,
   ipcMain,
   net,
   protocol,
@@ -33,6 +34,7 @@ import { createLogger } from './logger';
 import { isAllowedNavigation } from './navigation';
 import { resolvePaths } from './paths';
 import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
+import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
 import { SupervisorProcess } from './protected/supervisor';
 import { createTray } from './tray';
 import { insideFolder } from './vaultAccess';
@@ -272,10 +274,13 @@ function registerIpc(): void {
   });
   ipcMain.handle(CH.captureClipboard, saveClipboard);
 
-  // ---------- kill switch ----------
-  // The control lives in protected code (Phase 3 protected-core patch); until it's applied, there is none.
-  ipcMain.handle(CH.getKillSwitch, () => ({ available: false, engaged: false }));
-  ipcMain.handle(CH.setKillSwitch, () => ({ available: false, engaged: false }));
+  // ---------- kill switch (protected control) ----------
+  ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
+  ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
+    if (typeof engaged !== 'boolean') return { available: true, engaged: killSwitch.engaged };
+    const result = await killSwitch.set(engaged, 'hud');
+    return { available: true, engaged: result.engaged };
+  });
 
   // ---------- command bar ----------
   ipcMain.handle(CH.getHotkey, (): HotkeyStatus => commandBar?.status ?? noHotkey());
@@ -302,6 +307,32 @@ function registerIpc(): void {
     win?.webContents.send(CH.focusEvent, target);
   });
 }
+
+const killSwitch = new KillSwitchControl({
+  initial: readKillSwitchFile(join(paths.dataDir, 'killswitch.json')),
+  setOnSupervisor: (engaged) => supervisor.setKillSwitch(engaged),
+  stopCapture: () => {}, // no capture exists yet; mic, screen and camera arrive in Phases 7–8
+  confirmRelease: async () => {
+    const options = {
+      type: 'warning' as const,
+      buttons: ['Keep it on', 'Release'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Release the kill switch?',
+      message: 'Release the kill switch?',
+      detail:
+        'Agents and network jobs can run again. Mic, screen and camera stay off until you turn them on.',
+    };
+    const choice = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    return choice.response === 1;
+  },
+  onChange: (engaged) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      w.webContents.send(CH.killSwitchEvent, { available: true, engaged });
+    }
+  },
+  log: (event, fields) => log.warn(event, fields),
+});
 
 let commandBar: CommandBar | null = null;
 let tray: Tray | null = null;
@@ -342,6 +373,17 @@ function startCommandBarAndTray(): void {
       show: showMainWindow,
       quit: () => app.quit(),
       hotkey: () => commandBar?.status.accelerator ?? '',
+      extraItems: () => [
+        killSwitch.engaged
+          ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }
+          : {
+              label: 'Kill switch: stop all agents',
+              accelerator: KILL_SWITCH_HOTKEY,
+              registerAccelerator: false,
+              click: () => void killSwitch.set(true, 'tray'),
+            },
+        { type: 'separator' },
+      ],
     });
   } catch (err) {
     log.warn('tray_unavailable', { error: err instanceof Error ? err.message : String(err) });
@@ -386,6 +428,11 @@ if (!app.requestSingleInstanceLock()) {
     });
     supervisor.start();
     createWindow();
+    const killHotkey = globalShortcut.register(KILL_SWITCH_HOTKEY, () => void killSwitch.set(true, 'hotkey'));
+    log[killHotkey ? 'info' : 'warn']('kill_switch_hotkey', {
+      accelerator: KILL_SWITCH_HOTKEY,
+      registered: killHotkey,
+    });
     // The main window gets the CPU first (SPEC §24); the hidden command bar loads once it's up.
     win?.webContents.once('did-finish-load', startCommandBarAndTray);
   });

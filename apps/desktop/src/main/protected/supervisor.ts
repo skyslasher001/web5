@@ -104,11 +104,15 @@ export class SupervisorProcess extends EventEmitter {
     this.emit('state', this.state);
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST', path: string, payload?: unknown): Promise<T> {
     if (this.controlPort === null) throw new Error('The supervisor is not running');
     const response = await fetch(`http://127.0.0.1:${this.controlPort}${path}`, {
       method,
-      headers: { Authorization: `Bearer ${this.opts.token}` },
+      headers: {
+        Authorization: `Bearer ${this.opts.token}`,
+        ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
       signal: AbortSignal.timeout(5000),
     });
     const body = (await response.json()) as T;
@@ -123,6 +127,10 @@ export class SupervisorProcess extends EventEmitter {
 
   async killService(name: 'core'): Promise<boolean> {
     return (await this.request<{ ok: boolean }>('POST', `/services/${name}/kill`)).ok;
+  }
+
+  async setKillSwitch(engaged: boolean): Promise<{ engaged: boolean; core_acked: boolean }> {
+    return this.request('POST', '/killswitch', { engaged });
   }
 
   async exitSafeMode(): Promise<boolean> {

@@ -1,6 +1,6 @@
 # Phase 3: Agent engine
 
-Status: **delivered 2026-10-13, waiting for your review.** The protected-core part ships as a patch for you to apply: [proposals/phase-3-protected-core.md](proposals/phase-3-protected-core.md).
+Status: **delivered 2026-10-13, waiting for your review.** The protected-core part (policy engine, permission rules, budget caps, kill switch) was approved and applied on 2026-10-13: [proposals/phase-3-protected-core.md](proposals/phase-3-protected-core.md).
 
 Phase 3 turns Core from a chat partner into an orchestrator. It can hand work to specialists, use tools on your vault, ask you before it does anything that matters, remember what you let it remember, and leave a tamper-evident record of everything. Design decisions are in [ADR-0011](adr/0011-phase-3-agent-engine.md).
 
@@ -9,7 +9,7 @@ Phase 3 turns Core from a chat partner into an orchestrator. It can hand work to
 - `tests/integration/test_agent_engine.py::test_find_summarize_and_link_with_a_full_audit_trail`, through Core's REST API: Core delegates the search to the Librarian, the Librarian searches and reads both notes, Core asks you before linking them (it read your files, so the task is *tainted*), you approve, the two notes join the galaxy, Critic checks the answer, and the audit log has `task.started`, every `tool.call`, `approval.decided`, `item.linked` and `task.finished`. The log holds ids and hashes, never the text of your notes, and its hash chain verifies.
 - `tests/e2e/app.spec.ts` (*done when: find notes, summarize them…*), the same flow in the real Electron app: type the request in the Agents panel, approve the card that appears, read the summary with *Checked by Critic*, follow the trace, and verify the audit log in the Safety panel.
 
-Both need the protected-core patch. Without it they're skipped with that reason, and agents chat without tools as in Phase 1.
+Both run against the protected policy engine, which is now applied. (If `protected/policy.py` were ever missing, they'd skip with that reason and agents would chat without tools, as in Phase 1.)
 
 ## What you can do now
 
@@ -39,19 +39,12 @@ Both need the protected-core patch. Without it they're skipped with that reason,
 From [PHASE-2.md](PHASE-2.md#setup), then:
 
 1. `uv sync` and `pnpm install` (new: the MCP SDK as a dev-only test dependency).
-2. **Apply the protected-core patch** (your step; the assistant may not write those files). Read [the proposal](proposals/phase-3-protected-core.md), then:
-   ```powershell
-   git apply docs/proposals/phase-3-protected-core.patch
-   uv run pytest tests/protected tests/integration/test_agent_engine.py
-   pnpm exec vitest run apps/desktop
-   ```
-   Or tell the assistant "apply the Phase 3 patch".
-3. **A model that can call tools.** `gemma4:e4b`, the Phase 1 default, lists `tools` on Ollama's registry. If yours doesn't, chat still works without tools and the hint says what to pull, for example `ollama pull qwen3:8b`. Choose it in System → Chat model.
-4. `pnpm dev`.
+2. **A model that can call tools.** `gemma4:e4b`, the Phase 1 default, lists `tools` on Ollama's registry. If yours doesn't, chat still works without tools and the hint says what to pull, for example `ollama pull qwen3:8b`. Choose it in System → Chat model.
+3. `pnpm dev`.
 
 ## Demo script (≈5 minutes)
 
-With the patch applied and a tool-capable model:
+With a tool-capable model:
 
 1. `pnpm dev`. The dock lists five agents. The top bar has the budget meter (`$0.00 · local`) and the kill-switch button.
 2. **Some notes:** press `Ctrl+Space`, `Tab`, write `The Austin land deal closes in November #deals`, `Ctrl+Enter`. Add a second: `A land deal by the lake: the owner is motivated.`
@@ -63,17 +56,16 @@ With the patch applied and a tool-capable model:
 8. **A rule:** Safety → Permission rules: Core, `project.add_items`, Allow, tick *even after reading files*, *Add rule*. Ask the same question for project *UNIVERSE*: no card this time.
 9. **Memory:** in chat, `Remember that I prefer short summaries.` Agents → Memory shows a proposal. *Keep* it.
 10. **Kill switch:** press `Ctrl+Alt+Shift+K`. The red banner appears; ask Core something and the task fails with *kill switch*. *Release…* asks you in a system dialog.
-11. **Without the patch** (optional): the Agents panel says agents chat without tools and why; chat works as in Phase 1.
 
 ## Tests
 
 | Suite | Count | New in Phase 3 |
 | --- | --- | --- |
-| pytest (`uv run pytest`) | 178 on the main branch (the 8 agent-engine tests skip without the patch); 200 with the patch applied | the tool-calling provider (streamed fragments, usage), the router's tool capability, the agent runtime and guardrails, delegation and Critic review, approvals, memory scopes, the MCP client against the official SDK server, chat through the engine, and the done-when |
-| Vitest (`pnpm exec vitest run`) | 70 (73 with the patch) | step labels, activity lines for approvals and the kill switch, which views an event refreshes, the agent API client; with the patch, the kill-switch control in Electron main |
+| pytest (`uv run pytest`) | 200: 199 passed, 1 Windows-only skip | the tool-calling provider (streamed fragments, usage), the router's tool capability, the agent runtime and guardrails, delegation and Critic review, approvals, memory scopes, the MCP client against the official SDK server, chat through the engine, and the done-when |
+| Vitest (`pnpm exec vitest run`) | 70 | step labels, activity lines for approvals and the kill switch, which views an event refreshes, the agent API client, the kill-switch control in Electron main |
 | Playwright Electron (`pnpm test:e2e`) | 13 | the agent dock and panels, the done-when with an approval and the audit trail, the kill switch and its native release dialog |
 
-Run here (Linux, Python 3.12, Node 22): on the main branch, the non-slow pytest suite passed (155, 1 skipped), the slow suite passed, Vitest 70, and the e2e 11 passed with the 2 patch-only tests skipped. In a scratch worktree with the patch applied, pytest passed (177 non-slow) and all 13 e2e tests passed. `ruff`, `ruff format`, `pyright`, `eslint`, `prettier`, `tsc` and the generated-types check are clean.
+Run here (Linux, Python 3.12, Node 22) after applying the protected-core patch: pytest 199 passed (1 Windows-only skip), Vitest 70, and all 13 e2e tests passed. Before it was applied, the same suites passed with the patch-only tests skipped (Vitest 67, e2e 11 + 2 skipped). `ruff`, `ruff format`, `pyright`, `eslint`, `prettier`, `tsc` and the generated-types check are clean.
 
 ### Bugs found and fixed while building Phase 3
 
@@ -86,7 +78,6 @@ Each has a regression test.
 
 ## Known limitations
 
-- **The protected patch isn't applied yet.** Until you apply it, agents chat without tools, the Safety panel shows only MCP servers and the audit log, and the kill switch is hidden.
 - **No real tool-calling model was run here.** Ollama's registry is unreachable from the build environment, so the engine is tested with a scripted stand-in model that speaks Ollama's OpenAI-compatible tool-calling protocol. Small local models call tools less reliably than the stand-in; one report says Gemma 4's tool calls get unreliable after 3–4 in a row on older Ollama versions. Try `qwen3:8b` if Core stalls or ignores its tools.
 - **Tasks don't survive a restart.** A task running when Core restarts is marked failed, and its pending approval expires. Run it again.
 - **One level of delegation**, by design: specialists can't delegate further.
@@ -98,4 +89,4 @@ Each has a regression test.
 
 ## What's next: Phase 4 (Universe interface)
 
-SPEC §25: the 3D universe on real data, celestial mapping, four layouts, zoom levels with LOD, the complete HUD, item viewers, agent probes, constellation results, quality presets and Lite mode. Useful from you now: review and apply the protected-core patch, try the demo with `gemma4:e4b` or `qwen3:8b`, and fix the Actions setting so Windows CI runs.
+SPEC §25: the 3D universe on real data, celestial mapping, four layouts, zoom levels with LOD, the complete HUD, item viewers, agent probes, constellation results, quality presets and Lite mode. Useful from you now: review Phase 3, try the demo with `gemma4:e4b` or `qwen3:8b`, and fix the Actions setting so Windows CI runs.

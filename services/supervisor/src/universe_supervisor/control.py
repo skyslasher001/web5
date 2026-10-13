@@ -76,6 +76,16 @@ class _Handler(BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[0] == "services" and parts[2] in ("restart", "kill"):
             ok = sup.restart(parts[1]) if parts[2] == "restart" else sup.kill(parts[1])
             self._send(200 if ok else 409, {"ok": ok})
+        elif parts == ["killswitch"]:
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(min(length, 4096)) or b"{}")
+            except ValueError:
+                body = None
+            if not isinstance(body, dict) or not isinstance(body.get("engaged"), bool):
+                self._send(400, {"error": 'send {"engaged": true|false}'})
+                return
+            self._send(200, sup.killswitch(body["engaged"]))
         elif parts == ["safe-mode", "exit"]:
             self._send(200, {"ok": sup.exit_safe_mode()})
         elif parts == ["shutdown"]:
