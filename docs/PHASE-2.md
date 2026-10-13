@@ -77,7 +77,7 @@ From [PHASE-1.md](PHASE-1.md#setup), then:
 
 | Suite | Count | New in Phase 2 |
 | --- | --- | --- |
-| pytest (`uv run pytest`) | 171 (+5 real-Ollama tests that skip without an `ollama` binary; 1 Windows-only) | vault basics, job queue, pipeline over every type, REST API (incl. a real uvicorn + worker process), governor, watched folders, vault self-watch, restic backup/verify/restore, search relevance, paging, the 500-file done-when |
+| pytest (`uv run pytest`) | 171: 170 passed here, 1 Windows-only skipped (includes the real-Ollama tests, which skip without an `ollama` binary) | vault basics, job queue, pipeline over every type, REST API (incl. a real uvicorn + worker process), governor, watched folders, vault self-watch, restic backup/verify/restore, search relevance, paging, the 500-file done-when |
 | Vitest (`pnpm exec vitest run`) | 60 | command bar decisions, focus targets, clipboard capture, hotkey settings, vault path checks, item types, activity bursts, frame budget |
 | Playwright Electron (`pnpm test:e2e`) | 10 | add files and find them by keyword and meaning, command bar find + capture, vault panel, smooth scrolling through 300+ items |
 
