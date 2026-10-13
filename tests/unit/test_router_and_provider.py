@@ -19,7 +19,7 @@ async def test_capabilities_are_looked_up_once_per_model_version(fake_ollama: Fa
     for _ in range(2):
         models = await client.list_models(refresh=True)
     assert {m.name: m.capabilities for m in models} == {
-        "fake-chat:latest": ["completion"],
+        "fake-chat:latest": ["completion", "tools"],  # the stand-in model can call tools, like qwen3
         "fake-embed:latest": ["embedding"],
     }
     assert fake_ollama.show_requests == 2  # not 6: cached by (name, digest)
@@ -37,6 +37,16 @@ async def test_capabilities_listed_in_tags_need_no_show_calls(fake_ollama: FakeO
 
 async def test_router_falls_back_to_any_installed_chat_model(fake_ollama: FakeOllama) -> None:
     assert await _router(fake_ollama.url).resolve("local-fast") == CHAT_MODEL
+
+
+async def test_agents_with_tools_need_a_tool_capable_model(fake_ollama: FakeOllama) -> None:
+    assert await _router(fake_ollama.url).resolve("local-fast", needs_tools=True) == CHAT_MODEL
+    fake_ollama.chat_tools = False
+    router = _router(fake_ollama.url)
+    assert await router.resolve("local-fast") == CHAT_MODEL  # plain chat still works
+    with pytest.raises(NoModelAvailable) as caught:
+        await router.resolve("local-fast", needs_tools=True)
+    assert "can call tools" in str(caught.value) and caught.value.hint.startswith("Run: ollama pull")
 
 
 async def test_router_prefers_assignment_then_preferences(fake_ollama: FakeOllama) -> None:
@@ -96,3 +106,26 @@ async def test_provider_turns_server_errors_into_provider_errors(fake_ollama: Fa
 def test_httpx_is_the_transport() -> None:
     # The provider must use the gate's client (and therefore its checks), not its own.
     assert isinstance(EgressGate().async_client(purpose="x", local_only=True), httpx.AsyncClient)
+
+
+TOOLS = [{"type": "function", "function": {"name": "vault__search", "description": "", "parameters": {}}}]
+
+
+async def test_tool_calls_are_assembled_from_streamed_fragments(fake_ollama: FakeOllama) -> None:
+    provider = OpenAICompatibleProvider(httpx.AsyncClient(base_url=fake_ollama.url))
+    seen: list[str] = []
+    turn = await provider.complete(
+        CHAT_MODEL, [{"role": "user", "content": "[[loop]]"}], tools=TOOLS, max_tokens=64, on_token=seen.append
+    )
+    [call] = turn.tool_calls
+    assert call.name == "vault__search" and call.arguments == {"query": "same thing"} and call.error is None
+    assert call.id.startswith("call_") and turn.finish_reason == "tool_calls"
+    assert turn.tokens_in == 50 and turn.tokens_out >= 10  # from the usage chunk
+    assert seen == []  # no text in this turn
+
+    bad = await provider.complete(CHAT_MODEL, [{"role": "user", "content": "[[bad-args]]"}], tools=TOOLS, max_tokens=64)
+    assert bad.tool_calls[0].error is not None and bad.tool_calls[0].raw_arguments == "{not json"
+
+    text = await provider.complete(CHAT_MODEL, [{"role": "user", "content": "hello"}], tools=TOOLS, max_tokens=64)
+    assert text.tool_calls == [] and text.content.strip() == "Echo from the fake model: hello"
+    await provider.aclose()

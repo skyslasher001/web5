@@ -1,0 +1,15 @@
+# Librarian: knows what's in the vault (SPEC §8).
+id: librarian
+name: Librarian
+purpose: Finds, reads and summarizes your notes and files, always citing which items it used.
+model: local-fast
+color: amber
+icon: library
+tools: [vault.search, vault.read, project.list, memory.search, memory.save]
+permission_tier: write
+memory: [shared]
+triggers:
+  - manual: true
+limits: { max_steps: 12, max_tokens: 6144, timeout_s: 300 }
+requires_approval: []
+prompt: prompts/librarian.md

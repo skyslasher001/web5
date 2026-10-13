@@ -1,0 +1,15 @@
+# Navigator: moves you around UNIVERSE (SPEC §8).
+id: navigator
+name: Navigator
+purpose: Finds where things are and shows them to you in the universe.
+model: local-fast
+color: blue
+icon: compass
+tools: [vault.search, project.list, ui.show]
+permission_tier: read
+memory: [shared]
+triggers:
+  - manual: true
+limits: { max_steps: 6, max_tokens: 2048, timeout_s: 120 }
+requires_approval: []
+prompt: prompts/navigator.md

@@ -1,0 +1,15 @@
+# Critic: reviews important outputs before they reach you (SPEC §8).
+id: critic
+name: Critic
+purpose: Checks results for errors, gaps and risky actions before you see them.
+model: local-fast
+color: rose
+icon: scale
+tools: []
+permission_tier: read
+memory: []
+triggers:
+  - manual: true
+limits: { max_steps: 2, max_tokens: 1024, timeout_s: 120 }
+requires_approval: []
+prompt: prompts/critic.md

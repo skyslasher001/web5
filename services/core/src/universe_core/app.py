@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from universe_common.errors import capture_exception
 from universe_common.log import get_logger
 from universe_core import __version__
+from universe_core.agents_api import router as agents_router
 from universe_core.api import public, router
 from universe_core.chat import ChatError, ChatUnavailable
 from universe_core.context import CoreContext
@@ -85,6 +86,7 @@ def create_app(settings: CoreSettings) -> FastAPI:
     app.include_router(public)
     app.include_router(router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(vault_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+    app.include_router(agents_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(vault_admin_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(vault_local_api)  # session token or a scoped local API key, checked per endpoint
     app.include_router(vault_internal)  # Core's own workers (per-boot internal token)

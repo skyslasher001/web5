@@ -1,0 +1,15 @@
+# Scribe: writes things down (SPEC §8).
+id: scribe
+name: Scribe
+purpose: Writes summaries, notes and drafts into your vault, in your voice.
+model: local-fast
+color: green
+icon: pen-line
+tools: [vault.search, vault.read, note.create, memory.search]
+permission_tier: write
+memory: [shared, self]
+triggers:
+  - manual: true
+limits: { max_steps: 8, max_tokens: 6144, timeout_s: 300 }
+requires_approval: [note.create]
+prompt: prompts/scribe.md

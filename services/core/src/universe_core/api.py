@@ -242,7 +242,8 @@ async def agents(ctx: Ctx) -> list[AgentInfo]:
         if ctx.settings.safe_mode:
             state: Literal["idle", "working", "disabled"] = "disabled"
         else:
-            state = "working" if ctx.chat.is_agent_busy(agent.id) else "idle"
+            busy = ctx.chat.is_agent_busy(agent.id) or (ctx.engine is not None and ctx.engine.busy(agent.id))
+            state = "working" if busy else "idle"
         out.append(
             AgentInfo(
                 id=agent.id,
