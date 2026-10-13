@@ -9,9 +9,11 @@ import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
+import psutil
 import pytest
 
 from tests.conftest import REPO, free_port
+from tests.support.fake_ollama import FakeOllama
 from universe_supervisor.config import SupervisorConfig
 from universe_supervisor.control import ControlServer
 from universe_supervisor.jsonlog import JsonLog
@@ -20,11 +22,21 @@ from universe_supervisor.supervisor import Supervisor
 pytestmark = pytest.mark.slow
 
 FAKE_CORE = REPO / "tests" / "support" / "fake_core.py"
+LAUNCHER = REPO / "tests" / "support" / "launcher.py"
 CONTROL_TOKEN = "c" * 40
 
 
 class Harness:
-    def __init__(self, tmp: Path, repo: Path, *, lkg_stable_s: float = 3600) -> None:
+    def __init__(
+        self,
+        tmp: Path,
+        repo: Path,
+        *,
+        lkg_stable_s: float = 3600,
+        core_argv: list[str] | None = None,
+        manage_ollama: bool = False,
+        ollama_exe: str | None = None,
+    ) -> None:
         self.tmp = tmp
         self.control_file = tmp / "mode"
         self.env_out = tmp / "env.jsonl"
@@ -38,7 +50,7 @@ class Harness:
             vault_dir=tmp / "vault",
             service_python=sys.executable,
             core_port=self.port,
-            manage_ollama=False,
+            manage_ollama=manage_ollama,
             ollama_url=f"http://127.0.0.1:{free_port()}",
             lkg_stable_s=lkg_stable_s,
             boot_timeout_s=5,
@@ -48,8 +60,8 @@ class Harness:
             self.config,
             log=JsonLog(self.config.log_dir / "supervisor.jsonl", echo=False),
             emit=self.statuses.append,
-            core_argv=[sys.executable, str(FAKE_CORE)],
-            ollama_exe=None,
+            core_argv=core_argv or [sys.executable, str(FAKE_CORE)],
+            ollama_exe=ollama_exe,
         )
 
     def set_mode(self, mode: str) -> None:
@@ -84,6 +96,10 @@ def harness(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Harness
 
 def core(status: dict) -> dict:
     return status["services"]["core"]
+
+
+def ollama(status: dict) -> dict:
+    return status["services"]["ollama"]
 
 
 def test_starts_core_and_keeps_secrets_scoped(harness: Harness) -> None:
@@ -208,3 +224,62 @@ def test_shutdown_stops_children(harness: Harness) -> None:
     proc = harness.sup.runtimes["core"].proc
     harness.sup.shutdown()
     assert proc is not None and proc.poll() is not None
+
+
+def test_status_reports_healthy_since_as_wall_clock_time(harness: Harness) -> None:
+    harness.run_until(lambda s: core(s)["state"] == "healthy")
+    assert abs(core(harness.sup.status())["healthy_since"] - time.time()) < 60
+
+
+def test_kill_and_restart_take_the_whole_process_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Core behind a launcher, as with a venv's python.exe on Windows: killing only the launcher
+    # would leave the real Core running and holding the port, so the restart could never bind.
+    h = Harness(tmp_path, REPO, core_argv=[sys.executable, str(LAUNCHER), sys.executable, str(FAKE_CORE)])
+    monkeypatch.setenv("FAKE_CORE_CONTROL", str(h.control_file))
+    monkeypatch.setenv("FAKE_CORE_ENV_OUT", str(h.env_out))
+    try:
+        h.run_until(lambda s: core(s)["state"] == "healthy")
+        first = psutil.Process(h.starts()[-1]["pid"])
+        assert h.sup.kill("core")
+        first.wait(timeout=10)
+        h.run_until(lambda s: core(s)["state"] == "healthy" and core(s)["restarts"] == 1)
+        second = psutil.Process(h.starts()[-1]["pid"])
+        assert h.sup.restart("core")
+        second.wait(timeout=10)
+        h.run_until(lambda s: core(s)["state"] == "healthy" and core(s)["restarts"] == 2)
+    finally:
+        h.sup.shutdown()
+
+
+def test_managed_ollama_adopts_an_instance_that_takes_its_port(tmp_path: Path) -> None:
+    # `python serve` exits at once (no such file), like an `ollama serve` that lost the port race.
+    h = Harness(tmp_path, REPO, manage_ollama=True, ollama_exe=sys.executable)
+    try:
+        h.run_until(lambda s: ollama(s)["restarts"] >= 1)
+        external = FakeOllama(port=int(h.config.ollama_url.rsplit(":", 1)[-1])).start()
+        try:
+            h.run_until(lambda s: ollama(s)["state"] == "external" and ollama(s)["last_error"] is None)
+        finally:
+            external.stop()
+    finally:
+        h.sup.shutdown()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Objects")
+def test_children_belong_to_the_job_from_creation() -> None:
+    # In a fresh interpreter: putting the test runner itself in a kill-on-close job would be rude.
+    script = """
+import ctypes, subprocess, sys
+from ctypes import wintypes
+from universe_supervisor.winjob import JobObject
+job = JobObject()
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+k = ctypes.WinDLL("kernel32")
+k.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+inside = wintypes.BOOL()
+k.IsProcessInJob(int(child._handle), job.handle, ctypes.byref(inside))
+child.kill()
+print(job.contains_self, bool(inside.value))
+"""
+    out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=True)
+    assert out.stdout.split() == ["True", "True"], out.stderr

@@ -1,6 +1,6 @@
 # Phase 1.5: fixes and hardening
 
-Status: **delivered 2026-10-12, awaiting your go-ahead for Phase 2.** One part needs your decision: the [protected-core proposal](#needs-your-decision-protected-core-proposal).
+Status: **delivered 2026-10-12, approved 2026-10-13.** The [protected-core patch](#protected-core-patch-applied-2026-10-13) was approved and applied. Phase 2 is next.
 
 Phase 1.5 adds no features. It fixes every bug found in a review of Phase 1 and addresses the known issues that could be fixed from code. It also tests the model path against a real Ollama server for the first time. Each fix ships with a regression test.
 
@@ -48,9 +48,9 @@ Phase 1.5 adds no features. It fixes every bug found in a review of Phase 1 and 
 
 It passed against **Ollama 0.40.0**. It runs whenever an `ollama` binary is on `PATH` (or `UNIVERSE_TEST_OLLAMA` points at one) and is skipped otherwise. The model talks gibberish, so this proves the protocol and the plumbing, not answer quality or speed.
 
-## Needs your decision: protected-core proposal
+## Protected-core patch (applied 2026-10-13)
 
-Five more fixes touch the supervisor and CI, which AGENTS.md says only you can change. They're in [`proposals/phase-1.5-protected-core.patch`](proposals/phase-1.5-protected-core.patch), explained in [`proposals/phase-1.5-protected-core.md`](proposals/phase-1.5-protected-core.md):
+Five more fixes touch the supervisor and CI, which AGENTS.md says only you can change, so they were proposed first. You approved them on 2026-10-13 and they're now applied. They're in [`proposals/phase-1.5-protected-core.patch`](proposals/phase-1.5-protected-core.patch), explained in [`proposals/phase-1.5-protected-core.md`](proposals/phase-1.5-protected-core.md):
 
 1. Stopping or killing a service ends its **whole process tree**. Today on Windows only the venv launcher dies, which is the root cause behind the Core orphan fix above.
 2. The supervisor joins its own **Job Object**, so services can't escape it in the moment between spawn and assignment.
@@ -58,7 +58,7 @@ Five more fixes touch the supervisor and CI, which AGENTS.md says only you can c
 4. `healthy_since` in supervisor status becomes a real timestamp.
 5. CI moves to **Node 24 actions**. GitHub removed Node 20 from hosted runners on 2026-09-23.
 
-All five come with regression tests in the patch. In a scratch worktree, the three cross-platform tests fail without the patch and pass with it, and the full suite passes. To apply: `git apply docs/proposals/phase-1.5-protected-core.patch`.
+All five come with regression tests. Before approval they were checked in a scratch worktree: the three cross-platform tests fail without the patch and pass with it, and the full suite passes. After applying, the suite passes in the repo too.
 
 ## Setup
 
@@ -78,7 +78,7 @@ Unchanged from [PHASE-1.md](PHASE-1.md#setup). After pulling, run `uv sync` and 
 | pytest (`uv run pytest`) | 105 (100 + 5 real-Ollama tests that skip without an `ollama` binary) | threading invariants (3), orphan exit, `/models` when listing fails, 503 on assignment, capability caching (2), real Ollama (5) |
 | Vitest (`pnpm exec vitest run`) | 35 | navigation allowlist, log rotation, error-report queue (4), regular-files-only `app://`, `attempt()` |
 | Playwright Electron (`pnpm test:e2e`) | 6 | unchanged, re-run green |
-| With the protected-core patch applied | pytest +3, +1 Windows-only | tree kill, Ollama adoption, wall-clock status, Job Object (Windows) |
+| From the protected-core patch (applied 2026-10-13) | pytest +3 (108 in total), +1 Windows-only | tree kill, Ollama adoption, wall-clock status, Job Object (Windows) |
 
 Everything passed locally (Linux, Python 3.12.13, Node 22): `ruff`, `ruff format`, `pyright`, `eslint`, `prettier`, `tsc`, the generated-file checks, `pnpm build` and the e2e run.
 
@@ -88,13 +88,8 @@ Everything passed locally (Linux, Python 3.12.13, Node 22): `ruff`, `ruff format
 - **No real LLM yet.** The real-Ollama test uses a generated toy model. Ollama's registry (ollama.com) and Hugging Face are still unreachable from the build environment, so first-token latency and answer quality are measured on your PC.
 - **Model shortlist still unverified.** For the same reason, `loadouts.yaml` stays `verified: false`.
 - **The `pre-universe` tag still isn't on GitHub.** The environment's git proxy refuses tag pushes (retried in 1.5). Run `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`. The old page is in `main`'s history either way.
-- **Supervisor fixes wait on your approval** (see above). Without them, Core's orphan watch covers the worst Windows case on its own. Without fix 3, a managed Ollama that loses its port race keeps retrying.
 - **Not in scope by design:** everything from Phase 2 on.
 
 ## What's next: Phase 2 (Vault + Recall)
 
-Unchanged. See [PHASE-1.md → What's next](PHASE-1.md#whats-next-phase-2-vault--recall). Before starting it, please:
-
-1. Apply or decline the protected-core patch.
-2. Fix the Actions setting so Windows CI runs.
-3. Send the hardware report and your vault path.
+Approved 2026-10-13. See [PHASE-1.md → What's next](PHASE-1.md#whats-next-phase-2-vault--recall). Still useful from you: fix the Actions setting so Windows CI runs, and send the hardware report, your vault path and a backup target.

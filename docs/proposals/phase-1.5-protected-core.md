@@ -1,6 +1,8 @@
 # Proposal: Phase 1.5 fixes to protected core
 
-These fixes touch paths in [`protected-core.txt`](../../protected-core.txt) (the supervisor and CI), so per AGENTS.md they're proposed rather than applied. The diff is [`phase-1.5-protected-core.patch`](phase-1.5-protected-core.patch).
+Status: **approved by the owner and applied on 2026-10-13.** Kept as the record of what changed and why.
+
+These fixes touch paths in [`protected-core.txt`](../../protected-core.txt) (the supervisor and CI), so per AGENTS.md they were proposed rather than applied. The diff is [`phase-1.5-protected-core.patch`](phase-1.5-protected-core.patch).
 
 ## Apply
 

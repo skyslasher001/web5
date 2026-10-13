@@ -20,6 +20,7 @@ from universe_supervisor.service import (
     ServiceSpec,
     backoff_delay,
     healthy,
+    kill_tree,
     out_log_path,
     spawn,
     stop,
@@ -156,6 +157,7 @@ class Supervisor:
         rt.state = "starting"
         rt.started_at = now
         rt.healthy_since = None
+        rt.healthy_since_wall = None
         rt.health_failures = 0
         self.log("service_starting", service=rt.spec.name, pid=rt.proc.pid, reason=rt.start_reason)
 
@@ -172,6 +174,7 @@ class Supervisor:
             elif healthy(rt.spec, rt.proc):
                 rt.state = "healthy"
                 rt.healthy_since = now
+                rt.healthy_since_wall = time.time()
                 rt.last_health_at = now
                 rt.last_error = None
                 self.log(
@@ -211,7 +214,21 @@ class Supervisor:
         rt.start_reason = reason
         self.log("service_restart_scheduled", service=rt.spec.name, delay_s=delay, reason=reason)
 
+    def _adopt_external_ollama(self, rt: ServiceRuntime) -> bool:
+        """Our `ollama serve` died, but an Ollama answers anyway (say the tray app won the port): use it."""
+        if rt.spec.name != "ollama" or get_json(rt.spec.health_url or "") is None:
+            return False
+        rt.proc = None
+        rt.state = "external"
+        rt.crash_streak = 0
+        rt.last_error = None
+        self._next_external_check = 0.0
+        self.log("ollama_external_adopted", url=self.config.ollama_url)
+        return True
+
     def _on_crash(self, rt: ServiceRuntime, now: float, why: str, reason: str) -> None:
+        if self._adopt_external_ollama(rt):
+            return
         if rt.healthy_since is not None and now - rt.healthy_since > STABLE_RESET_S:
             rt.crash_streak = 0
         rt.last_error = self._error_with_tail(rt, why)
@@ -219,6 +236,8 @@ class Supervisor:
         self._schedule_restart(rt, now, reason)
 
     def _on_boot_failure(self, rt: ServiceRuntime, now: float, why: str) -> None:
+        if self._adopt_external_ollama(rt):
+            return
         rt.last_error = self._error_with_tail(rt, why)
         self.log("service_boot_failed", level="error", service=rt.spec.name, why=why)
         if rt.spec.name != "core":
@@ -303,7 +322,7 @@ class Supervisor:
             rt = self.runtimes.get(name)
             if rt is None or rt.proc is None or rt.proc.poll() is not None:
                 return False
-            rt.proc.kill()
+            kill_tree(rt.proc)
             self.log("service_killed_on_request", service=name, pid=rt.proc.pid)
             return True
 

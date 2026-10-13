@@ -4,7 +4,7 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 1 (Foundation) and the Phase 1.5 fix release delivered, awaiting your go-ahead for Phase 2.** Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers. Phase 1.5 includes a [protected-core proposal](docs/proposals/phase-1.5-protected-core.md) for you to apply or decline.
+**Phase 1 (Foundation) and the Phase 1.5 fix release delivered and approved. Phase 2 (Vault + Recall) is in progress.** Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
 
@@ -69,7 +69,7 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
 | [docs/PHASE-1.5.md](docs/PHASE-1.5.md) | Phase 1.5: bugs fixed, real-Ollama verification, open limitations |
-| [docs/proposals/](docs/proposals/) | Changes to protected core, waiting for the owner to apply them |
+| [docs/proposals/](docs/proposals/) | Changes to protected core, proposed for the owner to apply (with their status) |
 | [docs/PHASE-1.md](docs/PHASE-1.md) | Phase 1 delivery: setup, demo script, tests, measured numbers, known limitations |
 | [docs/PHASE-0.md](docs/PHASE-0.md) | Phase 0 delivery and the answers to its questions |
 | [docs/adr/](docs/adr/) | Architecture decision records |

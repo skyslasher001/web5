@@ -7,6 +7,7 @@ from typing import Any
 class JobObject:
     def __init__(self) -> None:
         self.handle = None
+        self.contains_self = False
         self._kernel32: Any = None
         if sys.platform != "win32":
             return
@@ -61,6 +62,7 @@ class JobObject:
         ]
         kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
         kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
         self._kernel32 = kernel32
         handle = kernel32.CreateJobObjectW(None, None)
         if not handle:
@@ -69,6 +71,11 @@ class JobObject:
         info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         ok = kernel32.SetInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info))
         self.handle = handle if ok else None
+        if self.handle is not None:
+            # Join the job ourselves so every child is a member from the moment it's created.
+            # Assigning a child only after Popen returns misses whatever it started in between,
+            # such as the real interpreter behind a venv's python.exe launcher.
+            self.contains_self = bool(kernel32.AssignProcessToJobObject(self.handle, kernel32.GetCurrentProcess()))
 
     def assign(self, process_handle: int) -> bool:
         if self.handle is None:

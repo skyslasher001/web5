@@ -8,7 +8,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): the design. Follow it, or change it explicitly with an ADR.
 3. [`docs/PHASE-1.md`](docs/PHASE-1.md) and [`docs/PHASE-1.5.md`](docs/PHASE-1.5.md): what exists now, what was fixed, open limitations, what's next.
 
-**Current phase:** Phase 1 (Foundation) and the Phase 1.5 fix release have been delivered and are **awaiting approval**. Don't start Phase 2 work until the owner approves. The protected-core proposal in `docs/proposals/` waits for the owner to apply or decline it.
+**Current phase:** Phase 2 (Vault + Recall), approved 2026-10-13. Phase 1 and the Phase 1.5 fix release are approved, and the Phase 1.5 protected-core patch is applied.
 
 ## How to work
 
@@ -53,4 +53,4 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 - `services/supervisor` — watchdog (stdlib only); entry `run_supervisor.py`.
 - `apps/desktop` — Electron main (`src/main`), preload, safe-mode page. `apps/ui` — React HUD and the 3D scene.
 - `tests/unit`, `tests/integration`, `tests/protected`, `tests/e2e`, `tests/support` (fake Ollama, fake Core, tiny GGUF model writer for real-Ollama tests).
-- `docs/proposals/` — protected-core changes waiting for the owner (patch + explanation).
+- `docs/proposals/` — protected-core changes proposed to the owner (patch + explanation + status).

@@ -1,6 +1,7 @@
 """One supervised process: spawn, health-check, restart with backoff."""
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -40,7 +41,8 @@ class ServiceRuntime:
     state: str = "stopped"  # stopped|starting|healthy|backoff|failed|external|missing|disabled
     proc: subprocess.Popen[bytes] | None = None
     started_at: float = 0.0
-    healthy_since: float | None = None
+    healthy_since: float | None = None  # monotonic, for the state machine
+    healthy_since_wall: float | None = None  # epoch seconds, for status()
     next_start_at: float = 0.0
     last_health_at: float = 0.0
     health_failures: int = 0
@@ -56,7 +58,7 @@ class ServiceRuntime:
             "state": self.state,
             "pid": self.proc.pid if self.proc and self.proc.poll() is None else None,
             "restarts": self.restarts,
-            "healthy_since": self.healthy_since,
+            "healthy_since": self.healthy_since_wall,
             "last_exit_code": self.last_exit_code,
             "last_error": self.last_error,
             "health_url": self.spec.health_url,
@@ -108,15 +110,47 @@ def spawn(spec: ServiceSpec, env: dict[str, str], log_dir: Path, job: JobObject)
     return proc
 
 
+def kill_tree(proc: subprocess.Popen[bytes]) -> None:
+    """Hard-kill a service and everything it started.
+
+    On Windows a venv's python.exe is a launcher that runs the real interpreter as its child, so
+    killing only the launcher would orphan Core, still holding its port. On POSIX each service leads
+    its own session (see spawn), so its process group is the tree.
+    """
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=CREATE_NO_WINDOW,
+                timeout=10,
+                check=False,
+            )
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except (OSError, subprocess.TimeoutExpired):
+        pass  # already gone, or taskkill unavailable: fall back to the direct kill below
+    if proc.poll() is None:
+        proc.kill()
+
+
 def stop(proc: subprocess.Popen[bytes] | None, timeout: float = 5.0) -> int | None:
     if proc is None:
         return None
     if proc.poll() is None:
-        proc.terminate()
+        if sys.platform == "win32":
+            kill_tree(proc)  # Windows has no graceful signal for these services; terminate() is a hard kill too
+        else:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)  # the whole session, as a terminal's Ctrl+C would
+            except OSError:
+                proc.terminate()
         try:
             proc.wait(timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            kill_tree(proc)
             proc.wait(5)
     return proc.returncode
 
