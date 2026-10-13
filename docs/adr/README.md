@@ -30,3 +30,4 @@ Template:
 | [0009](0009-electron-privacy-hardening.md) | Electron privacy hardening: no outbound traffic from Chromium | Accepted |
 | [0010](0010-phase-2-vault-pipeline.md) | Phase 2 vault pipeline: workers under Core, Ollama embeddings, staged model roles | Accepted |
 | [0011](0011-phase-3-agent-engine.md) | Phase 3 agent engine: loop, approvals, protected policy, minimal MCP client | Accepted |
+| [0012](0012-phase-4-universe-renderer.md) | Phase 4 universe: scene data, layouts, renderer, Lite mode and viewers | Accepted |

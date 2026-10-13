@@ -18,10 +18,17 @@
     "@universe/design-tokens": "workspace:*",
     "@universe/shared-types": "workspace:*",
     "cmdk": "1.1.1",
+    "d3-force-3d": "3.0.6",
+    "dompurify": "3.4.16",
+    "graphology": "0.26.0",
+    "highlight.js": "11.12.0",
     "lucide-react": "1.55.0",
+    "marked": "18.0.14",
     "motion": "14.1.0",
+    "pdfjs-dist": "6.3.289",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "sigma": "3.0.3",
     "three": "0.186.1",
     "zustand": "5.0.15"
   },
@@ -31,6 +38,7 @@
     "@types/react-dom": "19.3.0",
     "@types/three": "0.186.0",
     "@vitejs/plugin-react": "6.1.2",
+    "graphology-types": "0.24.8",
     "tailwindcss": "4.3.3",
     "vite": "8.3.4"
   }
