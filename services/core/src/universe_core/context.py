@@ -1,6 +1,7 @@
 """Everything a running Core holds, built once in the app lifespan."""
 
 import asyncio
+import importlib
 import json
 import os
 import secrets
@@ -13,15 +14,20 @@ import httpx
 from universe_agents.providers import OpenAICompatibleProvider
 from universe_agents.registry import AgentDefinition, load_agents
 from universe_agents.router import ModelRouter
+from universe_agents.runtime import AgentRuntime, Policy
+from universe_agents.tools import ToolRegistry
 from universe_common.egress import EgressGate
 from universe_common.errors import capture_exception
 from universe_common.log import get_logger, register_secret
 from universe_common.timeutil import utcnow
+from universe_core.agent_engine import AgentEngine
+from universe_core.agent_tools import builtin_tools
 from universe_core.backups import BackupService
 from universe_core.chat import ChatService
 from universe_core.db import Databases
 from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
+from universe_core.memory import MemoryStore
 from universe_core.protected.audit import AuditWriter
 from universe_core.security import TicketStore
 from universe_core.seed import ensure_seed_galaxies
@@ -39,6 +45,22 @@ from universe_vault.watch import Folder, Watcher
 log = get_logger(__name__)
 
 ROUTER_TIERS = ("local-fast", "local-large")
+SAFETY_MODULE = "universe_core.protected.policy"
+NO_SAFETY = (
+    "Agent tools need the Phase 3 protected-core patch (docs/proposals/phase-3-protected-core.md). "
+    "Until it's applied, agents answer without tools."
+)
+
+
+def load_safety(ctx: "CoreContext") -> tuple[Policy | None, str | None]:
+    """The protected policy engine, if the owner has applied it (ADR-0011 §1)."""
+    try:
+        module = importlib.import_module(SAFETY_MODULE)
+    except ModuleNotFoundError as exc:
+        if exc.name != SAFETY_MODULE:
+            raise
+        return None, NO_SAFETY
+    return module.build(ctx), None
 
 
 @dataclass
@@ -65,6 +87,10 @@ class CoreContext:
     started: float = field(default_factory=time.monotonic)
     pid: int = field(default_factory=os.getpid)
     provider: OpenAICompatibleProvider | None = None
+    memory: MemoryStore = field(init=False)
+    tools: ToolRegistry = field(default_factory=ToolRegistry)
+    engine: AgentEngine | None = None
+    safety: object | None = None  # the protected policy engine (policy, permissions, budget, kill switch)
     _hardware: HardwareInfo | None = None
     _hardware_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -140,6 +166,22 @@ class CoreContext:
             record_error=ctx.record_exception,
         )
         ensure_seed_galaxies(dbs.universe, bus)
+        ctx.memory = MemoryStore(dbs.universe)
+        for tool in builtin_tools(ctx):
+            ctx.tools.add(tool)
+        safety, reason = load_safety(ctx)
+        if settings.safe_mode:
+            safety, reason = None, "Agents are disabled in safe mode"
+        ctx.safety = safety
+        runtime = (
+            AgentRuntime(router=router, model=provider, tools=ctx.tools, policy=safety) if safety is not None else None
+        )
+        ctx.engine = AgentEngine(
+            dbs.universe, bus, audit, agents, ctx.memory, errors, runtime, unavailable_reason=reason
+        )
+        ctx.tools.add(ctx.engine.delegate_tool())
+        ctx.engine.recover_after_restart()
+        chat.engine = ctx.engine
         return ctx
 
     async def hardware(self, *, refresh: bool = False) -> HardwareInfo:
@@ -296,6 +338,8 @@ class CoreContext:
         await self.workers.stop()
         self.vdb.close()
         await self.chat.shutdown()
+        if self.engine is not None:
+            await self.engine.shutdown()
         await self.ollama.aclose()
         if self.provider is not None:
             await self.provider.aclose()

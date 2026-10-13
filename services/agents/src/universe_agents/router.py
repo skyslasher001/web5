@@ -27,7 +27,8 @@ class ModelRouter:
         self._override = override
         self._preferences = preferences or (lambda _tier: [])
 
-    async def resolve(self, tier: str) -> str:
+    async def resolve(self, tier: str, *, needs_tools: bool = False) -> str:
+        """The model for a tier. `needs_tools`: only models that can call tools (agents with tools need one)."""
         try:
             models = await self._ollama.list_models()
         except httpx.HTTPError as exc:
@@ -35,7 +36,14 @@ class ModelRouter:
                 f"Ollama is not reachable at {self._ollama.base_url}",
                 "Install Ollama from https://ollama.com/download and start it, or let UNIVERSE start it.",
             ) from exc
-        chat_models = [m.name for m in models if "completion" in m.capabilities]
+        chat_models = [
+            m.name for m in models if "completion" in m.capabilities and (not needs_tools or "tools" in m.capabilities)
+        ]
+        if needs_tools and not chat_models and any("completion" in m.capabilities for m in models):
+            raise NoModelAvailable(
+                "None of the installed chat models can call tools, which agents need",
+                "Run: ollama pull qwen3:8b (or another model whose Ollama page lists 'tools')",
+            )
         installed = set(chat_models)
 
         def is_installed(tag: str) -> bool:

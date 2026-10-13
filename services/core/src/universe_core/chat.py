@@ -8,7 +8,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from universe_agents.providers import ChatMessage, ChatProvider, ProviderError
 from universe_agents.registry import AgentDefinition
@@ -20,6 +20,9 @@ from universe_common.schema import ApiModel
 from universe_common.timeutil import utcnow
 from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
+
+if TYPE_CHECKING:
+    from universe_core.agent_engine import AgentEngine
 
 log = get_logger(__name__)
 
@@ -89,6 +92,7 @@ class ChatService:
         self._errors = errors
         self._safe_mode = safe_mode
         self._active: dict[str, asyncio.Task[None]] = {}
+        self.engine: AgentEngine | None = None  # set by CoreContext; with it, each reply is an agent task
 
     @property
     def active_conversations(self) -> list[str]:
@@ -141,7 +145,12 @@ class ChatService:
         user_message = self._insert_message(conversation_id, "user", None, text, None, "complete", None, None)
         self._publish_message(user_message)
         assistant_id = uuid7()
-        task = asyncio.create_task(self._reply(conversation_id, agent, assistant_id), name=f"chat:{agent.id}")
+        reply = (
+            self._agent_reply(conversation_id, agent, assistant_id, text)
+            if self.engine is not None and self.engine.available
+            else self._reply(conversation_id, agent, assistant_id)
+        )
+        task = asyncio.create_task(reply, name=f"chat:{agent.id}")
         self._active[conversation_id] = task
         task.add_done_callback(lambda _t, cid=conversation_id: self._active.pop(cid, None))
         return SendResult(conversation_id, user_message.id, assistant_id)
@@ -170,10 +179,11 @@ class ChatService:
         first_token_ms: int | None,
         total_ms: int | None,
         message_id: str | None = None,
+        task_id: str | None = None,
     ) -> Message:
         row = self._conn.execute(
             "INSERT INTO messages (id, conversation_id, role, agent_id, content, model, status, first_token_ms,"
-            " total_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+            " total_ms, task_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *",
             (
                 message_id or uuid7(),
                 conversation_id,
@@ -184,6 +194,7 @@ class ChatService:
                 status,
                 first_token_ms,
                 total_ms,
+                task_id,
                 utcnow(),
             ),
         ).fetchone()
@@ -213,6 +224,76 @@ class ChatService:
             history.append({"role": row["role"], "content": row["content"]})
         history.reverse()
         return [{"role": "system", "content": agent.system_prompt}, *history]
+
+    async def _agent_reply(self, conversation_id: str, agent: AgentDefinition, message_id: str, text: str) -> None:
+        """A reply through the agent engine: tools, approvals, delegation and Critic, streamed as chat tokens."""
+        assert self.engine is not None
+        actor = f"agent:{agent.id}"
+        subject = {"subject_type": "conversation", "subject_id": conversation_id, "correlation_id": message_id}
+        base = {"conversation_id": conversation_id, "message_id": message_id}
+        started = time.monotonic()
+        first: list[int] = []
+        model: str | None = None
+        try:
+            model = await self._router.resolve(agent.model, needs_tools=bool(agent.tools))
+        except NoModelAvailable as exc:
+            self._bus.publish(
+                "chat.failed", {**base, "code": "no_model", "error": str(exc), "hint": exc.hint}, actor=actor, **subject
+            )
+            return
+        self._bus.publish("chat.started", {**base, "model": model, "agent_id": agent.id}, actor=actor, **subject)
+
+        def on_token(delta: str) -> None:
+            if not first:
+                first.append(int((time.monotonic() - started) * 1000))
+            self._bus.publish("chat.token", {**base, "delta": delta}, actor=actor, **subject)
+
+        history = self._history(conversation_id, agent)[1:]  # without the system prompt; the agent adds its own
+        if history and history[-1]["role"] == "user":
+            history.pop()  # the message being answered is the task's instruction
+        cancelled = False
+        task = None
+        try:
+            task, _outcome = await self.engine.run(
+                agent.id,
+                text,
+                conversation_id=conversation_id,
+                history=[dict(m) for m in history],
+                on_token=on_token,
+                correlation_id=message_id,
+            )
+        except asyncio.CancelledError:
+            cancelled = True
+        total_ms = int((time.monotonic() - started) * 1000)
+        timing = {"first_token_ms": first[0] if first else None, "total_ms": total_ms, "model": model}
+        if cancelled or (task is not None and task.status == "cancelled"):
+            self._bus.publish("chat.cancelled", {**base, **timing}, actor=actor, **subject)
+            if cancelled:
+                raise asyncio.CancelledError
+            return
+        assert task is not None
+        if task.status == "done":
+            message = self._insert_message(
+                conversation_id,
+                "assistant",
+                agent.id,
+                task.output or "",
+                task.model,
+                "complete",
+                timing["first_token_ms"],
+                total_ms,
+                message_id,
+                task.id,
+            )
+            self._publish_message(message)
+            self._bus.publish("chat.completed", {**base, **timing, "task_id": task.id}, actor=actor, **subject)
+        else:
+            self._bus.publish(
+                "chat.failed",
+                {**base, "code": "agent", "error": task.error or "The task failed", "hint": "", "task_id": task.id},
+                actor=actor,
+                **subject,
+            )
 
     async def _reply(self, conversation_id: str, agent: AgentDefinition, message_id: str) -> None:
         actor = f"agent:{agent.id}"
