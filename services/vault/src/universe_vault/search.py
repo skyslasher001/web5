@@ -23,6 +23,10 @@ WEIGHTS = {"title": 1.6, "text": 1.0, "trigram": 0.6, "vector": 1.0}
 KEYWORD_LIMIT = 200
 CHUNK_LIMIT = 400
 VECTOR_LIMIT = 150
+# A nearest-neighbour search always returns something. A chunk only counts as "related in meaning" when it
+# has positive cosine similarity and is not far behind the best match (model-agnostic; ADR-0010).
+VECTOR_MAX_DISTANCE = 1.0
+VECTOR_MARGIN = 0.25
 MARK_START, MARK_END = "«", "»"  # « » around matches in snippets; the UI turns them into <mark>
 
 Match = Literal["title", "text", "trigram", "vector"]
@@ -131,8 +135,13 @@ def vector_list(
         date_from=filters.date_from,
         date_to=filters.date_to,
     )
+    if not hits:
+        return []
+    cutoff = min(VECTOR_MAX_DISTANCE, min(h.distance for h in hits) + VECTOR_MARGIN)
     best: dict[str, tuple[int, float]] = {}
     for hit in hits:
+        if hit.distance >= cutoff:
+            continue
         if hit.item_id not in best or hit.distance < best[hit.item_id][1]:
             best[hit.item_id] = (hit.chunk_id, hit.distance)
     if not best:
@@ -164,9 +173,17 @@ def _boost(row: sqlite3.Row, now: datetime) -> float:
 
 
 def _excerpt(conn: sqlite3.Connection, chunk_id: int, text: str) -> str | None:
-    row = conn.execute("SELECT text FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
+    row = conn.execute("SELECT item_id, kind, text FROM chunks WHERE id = ?", (chunk_id,)).fetchone()
     if row is None:
         return None
+    if row["kind"] == "metadata":
+        # The metadata chunk ("title, type, camera…") helps matching but reads badly: show real content.
+        row = conn.execute(
+            "SELECT text FROM chunks WHERE item_id = ? AND kind != 'metadata' ORDER BY ord, id LIMIT 1",
+            (row["item_id"],),
+        ).fetchone()
+        if row is None:
+            return None
     body: str = row["text"]
     words = terms(text)
     lowered = body.lower()

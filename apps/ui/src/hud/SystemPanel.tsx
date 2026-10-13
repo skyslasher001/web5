@@ -7,7 +7,8 @@ import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
 import { useApi } from '../lib/api-context';
 import { formatBytes, formatDuration } from '../lib/format';
-import { useHardware, useModels, useRecommendation, useVitals } from '../lib/queries';
+import type { AssignableTier } from '../lib/api';
+import { useHardware, useModels, useRecommendation, useVaultInfo, useVitals } from '../lib/queries';
 import { useUniverse } from '../state/store';
 import { CopyButton, Dot, SectionTitle } from './ui';
 
@@ -150,6 +151,94 @@ function ChatModel() {
   );
 }
 
+function ModelSelect({
+  tier,
+  label,
+  capability,
+  emptyLabel,
+  help,
+}: {
+  tier: AssignableTier;
+  label: string;
+  capability: string;
+  emptyLabel: string;
+  help: string;
+}) {
+  const api = useApi();
+  const models = useModels();
+  const client = useQueryClient();
+  const [error, setError] = useState<string | null>(null);
+  const data = models.data;
+  if (!data) return null;
+  const options = data.installed.filter((m) => m.capabilities.includes(capability));
+  const current = data.assignments[tier] ?? '';
+  return (
+    <label className="block text-xs text-ink-3">
+      {label}
+      <select
+        aria-label={label}
+        data-testid={`model-${tier}`}
+        className="mt-1 w-full rounded-md border border-hairline-2 bg-space-2 px-2 py-1.5 font-mono text-xs text-ink-1"
+        value={current}
+        onChange={(e) => {
+          setError(null);
+          const value = e.target.value;
+          (value ? api.assignModel(tier, value) : api.clearModel(tier))
+            .then(() => client.invalidateQueries({ queryKey: ['models'] }))
+            .catch((err: Error) => setError(err.message));
+        }}
+      >
+        <option value="">{emptyLabel}</option>
+        {current && !options.some((m) => m.name === current) && (
+          <option value={current}>{current} (not installed)</option>
+        )}
+        {options.map((m) => (
+          <option key={m.name} value={m.name}>
+            {m.name}
+          </option>
+        ))}
+      </select>
+      <span className="mt-1 block text-[11px] leading-relaxed">{help}</span>
+      {error && <span className="block text-danger">{error}</span>}
+    </label>
+  );
+}
+
+function SearchModels() {
+  const info = useVaultInfo(true);
+  const embedder = info.data?.embedder;
+  return (
+    <div className="space-y-3" data-testid="search-models">
+      <p className="text-xs leading-relaxed text-ink-2">
+        {embedder ? (
+          <>
+            Searching by meaning with <span className="font-mono text-ink-1">{embedder}</span>.
+          </>
+        ) : (
+          <span className="text-amber">
+            Keyword search only: install an embedding model (ollama pull nomic-embed-text) to search by
+            meaning.
+          </span>
+        )}
+      </p>
+      <ModelSelect
+        tier="embed_text"
+        label="Embedding model"
+        capability="embedding"
+        emptyLabel="Automatic (first installed)"
+        help="Changing it re-indexes the vault in the background; keyword search keeps working meanwhile."
+      />
+      <ModelSelect
+        tier="vision"
+        label="Image captions"
+        capability="vision"
+        emptyLabel="Off"
+        help="Describes photos so you can find them by what's in them. Slow on a CPU; off until you choose a model."
+      />
+    </div>
+  );
+}
+
 function CandidateRow({ c }: { c: Candidate }) {
   return (
     <li className="flex items-center justify-between gap-2 py-1">
@@ -261,6 +350,9 @@ export function SystemPanel() {
       </Section>
       <Section title="Chat model">
         <ChatModel />
+      </Section>
+      <Section title="Search models">
+        <SearchModels />
       </Section>
       <HardwareAndModels />
     </div>

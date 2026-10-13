@@ -1,5 +1,16 @@
-// Electron main: window, app:// protocol, supervisor, IPC, error capture, safe mode.
-import { BrowserWindow, app, ipcMain, net, protocol, session, shell } from 'electron';
+// Electron main: windows, app:// protocol, supervisor, IPC, error capture, safe mode, command bar, tray.
+import {
+  BrowserWindow,
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  session,
+  shell,
+  type Tray,
+} from 'electron';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,16 +19,23 @@ import type {
   BridgeConfig,
   DesktopState,
   ErrorReportInput,
+  HotkeyStatus,
   LogName,
   ServiceName,
 } from '@universe/shared-types';
 import { CH } from './channels';
+import { captureClipboard, clipboardSource } from './clipboardCapture';
+import { CommandBar, type CommandBarMode } from './commandBar';
+import { isValidAccelerator, loadSettings, saveSettings } from './desktopSettings';
 import { createErrorQueue } from './errorQueue';
+import { parseFocusTarget } from './focusTarget';
 import { createLogger } from './logger';
 import { isAllowedNavigation } from './navigation';
 import { resolvePaths } from './paths';
 import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
 import { SupervisorProcess } from './protected/supervisor';
+import { createTray } from './tray';
+import { insideFolder } from './vaultAccess';
 
 const env = process.env;
 const paths = resolvePaths(__dirname, env, process.platform);
@@ -118,10 +136,21 @@ supervisor.on('state', (state: DesktopState) => {
 
 // ---------- window ----------
 
+function uiUrl(hash = ''): string {
+  return devUiUrl ? `${devUiUrl}${hash}` : `app://universe/index.html${hash}`;
+}
+
 function loadMainUi(): void {
   if (!win) return;
   showingSafeMode = false;
-  void (devUiUrl ? win.loadURL(devUiUrl) : win.loadURL('app://universe/index.html'));
+  void win.loadURL(uiUrl());
+}
+
+function showMainWindow(): void {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 }
 
 function showSafeMode(reason: string): void {
@@ -174,6 +203,7 @@ function createWindow(): void {
   });
   win.on('closed', () => {
     win = null;
+    app.quit(); // the hidden command-bar window must not keep the app alive
   });
   loadMainUi();
 }
@@ -217,6 +247,100 @@ function registerIpc(): void {
     captureError('renderer', report ?? { kind: 'Error', message: '' }),
   );
   ipcMain.on(CH.reload, () => loadMainUi());
+
+  // ---------- vault: main opens and reveals files, but only inside the vault ----------
+  ipcMain.handle(CH.openPath, async (_e, absPath: unknown) => {
+    if (typeof absPath !== 'string' || !insideFolder(paths.vaultDir, absPath)) {
+      log.warn('open_path_refused', { path: String(absPath).slice(0, 200) });
+      return 'Only files inside the vault can be opened';
+    }
+    return shell.openPath(absPath);
+  });
+  ipcMain.handle(CH.revealPath, (_e, absPath: unknown) => {
+    if (typeof absPath !== 'string' || !insideFolder(paths.vaultDir, absPath)) return false;
+    shell.showItemInFolder(absPath);
+    return true;
+  });
+  ipcMain.handle(CH.pickFolder, async (event, title: unknown) => {
+    const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const options = {
+      title: typeof title === 'string' ? title.slice(0, 120) : 'Choose a folder',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+    };
+    const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle(CH.captureClipboard, saveClipboard);
+
+  // ---------- command bar ----------
+  ipcMain.handle(CH.getHotkey, (): HotkeyStatus => commandBar?.status ?? noHotkey());
+  ipcMain.handle(CH.setHotkey, (_e, accelerator: unknown): HotkeyStatus => {
+    if (typeof accelerator !== 'string' || !isValidAccelerator(accelerator)) {
+      return {
+        ...(commandBar?.status ?? noHotkey()),
+        error: 'Use a modifier plus a key, e.g. Ctrl+Shift+Space',
+      };
+    }
+    const status = commandBar?.register(accelerator) ?? noHotkey();
+    if (status.registered) saveSettings(settingsFile(), { commandBarHotkey: accelerator });
+    return status;
+  });
+  ipcMain.on(CH.showCommandBar, (_e, mode: unknown) =>
+    commandBar?.show(mode === 'capture' ? 'capture' : 'search'),
+  );
+  ipcMain.on(CH.hideCommandBar, () => commandBar?.hide());
+  ipcMain.on(CH.focus, (_e, value: unknown) => {
+    const target = parseFocusTarget(value);
+    if (!target) return;
+    commandBar?.hide();
+    showMainWindow();
+    win?.webContents.send(CH.focusEvent, target);
+  });
+}
+
+let commandBar: CommandBar | null = null;
+let tray: Tray | null = null;
+
+function saveClipboard() {
+  return captureClipboard(clipboardSource(clipboard), coreUrl, sessionToken, (input, init) =>
+    net.fetch(input as string, init),
+  );
+}
+
+function noHotkey(): HotkeyStatus {
+  return { accelerator: '', registered: false, error: 'The command bar is not ready' };
+}
+
+function settingsFile(): string {
+  return join(app.getPath('userData'), 'desktop-settings.json');
+}
+
+function startCommandBarAndTray(): void {
+  commandBar = new CommandBar({
+    preload: paths.preload,
+    url: uiUrl('#command-bar'),
+    log,
+    isAllowedNavigation: (url) => isAllowedNavigation(url, { devUiUrl, safeModeDir: paths.safeModeDir }),
+  });
+  commandBar.create();
+  commandBar.register(loadSettings(settingsFile()).commandBarHotkey);
+  const show = (mode: CommandBarMode) => () => commandBar?.show(mode);
+  try {
+    tray = createTray({
+      search: show('search'),
+      capture: show('capture'),
+      captureClipboard: () => {
+        void saveClipboard().then((result) =>
+          log.info('tray_clipboard_capture', { ok: result.ok, kind: result.kind }),
+        );
+      },
+      show: showMainWindow,
+      quit: () => app.quit(),
+      hotkey: () => commandBar?.status.accelerator ?? '',
+    });
+  } catch (err) {
+    log.warn('tray_unavailable', { error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 // ---------- lifecycle ----------
@@ -257,6 +381,8 @@ if (!app.requestSingleInstanceLock()) {
     });
     supervisor.start();
     createWindow();
+    // The main window gets the CPU first (SPEC §24); the hidden command bar loads once it's up.
+    win?.webContents.once('did-finish-load', startCommandBarAndTray);
   });
 
   let quitting = false;
@@ -264,6 +390,8 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    commandBar?.dispose();
+    tray?.destroy();
     void supervisor.stop().finally(() => app.quit());
   });
   app.on('window-all-closed', () => app.quit());

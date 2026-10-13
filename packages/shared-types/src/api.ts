@@ -1702,6 +1702,11 @@ export interface components {
             description: string;
             /** Id */
             id: string;
+            /**
+             * Item Count
+             * @default 0
+             */
+            item_count: number;
             /** Layout Seed */
             layout_seed: number;
             /** Name */

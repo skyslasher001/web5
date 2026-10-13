@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDuration, timeAgo } from './format';
+import { formatAccelerator, formatBytes, formatDuration, timeAgo } from './format';
 
 describe('format', () => {
   it('bytes', () => {
@@ -16,5 +16,11 @@ describe('format', () => {
     const now = Date.parse('2026-10-12T10:00:00Z');
     expect(timeAgo('2026-10-12T09:59:55Z', now)).toBe('just now');
     expect(timeAgo('2026-10-12T09:58:00Z', now)).toBe('2m ago');
+  });
+
+  it('shows shortcuts the way people read them', () => {
+    expect(formatAccelerator('CommandOrControl+Space')).toBe('Ctrl+Space');
+    expect(formatAccelerator('CmdOrCtrl+Shift+K')).toBe('Ctrl+Shift+K');
+    expect(formatAccelerator('Alt+F1')).toBe('Alt+F1');
   });
 });

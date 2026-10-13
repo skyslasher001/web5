@@ -1,8 +1,9 @@
 // Phase 1 "done when": launch the app, chat with streaming replies, kill the backend and watch it
-// auto-restart. Uses the real Electron app, supervisor and Core; only the model server is a stand-in.
+// auto-restart. Phase 2: add files, find them by keyword and by meaning, use the command bar.
+// Uses the real Electron app, supervisor, Core and pipeline workers; only the model server is a stand-in.
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -47,9 +48,45 @@ let page: Page;
 let fake: ChildProcess;
 let corePort: number;
 let netLog: string;
+let tmp: string;
+
+/** A Core REST call made from the renderer with the session token, the way the UI makes it. */
+function core<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return page.evaluate(
+    async ({ method, path, body }) => {
+      const config = await window.universe!.getConfig();
+      const response = await fetch(`${config.coreUrl}/api/v1${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (!response.ok)
+        throw new Error(`${method} ${path}: HTTP ${response.status} ${await response.text()}`);
+      return (await response.json()) as T;
+    },
+    { method, path, body },
+  );
+}
+
+async function queueDrained(): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const stats = await core<{ queued: number; leased: number }>('GET', '/jobs/stats');
+        return stats.queued + stats.leased;
+      },
+      { timeout: 90_000, intervals: [250, 500, 1000] },
+    )
+    .toBe(0);
+}
+
+async function windowWithHash(hash: string): Promise<Page> {
+  await expect.poll(() => app.windows().some((w) => w.url().endsWith(hash)), { timeout: 30_000 }).toBe(true);
+  return app.windows().find((w) => w.url().endsWith(hash))!;
+}
 
 test.beforeAll(async () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'universe-e2e-'));
+  tmp = mkdtempSync(join(tmpdir(), 'universe-e2e-'));
   netLog = join(tmp, 'netlog.json');
   const ollamaPort = await freePort();
   corePort = await freePort();
@@ -76,6 +113,11 @@ test.beforeAll(async () => {
     },
   });
   page = await app.firstWindow();
+  // The command bar window is created hidden at startup: make sure `page` is the main window.
+  await expect
+    .poll(() => app.windows().some((w) => !w.url().endsWith('#command-bar')), { timeout: 30_000 })
+    .toBe(true);
+  page = app.windows().find((w) => !w.url().endsWith('#command-bar'))!;
 });
 
 test.afterAll(async () => {
@@ -128,6 +170,78 @@ test('the system panel shows vitals, services and hardware', async () => {
   await expect(page.getByTestId('services')).toContainText(/core/i);
   await expect(page.getByTestId('hardware')).toContainText('RAM');
   await page.screenshot({ path: 'test-results/system.png' });
+});
+
+test('files added to the vault are found by keyword and by meaning', async () => {
+  const source = join(tmp, 'my-files');
+  mkdirSync(source);
+  writeFileSync(
+    join(source, 'quarterly-report.md'),
+    '# Quarterly report\n\nRevenue grew in the northern region. A pricing review is planned.\n',
+  );
+  writeFileSync(join(source, 'river-walk.txt'), 'My puppy loves walking along the river every morning.\n');
+  writeFileSync(join(source, 'shopping.txt'), 'eggs, flour, sugar, butter\n');
+
+  // Drag-drop hands Core these same absolute paths (Electron's webUtils); Core copies the files in.
+  const result = await core<{ queued: number }>('POST', '/ingest/paths', { paths: [source] });
+  expect(result.queued).toBe(1); // one import job for the folder
+  await page.getByTestId('view-list').click();
+  await expect(page.getByTestId('items-count')).toHaveText('3 items', { timeout: 60_000 });
+  await queueDrained(); // extracted, chunked and embedded by the worker process
+
+  const search = page.getByTestId('search-input');
+  await search.fill('northern region');
+  await expect(page.getByTestId('item-row').first()).toContainText('Quarterly report');
+  await expect(page.getByTestId('item-row').first()).toContainText('northern'); // the highlighted snippet
+
+  // No word in common with the note: only the embedding (dog ≈ puppy, water ≈ river) can find it.
+  await search.fill('dog near water');
+  await expect(page.getByTestId('item-row').first()).toContainText('river-walk');
+  await page.getByTestId('item-row').first().click();
+  await expect(page.getByTestId('item-title')).toHaveText('river-walk');
+  await expect(page.getByTestId('item-text')).toContainText('My puppy loves walking');
+  await expect(page.getByTestId('item-stages')).toContainText('done');
+  await page.screenshot({ path: 'test-results/vault-search.png' });
+
+  await search.fill('');
+  await page.getByTestId('view-grid').click();
+  await expect(page.getByTestId('item-card')).toHaveCount(3);
+  await page.screenshot({ path: 'test-results/vault-grid.png' });
+});
+
+test('the command bar finds items and captures notes', async () => {
+  const bar = await windowWithHash('#command-bar');
+  await page.evaluate(() => window.universe!.showCommandBar('search'));
+  await expect(bar.getByTestId('bar-input')).toBeFocused();
+  await bar.getByTestId('bar-input').fill('quarterly');
+  await expect(bar.getByTestId('bar-hit').first()).toContainText('Quarterly report');
+  await expect(bar.getByTestId('bar-capture-row')).toContainText('Save “quarterly” as a note');
+  await bar.screenshot({ path: 'test-results/command-bar.png' });
+
+  // Ctrl+Enter shows the item in the main window instead of opening it.
+  await bar.getByTestId('bar-input').press('Control+Enter');
+  await expect(page.getByTestId('item-title')).toHaveText('Quarterly report');
+
+  // Quick capture: Tab switches modes, Ctrl+Enter saves, #hashtags become tags.
+  await page.evaluate(() => window.universe!.showCommandBar('capture'));
+  await expect(bar.getByTestId('bar-note')).toBeFocused();
+  await bar.getByTestId('bar-note').fill('Call the accountant about the invoice #finance');
+  await bar.getByTestId('bar-note').press('Control+Enter');
+  await expect(bar.getByTestId('bar-status')).toHaveText('Saved to your inbox');
+
+  await page.getByTestId('view-list').click();
+  await page.getByTestId('search-input').fill('accountant');
+  await expect(page.getByTestId('item-row').first()).toContainText('Call the accountant');
+  await page.getByTestId('item-row').first().click();
+  await expect(page.getByTestId('item-panel')).toContainText('#finance');
+});
+
+test('the vault panel shows counts and the background queue', async () => {
+  await page.getByRole('tab', { name: 'Vault' }).click();
+  await expect(page.getByTestId('vault-counts')).toContainText('4 items');
+  await expect(page.getByTestId('queue')).toBeVisible();
+  await expect(page.getByTestId('watched-folders')).toBeVisible();
+  await page.screenshot({ path: 'test-results/vault-panel.png' });
 });
 
 test('nothing leaves the machine: no requests to non-loopback hosts', async () => {

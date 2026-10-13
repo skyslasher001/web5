@@ -50,6 +50,18 @@ export interface ErrorReportInput {
   stack?: string;
 }
 
+export interface HotkeyStatus {
+  accelerator: string;
+  registered: boolean;
+  error: string | null;
+}
+
+export interface ClipboardCaptureResult {
+  kind: 'text' | 'image' | 'empty';
+  ok: boolean;
+  message: string;
+}
+
 export interface UniverseBridge {
   getConfig(): Promise<BridgeConfig>;
   getDesktopState(): Promise<DesktopState>;
@@ -62,4 +74,31 @@ export interface UniverseBridge {
   openLogsFolder(): Promise<void>;
   reportError(report: ErrorReportInput): void;
   reload(): void;
+
+  // ---------- vault (Phase 2) ----------
+  /** Absolute paths of files dropped on the window (Electron's webUtils; File.path is gone). */
+  pathsForFiles(files: File[]): string[];
+  /** Opens a vault file with its default app. Refuses anything outside the vault. Resolves to an error or ''. */
+  openPath(absPath: string): Promise<string>;
+  /** Shows a vault file in Explorer. Refuses anything outside the vault. */
+  revealPath(absPath: string): Promise<boolean>;
+  pickFolder(title: string): Promise<string | null>;
+  /** Saves whatever is on the clipboard (text, link or image) to the vault inbox. */
+  captureClipboard(): Promise<ClipboardCaptureResult>;
+
+  // ---------- command bar (global hotkey window) ----------
+  getHotkey(): Promise<HotkeyStatus>;
+  setHotkey(accelerator: string): Promise<HotkeyStatus>;
+  showCommandBar(mode?: 'search' | 'capture'): void;
+  hideCommandBar(): void;
+  /** Fired in the command-bar window each time it is shown. */
+  onCommandBarShow(callback: (mode: 'search' | 'capture') => void): () => void;
+  /** Brings the main window forward and shows an item, a galaxy or search results (from the command bar). */
+  focus(target: FocusTarget): void;
+  /** Fired in the main window when the command bar asks to show something. */
+  onFocus(callback: (target: FocusTarget) => void): () => void;
 }
+
+/** What the command bar can ask the main window to show. */
+export type FocusTarget =
+  { kind: 'item'; id: string } | { kind: 'project'; id: string } | { kind: 'search'; query: string };

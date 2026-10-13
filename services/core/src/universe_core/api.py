@@ -76,6 +76,7 @@ class Project(ApiModel):
     color_token: str
     layout_seed: int
     created_at: str
+    item_count: int = 0
 
 
 class AgentInfo(ApiModel):
@@ -259,7 +260,11 @@ async def agents(ctx: Ctx) -> list[AgentInfo]:
 
 @router.get("/projects", response_model=list[Project])
 async def projects(ctx: Ctx) -> list[Project]:
-    rows = ctx.dbs.universe.execute("SELECT * FROM projects ORDER BY layout_seed, created_at")
+    rows = ctx.dbs.universe.execute(
+        "SELECT p.*, (SELECT COUNT(*) FROM item_projects ip JOIN items i ON i.id = ip.item_id"
+        " WHERE ip.project_id = p.id AND i.trashed_at IS NULL) AS item_count"
+        " FROM projects p ORDER BY p.layout_seed, p.created_at"
+    )
     return [Project(**{k: r[k] for k in Project.model_fields}) for r in rows]
 
 

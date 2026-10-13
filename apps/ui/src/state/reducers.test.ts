@@ -127,4 +127,41 @@ describe('activity lines', () => {
     });
     expect(describeEvent(ev('chat.token', { delta: 'x' }))).toBeNull();
   });
+
+  it('names the model role that changed', () => {
+    expect(
+      describeEvent(ev('model.assignment_changed', { tier: 'local-fast', model: 'qwen3:8b' }))?.text,
+    ).toBe('Chat model set to qwen3:8b');
+    expect(
+      describeEvent(ev('model.assignment_changed', { tier: 'embed_text', model: 'nomic-embed-text' }))?.text,
+    ).toBe('Search model set to nomic-embed-text');
+    expect(describeEvent(ev('model.assignment_changed', { tier: 'vision', model: null }))?.text).toBe(
+      'Image model cleared',
+    );
+  });
+
+  it('describes vault events', () => {
+    expect(describeEvent(ev('item.created', { title: 'Budget 2026.xlsx' }))).toEqual({
+      tone: 'good',
+      text: 'Added Budget 2026.xlsx',
+    });
+    // Trashing in the app already adds its own line; only the watcher's trashing is described.
+    expect(describeEvent(ev('item.trashed', { item_id: 'i1' }))).toBeNull();
+    expect(
+      describeEvent(ev('item.trashed', { item_id: 'i1', reason: 'deleted outside the app' }))?.tone,
+    ).toBe('warn');
+    expect(describeEvent(ev('job.dead', { kind: 'pipeline', error: 'bad pdf' }))?.text).toBe(
+      'Processing gave up (pipeline): bad pdf',
+    );
+    expect(describeEvent(ev('backup.failed', { operation: 'verify', error: 'wrong password' }))?.text).toBe(
+      'Verify failed: wrong password',
+    );
+    expect(
+      describeEvent(ev('backup.restore_tested', { snapshot: 'ab12', items: 500, integrity: 'ok' }))?.text,
+    ).toBe('Restore test passed · 500 items readable');
+    expect(describeEvent(ev('governor.paused', { reason: 'on battery' }))?.text).toBe(
+      'Background work paused: on battery',
+    );
+    expect(describeEvent(ev('pipeline.stage.completed', { stage: 'embed' }))).toBeNull();
+  });
 });

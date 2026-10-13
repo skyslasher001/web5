@@ -10,4 +10,17 @@ export const CH = {
   openLogsFolder: 'universe:open-logs-folder',
   reportError: 'universe:report-error',
   reload: 'universe:reload',
+  // vault (Phase 2)
+  openPath: 'universe:open-path',
+  revealPath: 'universe:reveal-path',
+  pickFolder: 'universe:pick-folder',
+  captureClipboard: 'universe:capture-clipboard',
+  // command bar
+  getHotkey: 'universe:get-hotkey',
+  setHotkey: 'universe:set-hotkey',
+  showCommandBar: 'universe:show-command-bar',
+  hideCommandBar: 'universe:hide-command-bar',
+  commandBarShow: 'universe:command-bar-show',
+  focus: 'universe:focus',
+  focusEvent: 'universe:focus-event',
 } as const;

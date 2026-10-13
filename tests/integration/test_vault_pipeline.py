@@ -180,6 +180,25 @@ def test_found_by_keyword_fragment_meaning_and_filters(rig: Rig, tmp_path: Path)
     assert rig.find("pdf about the lake")[0] == "parcel-4471-agreement"
 
 
+def test_meaning_matches_must_be_related_and_show_real_text(rig: Rig, tmp_path: Path) -> None:
+    # Regression: the nearest neighbours of any query used to come back as "found", with the metadata
+    # chunk ("shopping document") as their snippet.
+    inbox = tmp_path / "notes"
+    inbox.mkdir()
+    (inbox / "river-walk.txt").write_text("My puppy loves walking along the river every morning.\n")
+    (inbox / "shopping.txt").write_text("eggs, flour, sugar, butter\n")
+    rig.import_path(inbox)
+    rig.run()
+
+    assert rig.find("dog near water") == ["river-walk"]  # dog ≈ puppy, water ≈ river; nothing in common with eggs
+    assert rig.find("accountant") == []  # no word and no meaning in common with anything
+    item_id = rig.conn.execute("SELECT id FROM items WHERE title = 'river-walk'").fetchone()["id"]
+    metadata_chunk = rig.conn.execute(
+        "SELECT id FROM chunks WHERE item_id = ? AND kind = 'metadata'", (item_id,)
+    ).fetchone()["id"]
+    assert str(search._excerpt(rig.conn, metadata_chunk, "dog")).startswith("My puppy loves walking")
+
+
 def test_duplicates_are_recognised_and_gain_projects(rig: Rig, tmp_path: Path) -> None:
     source = files.write_pdf(tmp_path / "deal.pdf", ["Same bytes"])
     first = ingest.import_file(rig.conn, rig.vault, source, source_kind="drop")

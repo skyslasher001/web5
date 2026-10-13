@@ -1,9 +1,11 @@
 import { useUniverse, type Panel } from '../state/store';
 import { ContextPanel } from './ContextPanel';
 import { SystemPanel } from './SystemPanel';
+import { VaultPanel } from './VaultPanel';
 
 const TABS: { id: Panel; label: string }[] = [
   { id: 'context', label: 'Context' },
+  { id: 'vault', label: 'Vault' },
   { id: 'system', label: 'System' },
 ];
 
@@ -32,7 +34,7 @@ export function SidePanel() {
         ))}
       </div>
       <div role="tabpanel" className="flex-1 overflow-y-auto p-4">
-        {panel === 'context' ? <ContextPanel /> : <SystemPanel />}
+        {panel === 'context' ? <ContextPanel /> : panel === 'vault' ? <VaultPanel /> : <SystemPanel />}
       </div>
     </aside>
   );

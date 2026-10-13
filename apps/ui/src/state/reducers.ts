@@ -162,6 +162,15 @@ export function applyAgentEvent(agents: Record<string, AgentActivity>, event: Co
   }
 }
 
+const TIER_ROLE: Record<string, string> = {
+  'local-fast': 'Chat model',
+  'local-large': 'Large model',
+  embed_text: 'Search model',
+  vision: 'Image model',
+};
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** One human-readable line for the activity ribbon, or null for events that would only be noise. */
 export function describeEvent(event: CoreEvent): Omit<ActivityItem, 'id' | 'ts'> | null {
   const p = event.payload as Payload;
@@ -191,8 +200,36 @@ export function describeEvent(event: CoreEvent): Omit<ActivityItem, 'id' | 'ts'>
       return { tone: 'bad', text: `Error in ${str(p.service)}: ${str(p.kind)}` };
     case 'project.created':
       return { tone: 'info', text: `Galaxy created: ${str(p.name)}` };
-    case 'model.assignment_changed':
-      return { tone: 'info', text: `Chat model set to ${str(p.model)}` };
+    case 'model.assignment_changed': {
+      const role = TIER_ROLE[str(p.tier)] ?? 'Chat model';
+      return { tone: 'info', text: p.model ? `${role} set to ${str(p.model)}` : `${role} cleared` };
+    }
+    case 'item.created':
+      return { tone: 'good', text: `Added ${str(p.title) || 'an item'}` };
+    case 'item.trashed':
+      // Trashing from the app already shows a line; this is the vault noticing a file was deleted.
+      return p.reason ? { tone: 'warn', text: `Moved to the trash: ${str(p.reason)}` } : null;
+    case 'item.restored':
+      return { tone: 'info', text: 'Restored an item from the trash' };
+    case 'item.deleted':
+      return { tone: 'info', text: 'Deleted an item permanently' };
+    case 'job.dead':
+      return { tone: 'bad', text: `Processing gave up (${str(p.kind)}): ${str(p.error)}` };
+    case 'backup.completed':
+      return {
+        tone: 'good',
+        text: `Backup completed${p.snapshot_id ? ` · snapshot ${str(p.snapshot_id).slice(0, 8)}` : ''}`,
+      };
+    case 'backup.failed':
+      return { tone: 'bad', text: `${capitalize(str(p.operation) || 'backup')} failed: ${str(p.error)}` };
+    case 'backup.restored':
+      return { tone: 'good', text: `Backup restored to ${str(p.target)}` };
+    case 'backup.restore_tested':
+      return { tone: 'good', text: `Restore test passed · ${num(p.items) ?? 0} items readable` };
+    case 'governor.paused':
+      return { tone: 'warn', text: `Background work paused${p.reason ? `: ${str(p.reason)}` : ''}` };
+    case 'governor.resumed':
+      return { tone: 'info', text: 'Background work resumed' };
     default:
       return null;
   }

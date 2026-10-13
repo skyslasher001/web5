@@ -12,9 +12,15 @@ import { ConsentIndicators } from './hud/ConsentIndicators';
 import { SidePanel } from './hud/SidePanel';
 import { TopBar } from './hud/TopBar';
 import { ErrorBoundary } from './hud/ErrorBoundary';
+import { DropZone } from './hud/DropZone';
+import { ItemsView } from './views2d/ItemsView';
 
 // three.js is most of the bundle: load it after the HUD so the shell is usable first (SPEC §24).
 const Scene = lazy(() => import('./universe/Scene'));
+// The command bar window loads the same bundle with #command-bar and never touches three.js.
+const CommandBarRoot = lazy(() =>
+  import('./command/CommandBar').then((m) => ({ default: m.CommandBarRoot })),
+);
 
 function Booting({ error }: { error: string | null }) {
   return (
@@ -37,6 +43,7 @@ function Booting({ error }: { error: string | null }) {
 function Hud() {
   useHotkeys();
   const zen = useUniverse((s) => s.zen);
+  const view = useUniverse((s) => s.view);
   return (
     <div className="relative h-full w-full overflow-hidden select-none">
       <div className="space-backdrop absolute inset-0" aria-hidden />
@@ -56,18 +63,36 @@ function Hud() {
             <ConnectionBanner />
             <AgentDock />
             <SidePanel />
+            {view !== 'universe' && (
+              <ErrorBoundary name="items" fallback={null}>
+                <ItemsView />
+              </ErrorBoundary>
+            )}
             <ActivityRibbon />
             <ChatDock />
           </>
         )}
       </div>
       <ConsentIndicators />
+      <DropZone />
       <CommandPalette />
     </div>
   );
 }
 
 export function App() {
+  if (window.location.hash === '#command-bar') {
+    return (
+      <ErrorBoundary
+        name="command-bar"
+        fallback={<p className="p-4 text-sm text-danger">The command bar hit an error.</p>}
+      >
+        <Suspense fallback={null}>
+          <CommandBarRoot />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
   return (
     <CoreProvider fallback={(error) => <Booting error={error} />}>
       <ErrorBoundary name="hud" fallback={<Booting error="The interface hit an error; it was recorded." />}>

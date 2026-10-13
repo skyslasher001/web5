@@ -2600,6 +2600,11 @@
             "title": "Id",
             "type": "string"
           },
+          "item_count": {
+            "default": 0,
+            "title": "Item Count",
+            "type": "integer"
+          },
           "layout_seed": {
             "title": "Layout Seed",
             "type": "integer"
@@ -2625,7 +2630,8 @@
           "status",
           "color_token",
           "layout_seed",
-          "created_at"
+          "created_at",
+          "item_count"
         ],
         "title": "Project",
         "type": "object"

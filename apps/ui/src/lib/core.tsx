@@ -1,30 +1,25 @@
 // Boots the connection to Core: bridge config → REST client → WebSocket → store.
+import type { FocusTarget } from '@universe/shared-types';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useUniverse } from '../state/store';
 import { CoreApi } from './api';
 import { ApiContext } from './api-context';
 import { bridge } from './bridge';
+import { installErrorReporting } from './errorReporting';
 import { CoreSocket } from './socket';
 
-function installErrorReporting(): () => void {
-  const report = (kind: string, message: string, stack?: string) => {
-    try {
-      bridge().reportError({ kind, message, stack });
-    } catch {
-      // no bridge (should not happen inside Electron)
-    }
-  };
-  const onError = (e: ErrorEvent) => report(e.error?.name ?? 'Error', e.message, e.error?.stack);
-  const onRejection = (e: PromiseRejectionEvent) => {
-    const err = e.reason instanceof Error ? e.reason : new Error(String(e.reason));
-    report(err.name, err.message, err.stack);
-  };
-  window.addEventListener('error', onError);
-  window.addEventListener('unhandledrejection', onRejection);
-  return () => {
-    window.removeEventListener('error', onError);
-    window.removeEventListener('unhandledrejection', onRejection);
-  };
+/** The command bar asked the main window to show something. */
+function applyFocus(target: FocusTarget): void {
+  const s = useUniverse.getState();
+  if (target.kind === 'item') {
+    s.selectItem(target.id);
+  } else if (target.kind === 'project') {
+    s.selectProject(target.id);
+    if (s.view === 'universe') s.setView('grid');
+  } else {
+    s.setShowTrash(false);
+    s.setQuery(target.query);
+  }
 }
 
 export function CoreProvider({
@@ -41,6 +36,7 @@ export function CoreProvider({
     const store = useUniverse.getState();
     let socket: CoreSocket | null = null;
     let offDesktop: (() => void) | null = null;
+    let offFocus: (() => void) | null = null;
     const offErrors = installErrorReporting();
     let cancelled = false;
     (async () => {
@@ -52,6 +48,7 @@ export function CoreProvider({
       setApi(client);
       store.setDesktop(await b.getDesktopState());
       offDesktop = b.onDesktopState((state) => useUniverse.getState().setDesktop(state));
+      offFocus = b.onFocus(applyFocus);
       socket = new CoreSocket({
         wsUrl: config.wsUrl,
         lastSeq: () => useUniverse.getState().lastSeq,
@@ -79,6 +76,7 @@ export function CoreProvider({
       cancelled = true;
       socket?.stop();
       offDesktop?.();
+      offFocus?.();
       offErrors();
     };
   }, []);

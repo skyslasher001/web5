@@ -18,17 +18,25 @@ export function useHotkeys(): void {
       if (e.key === 'Escape') {
         if (s.paletteOpen) s.setPaletteOpen(false);
         else if (s.zen) s.toggleZen();
-        else if (s.chatOpen && !typing(e.target)) s.setChatOpen(false);
+        else if (typing(e.target)) return;
+        else if (s.chatOpen) s.setChatOpen(false);
+        else if (s.selectedItemId) s.selectItem(null);
+        else if (s.query) s.setQuery('');
+        else if (s.view !== 'universe') s.setView('universe');
         return;
       }
       if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey || s.paletteOpen) return;
       const key = e.key.toLowerCase();
       if (key === '/') {
         e.preventDefault();
-        s.setPaletteOpen(true);
+        s.focusSearch();
       } else if (key === 'z') s.toggleZen();
       else if (key === 'c') s.setChatOpen(!s.chatOpen);
       else if (key === 's') s.setPanel('system');
+      else if (key === 'v') s.setPanel('vault');
+      else if (key === 'g') s.setView('grid');
+      else if (key === 'l') s.setView('list');
+      else if (key === 'u') s.setView('universe');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

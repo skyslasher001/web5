@@ -24,3 +24,13 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
 }
+
+/** An Electron accelerator as people read it ("CommandOrControl+Space" → "Ctrl+Space"). */
+export function formatAccelerator(accelerator: string): string {
+  return accelerator
+    .split('+')
+    .map(
+      (key) => ({ CommandOrControl: 'Ctrl', CmdOrCtrl: 'Ctrl', Control: 'Ctrl', Option: 'Alt' })[key] ?? key,
+    )
+    .join('+');
+}
