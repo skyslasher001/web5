@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAgentEvent,
   applyChatEvent,
+  applyStepEvent,
   describeEvent,
   pushActivity,
+  stepLabel,
   type ActivityItem,
   type ChatState,
 } from './reducers';
@@ -38,6 +40,7 @@ const stored = (id: string, role: 'user' | 'assistant', content: string, status 
   status,
   first_token_ms: null,
   total_ms: null,
+  task_id: null as string | null,
   created_at: '2026-10-12T10:00:00.000Z',
 });
 
@@ -199,5 +202,69 @@ describe('activity bursts', () => {
     list = pushActivity(list, { id: 'r', ts: '2026-10-13T10:01:01Z', tone: 'info', text: 'Restored' }, 40);
     list = pushActivity(list, added('c', '2026-10-13T10:01:02Z'), 40);
     expect(list.map((i) => i.text)).toEqual(['Added c', 'Restored', 'Added b', 'Added a']);
+  });
+});
+
+describe('agent steps', () => {
+  it('says what an agent is doing and clears when it finishes', () => {
+    let steps: Record<string, string> = {};
+    steps = applyStepEvent(steps, ev('agent.step', { agent_id: 'librarian', kind: 'llm_call', tool: null }));
+    expect(steps.librarian).toBe('Thinking…');
+    steps = applyStepEvent(
+      steps,
+      ev('agent.step', { agent_id: 'librarian', kind: 'tool_call', tool: 'vault.search', decision: 'allow' }),
+    );
+    expect(steps.librarian).toBe('Searching your vault…');
+    // A tool's result keeps the tool's label until the next model call.
+    const same = applyStepEvent(
+      steps,
+      ev('agent.step', { agent_id: 'librarian', kind: 'tool_result', tool: 'vault.search' }),
+    );
+    expect(same).toBe(steps);
+    steps = applyStepEvent(steps, ev('agent.completed', { agent_id: 'librarian' }));
+    expect(steps).toEqual({});
+  });
+
+  it('labels approvals, MCP tools and unknown tools', () => {
+    expect(stepLabel('tool_call', 'project.add_items', 'ask')).toBe('Waiting for your OK…');
+    expect(stepLabel('tool_call', 'mcp.github.search', 'allow')).toBe('Using github · search…');
+    expect(stepLabel('tool_call', 'files.shred', 'unknown')).toBe('Using files.shred…');
+  });
+});
+
+describe('agent engine activity lines', () => {
+  it('describes approvals, the kill switch and finished tasks', () => {
+    expect(
+      describeEvent(
+        ev('approval.requested', { agent_id: 'core', summary: "Add 2 item(s) to the galaxy 'DevMind'" }),
+      )?.text,
+    ).toBe("Core asks: Add 2 item(s) to the galaxy 'DevMind'");
+    expect(describeEvent(ev('approval.decided', { approved: false, tool: 'note.create' }))?.text).toBe(
+      'Declined: note.create',
+    );
+    expect(describeEvent(ev('killswitch.engaged', { engaged: true }))?.tone).toBe('bad');
+    expect(describeEvent(ev('agent.completed', { agent_id: 'core', steps: 4, parent_id: null }))?.text).toBe(
+      'Core finished · 4 steps',
+    );
+    expect(describeEvent(ev('budget.warning', { level: 0.8 }))?.text).toContain('80 %');
+  });
+
+  it("keeps specialists' sub-tasks out of the ribbon", () => {
+    expect(
+      describeEvent(ev('agent.completed', { agent_id: 'critic', steps: 1, parent_id: 't1' })),
+    ).toBeNull();
+    expect(
+      describeEvent(ev('agent.failed', { agent_id: 'librarian', error: 'x', parent_id: 't1' })),
+    ).toBeNull();
+    expect(describeEvent(ev('agent.failed', { agent_id: 'scribe', error: 'no model' }))?.text).toBe(
+      'Scribe failed: no model',
+    );
+  });
+
+  it('links a reply to the task behind it', () => {
+    const state = run({ conversationId: 'c1', messages: [] }, [
+      ev('chat.message', { ...stored('m1', 'assistant', 'Done.'), task_id: 't9' }),
+    ]);
+    expect(state.messages[0]!.taskId).toBe('t9');
   });
 });

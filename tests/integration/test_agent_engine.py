@@ -239,6 +239,7 @@ def test_chat_runs_through_the_engine(api: Api) -> None:
     # Core answered with tools: the reply links to its task and trace.
     task = api.get("/tasks", params={"agent": "core"})[0]
     assert task["conversation_id"] == sent["conversation_id"]
+    assert messages[-1]["task_id"] == task["id"]
 
 
 def test_mcp_tools_ask_first_and_their_output_is_untrusted(api: Api) -> None:

@@ -3023,6 +3023,17 @@
             "title": "Status",
             "type": "string"
           },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
           "total_ms": {
             "anyOf": [
               {
@@ -3045,6 +3056,7 @@
           "status",
           "first_token_ms",
           "total_ms",
+          "task_id",
           "created_at"
         ],
         "title": "Message",

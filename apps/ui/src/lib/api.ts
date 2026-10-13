@@ -1,6 +1,18 @@
 // Typed REST client for Core. Types are generated from the backend's OpenAPI schema.
 import type {
   AgentInfo,
+  AgentTask,
+  Approval,
+  AuditEntry,
+  AuditVerification,
+  BudgetStatus,
+  EngineStatus,
+  KillSwitchStatus,
+  MCPServerInfo,
+  MCPServerRequest,
+  Memory,
+  PermissionRule,
+  TaskDetail,
   ApiKeyCreated,
   ApiKeyInfo,
   BackupConfigRequest,
@@ -203,4 +215,49 @@ export class CoreApi {
   createApiKey = (name: string, scopes: Array<'capture' | 'search'>) =>
     this.call<ApiKeyCreated>('POST', '/api-keys', { name, scopes });
   revokeApiKey = (id: string) => this.call<ApiKeyInfo>('DELETE', `/api-keys/${id}`);
+
+  // ---------- agent engine ----------
+  engine = () => this.call<EngineStatus>('GET', '/engine');
+  runAgent = (agentId: string, instruction: string) =>
+    this.call<{ task_id: string }>('POST', `/agents/${agentId}/run`, { instruction });
+  tasks = (q: { agent?: string; status?: string; limit?: number } = {}) =>
+    this.call<AgentTask[]>('GET', `/tasks${queryString(q)}`);
+  task = (id: string) => this.call<TaskDetail>('GET', `/tasks/${id}`);
+  cancelTask = (id: string) => this.call<AgentTask>('POST', `/tasks/${id}/cancel`);
+  /** Approvals waiting for you. */
+  approvals = () => this.call<Approval[]>('GET', '/approvals');
+  decideApproval = (id: string, approve: boolean, remember = false) =>
+    this.call<Approval>('POST', `/approvals/${id}/decision`, { approve, remember });
+
+  memories = (status?: 'active' | 'proposed') =>
+    this.call<Memory[]>('GET', `/memories${queryString({ status })}`);
+  createMemory = (content: string, scope = 'self') =>
+    this.call<Memory>('POST', '/memories', { content, scope });
+  decideMemory = (id: string, approve: boolean) =>
+    this.call<Memory>('POST', `/memories/${id}/decision`, { approve });
+  editMemory = (id: string, content: string) => this.call<Memory>('PATCH', `/memories/${id}`, { content });
+  deleteMemory = (id: string) => this.send('DELETE', `/memories/${id}`).then(() => undefined);
+
+  permissionRules = () => this.call<PermissionRule[]>('GET', '/permissions/rules');
+  addPermissionRule = (
+    rule: Pick<PermissionRule, 'agent_id' | 'tool' | 'decision' | 'applies_when_tainted'>,
+  ) => this.call<PermissionRule>('POST', '/permissions/rules', rule);
+  removePermissionRule = (id: string) =>
+    this.send('DELETE', `/permissions/rules/${id}`).then(() => undefined);
+  budget = () => this.call<BudgetStatus>('GET', '/budget');
+  setBudgetCap = (monthlyCapUsd: number) =>
+    this.call<BudgetStatus>('PUT', '/budget/caps', { monthly_cap_usd: monthlyCapUsd });
+  killSwitch = () => this.call<KillSwitchStatus>('GET', '/killswitch');
+  /** Core can only engage the kill switch; releasing it takes the desktop's native dialog. */
+  engageKillSwitch = () => this.call<KillSwitchStatus>('POST', '/killswitch', { engaged: true });
+  audit = (limit = 100, action?: string) =>
+    this.call<AuditEntry[]>('GET', `/audit${queryString({ limit, action })}`);
+  verifyAudit = () => this.call<AuditVerification>('GET', '/audit/verify');
+
+  mcpServers = () => this.call<MCPServerInfo[]>('GET', '/mcp/servers');
+  addMcpServer = (body: MCPServerRequest) => this.call<MCPServerInfo>('POST', '/mcp/servers', body);
+  setMcpServerEnabled = (id: string, enabled: boolean) =>
+    this.call<MCPServerInfo>('POST', `/mcp/servers/${id}/enabled`, { enabled });
+  restartMcpServer = (id: string) => this.call<MCPServerInfo>('POST', `/mcp/servers/${id}/restart`);
+  removeMcpServer = (id: string) => this.send('DELETE', `/mcp/servers/${id}`).then(() => undefined);
 }

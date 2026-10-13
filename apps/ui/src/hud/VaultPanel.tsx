@@ -3,7 +3,7 @@ import type { ApiKeyCreated, BackupStatus, HotkeyStatus } from '@universe/shared
 import { tokens } from '@universe/design-tokens';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderPlus, Pause, Play, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../lib/api-context';
 import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
@@ -11,37 +11,7 @@ import { formatAccelerator, formatBytes, timeAgo } from '../lib/format';
 import { ITEM_TYPES } from '../lib/itemTypes';
 import { useQueueStats, useVaultInfo } from '../lib/queries';
 import { useUniverse } from '../state/store';
-import { CopyButton, Dot, SectionTitle } from './ui';
-
-function Section({ title, children, testid }: { title: string; children: ReactNode; testid?: string }) {
-  return (
-    <section className="space-y-2 border-b border-hairline-1 pb-4 last:border-0" data-testid={testid}>
-      <SectionTitle>{title}</SectionTitle>
-      {children}
-    </section>
-  );
-}
-
-function Button({
-  onClick,
-  children,
-  disabled = false,
-}: {
-  onClick: () => void;
-  children: ReactNode;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-md border border-hairline-2 px-2.5 py-1 text-xs text-ink-2 transition-colors duration-150 hover:border-accent/60 hover:text-ink-1 disabled:opacity-40"
-    >
-      {children}
-    </button>
-  );
-}
+import { Button, CopyButton, Dot, Section } from './ui';
 
 function Overview() {
   const info = useVaultInfo(true);

@@ -6,6 +6,7 @@ import { useHotkeys } from './lib/hotkeys';
 import { useUniverse } from './state/store';
 import { ActivityRibbon } from './hud/ActivityRibbon';
 import { AgentDock } from './hud/AgentDock';
+import { ApprovalsTray } from './hud/ApprovalsTray';
 import { ChatDock } from './hud/ChatDock';
 import { CommandPalette } from './hud/CommandPalette';
 import { ConnectionBanner } from './hud/ConnectionBanner';
@@ -14,6 +15,7 @@ import { SidePanel } from './hud/SidePanel';
 import { TopBar } from './hud/TopBar';
 import { ErrorBoundary } from './hud/ErrorBoundary';
 import { DropZone } from './hud/DropZone';
+import { KillSwitchBanner } from './hud/KillSwitch';
 import { ItemsView } from './views2d/ItemsView';
 
 // three.js is most of the bundle: load it after the HUD so the shell is usable first (SPEC §24).
@@ -72,8 +74,11 @@ function Hud() {
             )}
             <ActivityRibbon />
             <ChatDock />
+            <ApprovalsTray />
           </>
         )}
+        {/* Shown even in zen mode: you should always know that agents are stopped. */}
+        <KillSwitchBanner />
       </div>
       <ConsentIndicators />
       <DropZone />

@@ -57,3 +57,58 @@ export function SectionTitle({ children }: { children: ReactNode }) {
     </h3>
   );
 }
+
+export function Section({
+  title,
+  children,
+  testid,
+}: {
+  title: string;
+  children: ReactNode;
+  testid?: string;
+}) {
+  return (
+    <section className="space-y-2 border-b border-hairline-1 pb-4 last:border-0" data-testid={testid}>
+      <SectionTitle>{title}</SectionTitle>
+      {children}
+    </section>
+  );
+}
+
+export function Button({
+  onClick,
+  children,
+  disabled = false,
+  tone = 'plain',
+  title,
+  testid,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+  tone?: 'plain' | 'primary' | 'danger';
+  title?: string;
+  testid?: string;
+}) {
+  const toneClass = {
+    plain: 'border-hairline-2 text-ink-2 hover:border-accent/60 hover:text-ink-1',
+    primary: 'border-accent/60 bg-accent/15 text-ink-1 hover:bg-accent/25',
+    danger: 'border-danger/60 text-danger hover:bg-danger/15',
+  }[tone];
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      data-testid={testid}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors duration-150 disabled:opacity-40 ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Text field styling shared by the panels. */
+export const inputClass =
+  'min-w-0 rounded-md border border-hairline-2 bg-space-2 px-2 py-1 text-xs text-ink-1 placeholder:text-ink-3 focus:border-accent/60 focus:outline-none';

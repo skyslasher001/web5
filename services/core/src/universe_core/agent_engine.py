@@ -658,7 +658,7 @@ class _Hooks:
     def emit(self, state: TaskState, event_type: str, payload: dict[str, Any]) -> None:
         self._engine._bus.publish(
             event_type,
-            {"task_id": state.task_id, "agent_id": state.agent_id, **payload},
+            {"task_id": state.task_id, "agent_id": state.agent_id, "parent_id": state.parent_id, **payload},
             actor=f"agent:{state.agent_id}",
             subject_type="task",
             subject_id=state.task_id,

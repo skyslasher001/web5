@@ -34,3 +34,7 @@ export function formatAccelerator(accelerator: string): string {
     )
     .join('+');
 }
+
+export function formatUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
+}

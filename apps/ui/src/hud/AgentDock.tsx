@@ -1,5 +1,6 @@
 import { tokens } from '@universe/design-tokens';
 import { hueHex } from '../lib/colors';
+import { useEngine } from '../lib/queries';
 import { useUniverse } from '../state/store';
 import { Dot, SectionTitle } from './ui';
 
@@ -13,6 +14,10 @@ const LABEL = {
 export function AgentDock() {
   const agents = useUniverse((s) => s.agents);
   const activity = useUniverse((s) => s.agentActivity);
+  const steps = useUniverse((s) => s.agentSteps);
+  const openAgent = useUniverse((s) => s.openAgent);
+  const engine = useEngine();
+  const tools = engine.data?.available ?? false;
   const safeMode = useUniverse((s) => s.desktop?.supervisor?.safe_mode.active ?? false);
   const setChatOpen = useUniverse((s) => s.setChatOpen);
   return (
@@ -27,7 +32,9 @@ export function AgentDock() {
             <li key={agent.id}>
               <button
                 type="button"
-                onClick={() => setChatOpen(true)}
+                // Core is who you talk to; the specialists take tasks from the Agents panel.
+                onClick={() => (agent.id === 'core' || !tools ? setChatOpen(true) : openAgent(agent.id))}
+                title={agent.purpose}
                 className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors duration-150 hover:bg-space-3/60"
                 data-testid={`agent-${agent.id}`}
               >
@@ -35,7 +42,11 @@ export function AgentDock() {
                 <span className="flex-1">
                   <span className="block text-sm font-medium text-ink-1">{agent.name}</span>
                   <span className="block text-xs text-ink-3">
-                    {state === 'disabled' ? 'Disabled (safe mode)' : LABEL[state]}
+                    {state === 'disabled'
+                      ? 'Disabled (safe mode)'
+                      : busy
+                        ? (steps[agent.id] ?? LABEL[state])
+                        : LABEL[state]}
                   </span>
                 </span>
               </button>
@@ -43,9 +54,11 @@ export function AgentDock() {
           );
         })}
       </ul>
-      <p className="mt-3 border-t border-hairline-1 pt-3 text-xs leading-relaxed text-ink-3">
-        13 specialists join Core with the agent engine (Phase 3).
-      </p>
+      {engine.data && !engine.data.available && (
+        <p className="mt-3 border-t border-hairline-1 pt-3 text-xs leading-relaxed text-ink-3">
+          Chat only: agents get their tools once the policy engine is installed.
+        </p>
+      )}
     </nav>
   );
 }

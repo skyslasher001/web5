@@ -1,11 +1,19 @@
-import type { AgentInfo, BridgeConfig, CoreEvent, DesktopState, ItemType } from '@universe/shared-types';
+import type {
+  AgentInfo,
+  BridgeConfig,
+  CoreEvent,
+  DesktopState,
+  ItemType,
+  KillSwitchState,
+} from '@universe/shared-types';
 import { create } from 'zustand';
 import type { ItemSort } from '../lib/api';
-import { refreshItemQueries } from '../lib/queryClient';
+import { refreshForEvent, refreshItemQueries } from '../lib/queryClient';
 import type { ConnectionState } from '../lib/socket';
 import {
   applyAgentEvent,
   applyChatEvent,
+  applyStepEvent,
   describeEvent,
   pushActivity,
   type ActivityItem,
@@ -13,7 +21,7 @@ import {
   type ChatMessage,
 } from './reducers';
 
-export type Panel = 'context' | 'system' | 'vault';
+export type Panel = 'context' | 'vault' | 'agents' | 'safety' | 'system';
 export type View = 'universe' | 'grid' | 'list';
 
 /** Events that change what the 2D views show. Bursts (an import of 500 files) refresh once. */
@@ -30,6 +38,13 @@ interface UniverseState {
   activity: ActivityItem[];
   agents: AgentInfo[];
   agentActivity: Record<string, AgentActivity>;
+  /** What each busy agent is doing, in words, from its latest step. */
+  agentSteps: Record<string, string>;
+  /** The agent the Agents panel runs tasks with, and the task whose trace it shows. */
+  runAgentId: string;
+  selectedTaskId: string | null;
+  /** From Electron main: `available` is false until the protected kill-switch control is installed. */
+  killSwitch: KillSwitchState;
   conversationId: string | null;
   messages: ChatMessage[];
   selectedProjectId: string | null;
@@ -75,6 +90,9 @@ interface UniverseState {
   focusSearch(): void;
   focusResults(): void;
   setSmooth(smooth: boolean): void;
+  openAgent(id: string): void;
+  selectTask(id: string | null): void;
+  setKillSwitch(state: KillSwitchState): void;
 }
 
 const ACTIVITY_LIMIT = 40;
@@ -103,6 +121,10 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   activity: [],
   agents: [],
   agentActivity: {},
+  agentSteps: {},
+  runAgentId: 'core',
+  selectedTaskId: null,
+  killSwitch: { available: false, engaged: false },
   conversationId: null,
   messages: [],
   selectedProjectId: null,
@@ -132,6 +154,8 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
         get().refreshItems();
       }, ITEMS_REFRESH_MS);
     }
+    refreshForEvent(event.type);
+    if (event.type === 'navigator.action') navigate(event.payload as { target?: string; value?: string });
     set((s) => {
       const chat = applyChatEvent({ conversationId: s.conversationId, messages: s.messages }, event);
       const line = describeEvent(event);
@@ -139,6 +163,11 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
         lastSeq: event.seq != null ? Math.max(s.lastSeq, event.seq) : s.lastSeq,
         messages: chat.messages,
         agentActivity: applyAgentEvent(s.agentActivity, event),
+        agentSteps: applyStepEvent(s.agentSteps, event),
+        killSwitch:
+          event.type === 'killswitch.engaged' || event.type === 'killswitch.released'
+            ? { ...s.killSwitch, engaged: event.type === 'killswitch.engaged' }
+            : s.killSwitch,
         activity: line
           ? pushActivity(s.activity, { id: event.id, ts: event.ts, ...line }, ACTIVITY_LIMIT)
           : s.activity,
@@ -184,4 +213,21 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   },
   focusResults: () =>
     set((s) => ({ resultsFocusTick: s.resultsFocusTick + 1, view: s.view === 'universe' ? 'list' : s.view })),
+  openAgent: (runAgentId) => set({ runAgentId, panel: 'agents' }),
+  selectTask: (selectedTaskId) => set({ selectedTaskId, panel: 'agents' }),
+  setKillSwitch: (killSwitch) => set({ killSwitch }),
 }));
+
+/** Navigator's ui.show: an agent asked the HUD to show you something. */
+function navigate({ target, value }: { target?: string; value?: string }) {
+  if (!value) return;
+  const s = useUniverse.getState();
+  if (target === 'project') {
+    s.selectProject(value);
+    if (s.view === 'universe') s.setView('grid');
+  } else if (target === 'item') s.selectItem(value);
+  else if (target === 'search') {
+    s.setQuery(value);
+    s.focusResults();
+  }
+}

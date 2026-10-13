@@ -37,6 +37,7 @@ export function CoreProvider({
     let socket: CoreSocket | null = null;
     let offDesktop: (() => void) | null = null;
     let offFocus: (() => void) | null = null;
+    let offKill: (() => void) | null = null;
     const offErrors = installErrorReporting();
     let cancelled = false;
     (async () => {
@@ -49,6 +50,8 @@ export function CoreProvider({
       store.setDesktop(await b.getDesktopState());
       offDesktop = b.onDesktopState((state) => useUniverse.getState().setDesktop(state));
       offFocus = b.onFocus(applyFocus);
+      store.setKillSwitch(await b.getKillSwitch());
+      offKill = b.onKillSwitch((state) => useUniverse.getState().setKillSwitch(state));
       socket = new CoreSocket({
         wsUrl: config.wsUrl,
         lastSeq: () => useUniverse.getState().lastSeq,
@@ -77,6 +80,7 @@ export function CoreProvider({
       socket?.stop();
       offDesktop?.();
       offFocus?.();
+      offKill?.();
       offErrors();
     };
   }, []);

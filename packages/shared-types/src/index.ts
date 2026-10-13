@@ -48,3 +48,46 @@ export type BackupConfigRequest = Schemas['BackupConfigRequest'];
 export type Snapshot = Schemas['Snapshot'];
 export type ApiKeyInfo = Schemas['ApiKeyInfo'];
 export type ApiKeyCreated = Schemas['ApiKeyCreated'];
+
+// Phase 3: the agent engine
+export type AgentTask = Schemas['AgentTask'];
+export type TaskStep = Schemas['TaskStep'];
+export type TaskDetail = Schemas['TaskDetail'];
+export type Approval = Schemas['Approval'];
+export type Memory = Schemas['Memory'];
+export type EngineStatus = Schemas['EngineStatus'];
+export type KillSwitchStatus = Schemas['KillSwitchStatus'];
+export type MCPServerInfo = Schemas['MCPServerInfo'];
+export type MCPServerRequest = Schemas['MCPServerRequest'];
+export type AuditEntry = Schemas['AuditEntry'];
+export type AuditVerification = Schemas['AuditVerification'];
+
+// These come from the protected policy engine (not in the OpenAPI schema: its models live in protected code).
+export interface PermissionRule {
+  id: string;
+  agent_id: string;
+  tool: string;
+  decision: 'allow' | 'ask' | 'deny';
+  applies_when_tainted: boolean;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface UsageRow {
+  key: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  calls: number;
+}
+
+export interface BudgetStatus {
+  month: string;
+  monthly_cap_usd: number;
+  spent_usd: number;
+  tokens_in: number;
+  tokens_out: number;
+  calls: number;
+  by_agent: UsageRow[];
+  by_model: UsageRow[];
+}

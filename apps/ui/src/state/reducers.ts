@@ -18,6 +18,8 @@ export interface ChatMessage {
   firstTokenMs: number | null;
   totalMs: number | null;
   error: ChatError | null;
+  /** The agent task behind this reply (its trace), when Core answered through the engine. */
+  taskId: string | null;
   createdAt: string;
 }
 
@@ -73,6 +75,7 @@ export function fromStored(m: Message): ChatMessage {
     firstTokenMs: m.first_token_ms ?? null,
     totalMs: m.total_ms ?? null,
     error: null,
+    taskId: m.task_id ?? null,
     createdAt: m.created_at,
   };
 }
@@ -95,6 +98,7 @@ function placeholder(id: string, ts: string): ChatMessage {
     firstTokenMs: null,
     totalMs: null,
     error: null,
+    taskId: null,
     createdAt: ts,
   };
 }
@@ -161,6 +165,7 @@ export function applyChatEvent(state: ChatState, event: CoreEvent): ChatState {
           ...(m ?? placeholder(id, event.ts)),
           status: 'failed',
           error: { code: str(p.code), error: str(p.error), hint: str(p.hint) },
+          taskId: str(p.task_id) || (m?.taskId ?? null),
         })),
       };
     default:
@@ -184,6 +189,48 @@ export function applyAgentEvent(agents: Record<string, AgentActivity>, event: Co
     default:
       return agents;
   }
+}
+
+const TOOL_STEP: Record<string, string> = {
+  'vault.search': 'Searching your vault…',
+  'vault.read': 'Reading an item…',
+  'project.list': 'Looking at your galaxies…',
+  'project.add_items': 'Linking items to a galaxy…',
+  'note.create': 'Writing a note…',
+  'memory.search': 'Checking memory…',
+  'memory.save': 'Saving a memory…',
+  'ui.show': 'Showing it to you…',
+  'agent.delegate': 'Asking a specialist…',
+  critic: 'Critic is checking the work…',
+};
+
+/** What an agent is doing right now, in words ("Searching your vault…"), from its latest step. */
+export function stepLabel(kind: string, tool: string | null, decision: string | null): string {
+  if (decision === 'ask') return 'Waiting for your OK…';
+  if (kind === 'llm_call') return 'Thinking…';
+  if (!tool) return 'Working…';
+  if (tool.startsWith('mcp.')) return `Using ${tool.split('.').slice(1).join(' · ')}…`;
+  return TOOL_STEP[tool] ?? `Using ${tool}…`;
+}
+
+export function applyStepEvent(steps: Record<string, string>, event: CoreEvent): Record<string, string> {
+  const p = event.payload as Payload;
+  const agent = str(p.agent_id);
+  if (!agent) return steps;
+  if (event.type === 'agent.step') {
+    // A tool's result is followed by another model call: keep showing the tool until then.
+    if (str(p.kind) === 'tool_result') return steps;
+    const decision = typeof p.decision === 'string' ? p.decision : null;
+    const tool = typeof p.tool === 'string' ? p.tool : null;
+    return { ...steps, [agent]: stepLabel(str(p.kind), tool, decision) };
+  }
+  if (event.type === 'agent.completed' || event.type === 'agent.failed') {
+    if (!(agent in steps)) return steps;
+    const next = { ...steps };
+    delete next[agent];
+    return next;
+  }
+  return steps;
 }
 
 const TIER_ROLE: Record<string, string> = {
@@ -211,13 +258,42 @@ export function describeEvent(event: CoreEvent): Omit<ActivityItem, 'id' | 'ts'>
       };
     case 'safe_mode.entered':
       return { tone: 'bad', text: 'Safe mode: agents disabled' };
-    case 'agent.completed':
-      return p.cancelled
-        ? { tone: 'info', text: 'Core reply stopped' }
-        : {
-            tone: 'info',
-            text: `Core replied${p.first_token_ms != null ? ` · first token ${p.first_token_ms} ms` : ''}`,
-          };
+    case 'agent.completed': {
+      const name = capitalize(str(p.agent_id) || 'core');
+      // A specialist's sub-task shows up as its parent's progress, not as its own line.
+      if (p.parent_id) return null;
+      if (p.cancelled) return { tone: 'info', text: `${name} stopped` };
+      if (p.steps != null) return { tone: 'info', text: `${name} finished · ${num(p.steps)} steps` };
+      return {
+        tone: 'info',
+        text: `${name} replied${p.first_token_ms != null ? ` · first token ${p.first_token_ms} ms` : ''}`,
+      };
+    }
+    case 'agent.failed':
+      if (p.parent_id) return null;
+      return { tone: 'bad', text: `${capitalize(str(p.agent_id) || 'core')} failed: ${str(p.error)}` };
+    case 'approval.requested':
+      return {
+        tone: 'warn',
+        text: `${capitalize(str(p.agent_id))} asks: ${str(p.summary)}`,
+      };
+    case 'approval.decided':
+      return { tone: 'info', text: `${p.approved ? 'Approved' : 'Declined'}: ${str(p.tool)}` };
+    case 'approval.expired':
+      return { tone: 'warn', text: 'An approval expired without an answer' };
+    case 'memory.proposed':
+      return { tone: 'info', text: 'An agent proposed a memory: review it in Agents → Memory' };
+    case 'killswitch.engaged':
+      return { tone: 'bad', text: 'Kill switch engaged: all agents stopped' };
+    case 'killswitch.released':
+      return { tone: 'good', text: 'Kill switch released' };
+    case 'budget.warning':
+      return {
+        tone: 'warn',
+        text: `Budget: ${Math.round((num(p.level) ?? 0) * 100)} % of this month's cap used`,
+      };
+    case 'budget.cap_reached':
+      return { tone: 'bad', text: 'Budget cap reached: paid models are stopped until next month' };
     case 'chat.failed':
       return { tone: 'bad', text: `Reply failed: ${str(p.error)}` };
     case 'error.raised':

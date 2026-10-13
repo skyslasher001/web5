@@ -10,7 +10,8 @@ export function useHotkeys(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = useUniverse.getState();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      // Ctrl+Alt+Shift+K is the kill switch (a global shortcut in Electron main), never the palette.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         s.setPaletteOpen(!s.paletteOpen);
         return;
@@ -34,6 +35,7 @@ export function useHotkeys(): void {
       else if (key === 'c') s.setChatOpen(!s.chatOpen);
       else if (key === 's') s.setPanel('system');
       else if (key === 'v') s.setPanel('vault');
+      else if (key === 'a') s.setPanel('agents');
       else if (key === 'g') s.setView('grid');
       else if (key === 'l') s.setView('list');
       else if (key === 'u') s.setView('universe');

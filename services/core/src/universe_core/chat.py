@@ -58,6 +58,7 @@ class Message(ApiModel):
     status: Literal["complete", "cancelled", "failed"]
     first_token_ms: int | None
     total_ms: int | None
+    task_id: str | None  # the agent task behind a reply through the engine: its trace
     created_at: str
 
 

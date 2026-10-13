@@ -153,3 +153,96 @@ export function useThumbnail(id: string, enabled: boolean): string | null {
   });
   return query.data ?? null;
 }
+
+// ---------- agent engine ----------
+
+export function useEngine() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['engine'], queryFn: api.engine, enabled: online, refetchInterval: 30_000 });
+}
+
+/** Top-level tasks (not specialists' sub-tasks), newest first. Events refresh it (refreshForEvent). */
+export function useTasks() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['tasks'],
+    queryFn: () => api.tasks({ limit: 50 }),
+    enabled: online,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useTask(id: string | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: ['task', id],
+    queryFn: () => api.task(id as string),
+    enabled: !!id,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useApprovals() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['approvals'],
+    queryFn: api.approvals,
+    enabled: online,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useMemories(status?: 'active' | 'proposed') {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['memories', status ?? 'all'],
+    queryFn: () => api.memories(status),
+    enabled: online,
+    placeholderData: keepPreviousData,
+  });
+}
+
+// These need the protected policy engine; without it Core answers 503, so don't retry.
+export function usePermissionRules(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['rules'],
+    queryFn: api.permissionRules,
+    enabled: enabled && online,
+    retry: false,
+  });
+}
+
+export function useBudget(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['budget'],
+    queryFn: api.budget,
+    enabled: enabled && online,
+    retry: false,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useAudit(enabled: boolean, limit = 50) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['audit', limit],
+    queryFn: () => api.audit(limit),
+    enabled: enabled && online,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMcpServers(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['mcp'], queryFn: api.mcpServers, enabled: enabled && online });
+}

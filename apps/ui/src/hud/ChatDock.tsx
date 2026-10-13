@@ -20,12 +20,13 @@ function Orb() {
     : activity === 'error'
       ? tokens.color.danger
       : tokens.color.accent;
+  const step = useUniverse((s) => s.agentSteps.core);
   const busy = activity === 'thinking' || activity === 'replying';
   const label = !online
     ? 'Core offline'
     : busy
       ? activity === 'thinking'
-        ? 'Thinking…'
+        ? (step ?? 'Thinking…')
         : 'Replying…'
       : 'Chat with Core';
   return (
@@ -65,6 +66,8 @@ function Orb() {
 }
 
 function MessageView({ m }: { m: ChatMessage }) {
+  const step = useUniverse((s) => s.agentSteps.core);
+  const selectTask = useUniverse((s) => s.selectTask);
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -89,6 +92,11 @@ function MessageView({ m }: { m: ChatMessage }) {
           <span className="caret ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 bg-accent" aria-hidden />
         )}
       </p>
+      {m.status === 'streaming' && step && (
+        <p className="text-xs text-ink-3" data-testid="agent-progress">
+          {step}
+        </p>
+      )}
       {m.error && (
         <div role="alert" className="rounded-md border border-danger/30 p-2 text-xs">
           <p className="text-danger">{m.error.error}</p>
@@ -100,7 +108,21 @@ function MessageView({ m }: { m: ChatMessage }) {
           )}
         </div>
       )}
-      {meta && <p className="font-mono text-[11px] text-ink-3">{meta}</p>}
+      {(meta || m.taskId) && (
+        <p className="flex items-center gap-2 font-mono text-[11px] text-ink-3">
+          {meta}
+          {m.taskId && (
+            <button
+              type="button"
+              onClick={() => selectTask(m.taskId)}
+              className="font-sans hover:text-accent"
+              data-testid="view-trace"
+            >
+              View trace
+            </button>
+          )}
+        </p>
+      )}
     </div>
   );
 }

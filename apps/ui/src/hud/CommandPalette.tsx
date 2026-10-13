@@ -2,6 +2,7 @@ import { Command, defaultFilter } from 'cmdk';
 import {
   ArchiveRestore,
   Bomb,
+  Bot,
   ClipboardPaste,
   FolderOpen,
   FolderPlus,
@@ -12,10 +13,13 @@ import {
   MessageSquare,
   MessageSquarePlus,
   NotebookPen,
+  OctagonX,
   Orbit,
   PanelRight,
   RefreshCw,
   RotateCw,
+  ScrollText,
+  ShieldCheck,
   Search,
   Sparkles,
   Telescope,
@@ -26,6 +30,7 @@ import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
 import { useProjects } from '../lib/queries';
 import { useUniverse } from '../state/store';
+import { useKillSwitch } from '../lib/killSwitch';
 import { Kbd } from './ui';
 
 const VAULT_SEARCH = 'universe:vault-search';
@@ -72,6 +77,7 @@ export function CommandPalette() {
   const s = useUniverse();
   const api = useApi();
   const projects = useProjects();
+  const killSwitch = useKillSwitch();
   const [typed, setTyped] = useState('');
   const close = () => {
     s.setPaletteOpen(false);
@@ -115,6 +121,52 @@ export function CommandPalette() {
             label="New chat"
             onSelect={run(() => s.newConversation())}
           />
+        </Command.Group>
+        <Command.Group heading="Agents" className={group}>
+          <Item
+            icon={<Bot className="size-4" />}
+            label="Agents & tasks"
+            hint="run a task, see traces"
+            shortcut="A"
+            onSelect={run(() => s.setPanel('agents'))}
+          />
+          {s.agents
+            .filter((a) => a.id !== 'core')
+            .map((a) => (
+              <Item
+                key={a.id}
+                icon={<Bot className="size-4" />}
+                label={`Give ${a.name} a task`}
+                hint={a.purpose}
+                onSelect={run(() => s.openAgent(a.id))}
+              />
+            ))}
+          <Item
+            icon={<ShieldCheck className="size-4" />}
+            label="Safety: rules, budget & MCP servers"
+            onSelect={run(() => s.setPanel('safety'))}
+          />
+          <Item
+            icon={<ScrollText className="size-4" />}
+            label="Audit log"
+            onSelect={run(() => s.setPanel('safety'))}
+          />
+          {killSwitch.available && !killSwitch.engaged && (
+            <Item
+              icon={<OctagonX className="size-4" />}
+              label="Engage the kill switch"
+              hint="stop every agent now"
+              shortcut="Ctrl+Alt+Shift+K"
+              onSelect={run(killSwitch.engage)}
+            />
+          )}
+          {killSwitch.available && killSwitch.engaged && (
+            <Item
+              icon={<OctagonX className="size-4" />}
+              label="Release the kill switch…"
+              onSelect={run(killSwitch.release)}
+            />
+          )}
         </Command.Group>
         <Command.Group heading="Capture" className={group}>
           <Item

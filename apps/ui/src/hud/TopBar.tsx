@@ -13,9 +13,37 @@ import {
 } from 'lucide-react';
 import { tokens } from '@universe/design-tokens';
 import { useEffect, useRef } from 'react';
-import { useModels, useQueueStats } from '../lib/queries';
+import { formatUsd } from '../lib/format';
+import { useBudget, useEngine, useModels, useQueueStats } from '../lib/queries';
 import { useUniverse, type View } from '../state/store';
+import { KillSwitchButton } from './KillSwitch';
 import { Dot, Kbd } from './ui';
+
+/** Spend this month against your cap. Until the policy engine is installed, everything is local and free. */
+function BudgetMeter() {
+  const engine = useEngine();
+  const budget = useBudget(!!engine.data?.available);
+  const setPanel = useUniverse((s) => s.setPanel);
+  const data = budget.data;
+  const over = data && data.monthly_cap_usd > 0 && data.spent_usd >= data.monthly_cap_usd * 0.8;
+  return (
+    <button
+      type="button"
+      onClick={() => setPanel('safety')}
+      className={`font-mono text-xs ${over ? 'text-amber' : 'text-ink-3'} hover:text-ink-1`}
+      title={
+        data
+          ? `Spent this month: ${formatUsd(data.spent_usd)} of a ${formatUsd(data.monthly_cap_usd)} cap · ${data.calls} model calls`
+          : 'Spend this month: everything runs locally'
+      }
+      data-testid="budget-meter"
+    >
+      {data && data.spent_usd > 0
+        ? `${formatUsd(data.spent_usd)} / ${formatUsd(data.monthly_cap_usd)}`
+        : '$0.00 · local'}
+    </button>
+  );
+}
 
 function CoreChip() {
   const connection = useUniverse((s) => s.connection);
@@ -208,10 +236,9 @@ export function TopBar() {
         <IndexingChip />
         <CoreChip />
         <ModelChip />
-        <span className="font-mono text-xs text-ink-3" title="Spend this month: everything runs locally">
-          $0.00 · local
-        </span>
+        <BudgetMeter />
         <ConsentOff />
+        <KillSwitchButton />
       </div>
     </header>
   );

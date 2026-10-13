@@ -2216,6 +2216,8 @@ export interface components {
              * @enum {string}
              */
             status: "complete" | "cancelled" | "failed";
+            /** Task Id */
+            task_id: string | null;
             /** Total Ms */
             total_ms: number | null;
         };
