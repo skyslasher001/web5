@@ -60,6 +60,10 @@ Verified for this decision (2026-10-13):
 - restic 0.19 is BSD-2.
 - strace showed **zero network connections** while LanceDB and RapidOCR ran.
 
+8. **Search relevance and cost choices made while measuring the done-when** (2026-10-13):
+   - A vector hit counts as a meaning match only with positive cosine similarity and within 0.25 of the best hit for that query. Without this, the nearest neighbours of any query came back as "found". The margin is model-agnostic and untuned for real embedders (none was downloadable here); `scripts/seed_vault.py bench` is the tool to tune it.
+   - OCR runs without RapidOCR's text-orientation classifier and on images capped at 1600 px. EXIF rotation is applied first and screenshots and scans are upright; the classifier was ~40% of OCR time.
+
 ## Consequences
 
 - No supervisor change is needed for Phase 2. The supervisor still restarts Core, and Core restarts its workers.

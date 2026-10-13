@@ -4,9 +4,11 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 1 (Foundation) and the Phase 1.5 fix release delivered and approved. Phase 2 (Vault + Recall) is in progress.** Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
+**Phase 2 (Vault + Recall) delivered and awaiting approval.** Phase 1 (Foundation) and the Phase 1.5 fix release are approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
+
+New in Phase 2: a vault you can drop files and folders into, quick capture and search from any app (`Ctrl+Space`), hybrid keyword + meaning search, grid and list views, watched folders, and encrypted restic backups. The 500-file "done when" passes with the slowest search at 309 ms. Details, setup and the demo are in [docs/PHASE-2.md](docs/PHASE-2.md).
 
 ## Setup (Windows 10/11)
 
@@ -68,6 +70,7 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | --- | --- |
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
+| [docs/PHASE-2.md](docs/PHASE-2.md) | Phase 2 delivery: vault, search, command bar, backups; setup, demo script, measured numbers, known limitations |
 | [docs/PHASE-1.5.md](docs/PHASE-1.5.md) | Phase 1.5: bugs fixed, real-Ollama verification, open limitations |
 | [docs/proposals/](docs/proposals/) | Changes to protected core, proposed for the owner to apply (with their status) |
 | [docs/PHASE-1.md](docs/PHASE-1.md) | Phase 1 delivery: setup, demo script, tests, measured numbers, known limitations |

@@ -1,6 +1,6 @@
 # Phase 1.5: fixes and hardening
 
-Status: **delivered 2026-10-12, approved 2026-10-13.** The [protected-core patch](#protected-core-patch-applied-2026-10-13) was approved and applied. Phase 2 is next.
+Status: **delivered 2026-10-12, approved 2026-10-13.** The [protected-core patch](#protected-core-patch-applied-2026-10-13) was approved and applied. Phase 2 followed: see [PHASE-2.md](PHASE-2.md).
 
 Phase 1.5 adds no features. It fixes every bug found in a review of Phase 1 and addresses the known issues that could be fixed from code. It also tests the model path against a real Ollama server for the first time. Each fix ships with a regression test.
 
