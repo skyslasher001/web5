@@ -263,7 +263,10 @@ export function describeEvent(event: CoreEvent): Omit<ActivityItem, 'id' | 'ts'>
       // A specialist's sub-task shows up as its parent's progress, not as its own line.
       if (p.parent_id) return null;
       if (p.cancelled) return { tone: 'info', text: `${name} stopped` };
-      if (p.steps != null) return { tone: 'info', text: `${name} finished · ${num(p.steps)} steps` };
+      if (p.steps != null) {
+        const steps = num(p.steps) ?? 0;
+        return { tone: 'info', text: `${name} finished · ${steps} step${steps === 1 ? '' : 's'}` };
+      }
       return {
         tone: 'info',
         text: `${name} replied${p.first_token_ms != null ? ` · first token ${p.first_token_ms} ms` : ''}`,

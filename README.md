@@ -4,11 +4,13 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 3 (Agent engine) is in progress.** Phases 1 (Foundation), 1.5 (fixes) and 2 (Vault + Recall) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
+**Phase 3 (Agent engine) is delivered and waiting for review**, with a protected-core patch for the owner to apply. Phases 1 (Foundation), 1.5 (fixes) and 2 (Vault + Recall) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
 
 New in Phase 2: a vault you can drop files and folders into, quick capture and search from any app (`Ctrl+Space`), hybrid keyword + meaning search, grid and list views, watched folders, and encrypted restic backups. The 500-file "done when" passes with the slowest search at 309 ms. Details, setup and the demo are in [docs/PHASE-2.md](docs/PHASE-2.md).
+
+New in Phase 3: Core orchestrates four specialists (Navigator, Librarian, Scribe, Critic) with tools on your vault, an approvals tray, permission rules, task traces, memory you approve, MCP tool servers, a hash-chained audit log, budget caps and a kill switch (`Ctrl+Alt+Shift+K`). *"Find my notes about X, summarize them, and link them to project Y"* works end to end. Details, setup and the demo are in [docs/PHASE-3.md](docs/PHASE-3.md).
 
 ## Setup (Windows 10/11)
 
@@ -54,12 +56,12 @@ Optional: `uv run pre-commit install` to run the same lint, format and type chec
 ```
 apps/desktop      Electron main + preload (supervisor launcher, safe-mode page, app:// protocol)
 apps/ui           React HUD + 3D universe
-services/core     FastAPI: API, WebSocket hub, event bus, chat, storage, audit log
-services/agents   agent definitions, OpenAI-compatible streaming provider, model router
+services/core     FastAPI: API, WebSocket hub, event bus, chat, vault runtime, agent engine, memory, MCP, audit log
+services/agents   agent loop, tool interface, tool-calling provider, model router
 services/models   hardware detection, model recommendations, Ollama client
 services/common   config, ids, logging, error capture, egress gate, SQLite helpers
 services/supervisor  stdlib-only watchdog: restarts, last-known-good, safe mode
-agents/           agent YAML + prompts (Core for now)
+agents/           agent YAML + prompts (Core, Navigator, Librarian, Scribe, Critic)
 packages/         design tokens, shared types
 tests/            unit, integration, protected-core guards, Electron e2e
 ```
@@ -70,6 +72,7 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | --- | --- |
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
+| [docs/PHASE-3.md](docs/PHASE-3.md) | Phase 3 delivery: agent engine, approvals, memory, MCP, audit, budget, kill switch; setup, demo script, known limitations |
 | [docs/PHASE-2.md](docs/PHASE-2.md) | Phase 2 delivery: vault, search, command bar, backups; setup, demo script, measured numbers, known limitations |
 | [docs/PHASE-1.5.md](docs/PHASE-1.5.md) | Phase 1.5: bugs fixed, real-Ollama verification, open limitations |
 | [docs/proposals/](docs/proposals/) | Changes to protected core, proposed for the owner to apply (with their status) |

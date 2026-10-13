@@ -145,7 +145,10 @@ function stepText(step: TaskStep): string {
   if (step.kind === 'tool_call')
     return `${step.tool ?? '?'} · ${DECISION_LABEL[step.decision ?? ''] ?? step.decision}`;
   if (step.kind === 'tool_result') return `${step.tool ?? '?'} returned`;
-  if (step.kind === 'delegate') return 'Delegated to a specialist';
+  if (step.kind === 'delegate') {
+    const agent = /"agent":\s*"([^"]+)"/.exec(step.args)?.[1];
+    return agent ? `Delegated to ${agent}` : 'Delegated to a specialist';
+  }
   if (step.kind === 'review') return 'Critic reviewed the answer';
   return step.kind;
 }

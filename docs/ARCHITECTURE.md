@@ -135,7 +135,7 @@ Versions are the current releases on npm / PyPI as of **2026-10-12**; licenses c
 | Job queue | **Custom SQLite `jobs` table with leases** (instead of huey) **Δ** | We need a per-item stage DAG, priority classes the governor can pause, leases that survive crashes and progress events. Bending huey to that costs more than ~300 lines. ([ADR-0002](adr/0002-sqlite-job-queue.md)) | — |
 | Scheduling | croniter (cron triggers, inside Core's scheduler loop) | Tiny. No APScheduler daemon semantics needed. | MIT |
 | File watching | watchdog 6 | Native ReadDirectoryChangesW on Windows. | Apache-2.0 |
-| Agent loop | **Custom loop** on the OpenAI-compatible API + Pydantic tool schemas + official `mcp` 2.3 SDK **Δ (picked from the two SPEC options)** | Permissions, hours-long approval pauses, taint tracking, budget stops, kill switch and audit are the safety model and must be our code. The rest is ~400 lines. ([ADR-0004](adr/0004-custom-agent-loop.md)) | MIT |
+| Agent loop | **Custom loop** on the OpenAI-compatible API + Pydantic tool schemas + a minimal stdio MCP client of our own (the `mcp` SDK is a dev-only test dependency, ADR-0011) **Δ (picked from the two SPEC options)** | Permissions, hours-long approval pauses, taint tracking, budget stops, kill switch and audit are the safety model and must be our code. The rest is ~400 lines. ([ADR-0004](adr/0004-custom-agent-loop.md)) | MIT |
 | LLM client | **Thin OpenAI-compatible streaming client** (~60 lines) over the egress gate's httpx client **Δ (Phase 1)** | One interface for every provider (SPEC §15), one less dependency, every call gated. ([ADR-0005](adr/0005-model-runtimes.md)) | BSD-3 (httpx) |
 | LLM / VLM runtime | **Ollama** (primary) · llama.cpp `llama-server` (alternative plugin) | Native Windows, GPU auto-detect, model pulls, `keep_alive` residency, OpenAI-compatible. llama.cpp for finer control (e.g. MoE expert offload). ([ADR-0005](adr/0005-model-runtimes.md)) | MIT / MIT |
 | ONNX models | **ONNX Runtime 1.31** (CUDA EP on NVIDIA; DirectML EP on AMD/Intel; CPU fallback) | One runtime for reranker, SigLIP and OCR models, with no PyTorch in the hot path. | MIT |
@@ -427,7 +427,7 @@ Base URL `http://127.0.0.1:47821/api/v1` (port configurable). JSON everywhere. C
 | Privacy | `GET /privacy/summary` (what's stored, captured and sent where) · `POST /privacy/purge {scope}` · `POST /export {format: vault-zip\|json}` |
 | Internal | `POST /internal/events` (workers/voice/models publish; internal token) · `POST /internal/heartbeat` |
 
-**Supervisor control API** (separate loopback port, its own token, held only by Electron main). Phase 1: `GET /status` · `POST /services/{name}/restart` · `POST /services/{name}/kill` (simulates a crash) · `POST /safe-mode/exit` · `POST /shutdown` · `GET /logs/{service}?tail=`. Later: `POST /killswitch {engaged}` (Phase 3) · `POST /releases/apply {proposal_id, head_commit, approval_nonce}` · `POST /releases/rollback {to}` (Phase 5).
+**Supervisor control API** (separate loopback port, its own token, held only by Electron main). Phase 1: `GET /status` · `POST /services/{name}/restart` · `POST /services/{name}/kill` (simulates a crash) · `POST /safe-mode/exit` · `POST /shutdown` · `GET /logs/{service}?tail=`. Phase 3 (in the protected-core patch): `POST /killswitch {engaged}`. Later: `POST /releases/apply {proposal_id, head_commit, approval_nonce}` · `POST /releases/rollback {to}` (Phase 5).
 
 ### 5.2 WebSocket `/ws` (multiplexed)
 
@@ -632,6 +632,8 @@ Every tool call passes `policy.check(agent, tool, args, task)`:
 3. **Taint:** once untrusted content (web, file text, OCR, email, MCP output) has entered a task's context, `tainted = true`. From then on every tool with `side_effects` or `network` asks you, unless a rule explicitly says `applies_when_tainted`.
 4. **Budget and limits:** steps, tokens, wall time and money are checked *before* each LLM call. Loop detection fires on the same tool + args hash 3× in a row.
 5. **Kill switch / offline:** checked on every call. When engaged, everything is denied immediately.
+
+*Phase 3 as built (ADR-0011):* the engine lives in `protected/policy.py` (with `permissions.py`, `budget.py`, `killswitch.py`) and runs the checks in this order: kill switch → tier gate → rules (most specific first, the strictest wins ties) → taint → defaults. MCP tools default to *ask*. The loop itself is unprotected (`services/agents/runtime.py`) and asks the policy through a `Policy` protocol, so a missing policy module means no tools at all, never unchecked tools.
 
 ### 7.4 Releases, last-known-good and safe mode
 

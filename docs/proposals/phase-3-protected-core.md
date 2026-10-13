@@ -27,6 +27,7 @@ Until it's applied, agents behave as in Phase 1: they chat without tools. The UI
 - In a scratch worktree at the main branch's head with this patch applied: the full Python suite passes (198 tests, 1 Windows-only skip), including the 8 agent-engine tests that are skipped without it. The patch also applies cleanly to a fresh checkout of the main branch's head.
 - The Phase 1 chat tests were run with the policy installed. That found four places where chat through the engine behaved differently: event order, a stopped reply losing its partial text, a provider failure losing its error code, and chat failing with models that can't call tools. All four were fixed in unprotected code before this proposal.
 - The desktop typecheck, eslint, prettier and the 28 desktop Vitest tests pass with it.
+- With the Phase 3 UI on top (rechecked 2026-10-13): the full Electron e2e run passes with it (13 tests), including the done-when flow with an approval card and the kill switch released through its native dialog. On the main branch without it, the same run passes with those two tests skipped.
 
 ## To apply it
 

@@ -246,6 +246,9 @@ describe('agent engine activity lines', () => {
     expect(describeEvent(ev('agent.completed', { agent_id: 'core', steps: 4, parent_id: null }))?.text).toBe(
       'Core finished · 4 steps',
     );
+    expect(describeEvent(ev('agent.completed', { agent_id: 'core', steps: 1 }))?.text).toBe(
+      'Core finished · 1 step',
+    );
     expect(describeEvent(ev('budget.warning', { level: 0.8 }))?.text).toContain('80 %');
   });
 

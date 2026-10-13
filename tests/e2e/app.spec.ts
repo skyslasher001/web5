@@ -1,5 +1,7 @@
 // Phase 1 "done when": launch the app, chat with streaming replies, kill the backend and watch it
 // auto-restart. Phase 2: add files, find them by keyword and by meaning, use the command bar.
+// Phase 3: "find my notes about X, summarize them, and link them to project Y" with an approval and a full
+// audit trail (needs the protected-core patch; without it the panels say agents chat without tools).
 // Uses the real Electron app, supervisor, Core and pipeline workers; only the model server is a stand-in.
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -286,6 +288,97 @@ test('the list scrolls smoothly through hundreds of items', async () => {
   await expect(page.getByTestId('item-row').last()).toBeVisible();
   // Software rendering in CI: hold 30 fps at the median (the 3D scene must not render behind the list).
   expect(median).toBeLessThan(34);
+});
+
+interface EngineStatus {
+  available: boolean;
+  reason: string | null;
+  killswitch_engaged: boolean;
+}
+
+test('the agent dock, agents and safety panels show the engine', async () => {
+  for (const id of ['core', 'navigator', 'librarian', 'scribe', 'critic']) {
+    await expect(page.getByTestId(`agent-${id}`)).toBeVisible();
+  }
+  const engine = await core<EngineStatus>('GET', '/engine');
+  await page.getByRole('tab', { name: 'Agents' }).click();
+  await expect(page.getByTestId('agents-panel')).toBeVisible();
+  if (engine.available) {
+    await expect(page.getByTestId('engine-unavailable')).toHaveCount(0);
+    await expect(page.getByTestId('killswitch')).toBeVisible();
+  } else {
+    await expect(page.getByTestId('engine-unavailable')).toContainText('chat without tools');
+    await expect(page.getByTestId('run-agent')).toBeDisabled();
+    await expect(page.getByTestId('killswitch')).toHaveCount(0);
+  }
+  await page.getByRole('tab', { name: 'Safety' }).click();
+  await page.getByTestId('audit').getByRole('button', { name: 'Verify' }).click();
+  await expect(page.getByTestId('audit')).toContainText('Intact');
+  await page.screenshot({ path: 'test-results/safety.png' });
+});
+
+test('done when: find notes, summarize them and link them to a galaxy, with an approval and an audit trail', async () => {
+  const engine = await core<EngineStatus>('GET', '/engine');
+  test.skip(!engine.available, `needs the Phase 3 protected-core patch: ${engine.reason}`);
+  for (const [title, text] of [
+    ['Austin land deal', 'The Austin land deal closes in November.'],
+    ['Lake parcel land deal', 'A land deal by the lake: the owner is motivated.'],
+  ]) {
+    await core('POST', '/capture', { title, text });
+  }
+  await queueDrained();
+
+  await page.getByRole('tab', { name: 'Agents' }).click();
+  await page
+    .getByTestId('agent-instruction')
+    .fill('Find my notes about land deal, summarize them, and link them to project DevMind.');
+  await page.getByTestId('run-agent').click();
+  // Reading your notes tainted the task, so linking them asks you first.
+  const approval = page.getByTestId('approval');
+  await expect(approval).toContainText("Add 2 item(s) to the galaxy 'DevMind'", { timeout: 30_000 });
+  await page.screenshot({ path: 'test-results/approval.png' });
+  await approval.getByTestId('approve').click();
+  await expect(page.getByTestId('task-status')).toHaveText('done', { timeout: 30_000 });
+  const output = page.getByTestId('task-output');
+  await expect(output).toContainText('The Austin land deal closes in November.');
+  await expect(output).toContainText('Added 2 item(s) to DevMind.');
+  await expect(output).toContainText('Checked by Critic.');
+  await expect(page.getByTestId('task-steps')).toContainText('project.add_items · asked you');
+  await page.screenshot({ path: 'test-results/task-trace.png' });
+
+  const linked = await core<{ items: { title: string }[] }>(
+    'GET',
+    `/items?project=${(await core<{ id: string; name: string }[]>('GET', '/projects')).find((p) => p.name === 'DevMind')!.id}`,
+  );
+  expect(linked.items.map((i) => i.title).sort()).toEqual(['Austin land deal', 'Lake parcel land deal']);
+
+  await page.getByRole('tab', { name: 'Safety' }).click();
+  const audit = page.getByTestId('audit');
+  await audit.getByRole('button', { name: 'Verify' }).click();
+  await expect(audit).toContainText('Intact');
+  for (const action of ['task.started', 'tool.call · project.add_items', 'approval.decided', 'item.linked']) {
+    await expect(audit).toContainText(action);
+  }
+});
+
+test('the kill switch stops agents and only a native dialog releases it', async () => {
+  const engine = await core<EngineStatus>('GET', '/engine');
+  test.skip(!engine.available, `needs the Phase 3 protected-core patch: ${engine.reason}`);
+  await page.getByTestId('killswitch').click();
+  await expect(page.getByTestId('killswitch-banner')).toBeVisible();
+  await expect.poll(async () => (await core<EngineStatus>('GET', '/engine')).killswitch_engaged).toBe(true);
+  // Core's own API can't release it.
+  await expect(core('POST', '/killswitch', { engaged: false })).rejects.toThrow('HTTP 403');
+  // Answer the native dialog the way you would: "Release".
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = (async () => ({
+      response: 1,
+      checkboxChecked: false,
+    })) as typeof dialog.showMessageBox;
+  });
+  await page.getByTestId('killswitch-banner').getByRole('button', { name: 'Release…' }).click();
+  await expect(page.getByTestId('killswitch-banner')).toHaveCount(0);
+  await expect.poll(async () => (await core<EngineStatus>('GET', '/engine')).killswitch_engaged).toBe(false);
 });
 
 test('nothing leaves the machine: no requests to non-loopback hosts', async () => {

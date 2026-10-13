@@ -1,6 +1,6 @@
 # Phase 2: Vault + Recall
 
-Status: **delivered 2026-10-13, approved 2026-10-13.** Phase 3 (agent engine) is in progress.
+Status: **delivered 2026-10-13, approved 2026-10-13.** Phase 3 (agent engine) is delivered: [PHASE-3.md](PHASE-3.md).
 
 Phase 2 makes UNIVERSE a place to keep things and find them again. You can drop in files or folders, capture a note from any app, and find anything by its name, the words inside it, or what it's about, in well under a second. Design decisions are in [ADR-0010](adr/0010-phase-2-vault-pipeline.md).
 
