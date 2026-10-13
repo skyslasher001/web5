@@ -6,6 +6,7 @@ engine (docs/proposals/phase-3-protected-core.md); without it they're skipped wi
 """
 
 import json
+import sys
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -238,3 +239,17 @@ def test_chat_runs_through_the_engine(api: Api) -> None:
     # Core answered with tools: the reply links to its task and trace.
     task = api.get("/tasks", params={"agent": "core"})[0]
     assert task["conversation_id"] == sent["conversation_id"]
+
+
+def test_mcp_tools_ask_first_and_their_output_is_untrusted(api: Api) -> None:
+    server = str(__import__("pathlib").Path(__file__).resolve().parents[1] / "support" / "mcp_demo_server.py")
+    api.post("/mcp/servers", {"name": "demo", "command": sys.executable, "args": [server]}, 201)
+    task_id = api.post("/agents/core/run", {"instruction": "[[mcp]] add 2 and 3"}, 202)["task_id"]
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    assert approval["tool"] == "mcp.demo.add" and "MCP server" in approval["reason"]
+    assert approval["summary"].startswith("Run add on the MCP server demo")
+    api.post(f"/approvals/{approval['id']}/decision", {"approve": True})
+    task = wait_task(api, task_id, DONE)
+    assert task["status"] == "done" and task["output"].startswith("The MCP server says")
+    assert "5" in task["output"] and task["tainted"]

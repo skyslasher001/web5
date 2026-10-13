@@ -41,10 +41,12 @@ class Tool:
     network: bool = False  # goes beyond this machine (through the egress gate)
     timeout_s: float = 30.0
     summarize: Callable[[BaseModel], str] | None = None  # one line for approval cards
+    raw_schema: dict[str, Any] | None = None  # the parameters as JSON Schema, when the tool brings its own (MCP)
+    ask_first: bool = False  # ask before every call until you set a rule (MCP tools: someone else's code)
 
     def schema(self) -> dict[str, Any]:
         """The OpenAI tool-calling description of this tool."""
-        parameters = self.input_model.model_json_schema()
+        parameters = dict(self.raw_schema) if self.raw_schema is not None else self.input_model.model_json_schema()
         parameters.pop("title", None)
         return {
             "type": "function",
@@ -77,6 +79,9 @@ class ToolRegistry:
         if tool.name in self._tools:
             raise ValueError(f"tool {tool.name} is already registered")
         self._tools[tool.name] = tool
+
+    def remove(self, name: str) -> None:
+        self._tools.pop(name, None)
 
     def remove_prefix(self, prefix: str) -> None:
         for name in [n for n in self._tools if n.startswith(prefix)]:

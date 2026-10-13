@@ -27,6 +27,7 @@ from universe_core.chat import ChatService
 from universe_core.db import Databases
 from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
+from universe_core.mcp_client import MCPManager
 from universe_core.memory import MemoryStore
 from universe_core.protected.audit import AuditWriter
 from universe_core.security import TicketStore
@@ -90,6 +91,7 @@ class CoreContext:
     memory: MemoryStore = field(init=False)
     tools: ToolRegistry = field(default_factory=ToolRegistry)
     engine: AgentEngine | None = None
+    mcp: MCPManager | None = None
     safety: object | None = None  # the protected policy engine (policy, permissions, budget, kill switch)
     _hardware: HardwareInfo | None = None
     _hardware_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -180,6 +182,7 @@ class CoreContext:
             dbs.universe, bus, audit, agents, ctx.memory, errors, runtime, unavailable_reason=reason
         )
         ctx.tools.add(ctx.engine.delegate_tool())
+        ctx.mcp = MCPManager(ctx)
         ctx.engine.recover_after_restart()
         chat.engine = ctx.engine
         return ctx
@@ -240,6 +243,8 @@ class CoreContext:
         """Pipeline workers and the governor (not in safe mode: agents and background work stay off)."""
         if self.settings.safe_mode:
             return
+        if self.mcp is not None:
+            await self.mcp.start_all()
         await self.workers.start()
         self.governor = Governor(
             conn=self.dbs.universe,
@@ -340,6 +345,8 @@ class CoreContext:
         await self.chat.shutdown()
         if self.engine is not None:
             await self.engine.shutdown()
+        if self.mcp is not None:
+            await self.mcp.close()
         await self.ollama.aclose()
         if self.provider is not None:
             await self.provider.aclose()

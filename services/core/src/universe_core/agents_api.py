@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from universe_common.schema import ApiModel
 from universe_core.agent_engine import AgentEngine, AgentTask, Approval, EngineUnavailable, TaskDetail
 from universe_core.context import CoreContext
+from universe_core.mcp_client import MCPManager, MCPServerInfo, MCPServerRequest
 from universe_core.memory import Memory
 
 router = APIRouter(prefix="/api/v1")
@@ -296,3 +297,52 @@ async def sync_killswitch(ctx: Ctx) -> KillSwitchStatus:
     safety = _safety(ctx)
     safety.killswitch.sync(actor="user")
     return KillSwitchStatus(available=True, **safety.killswitch.status())
+
+
+# ---------- MCP servers ----------
+
+
+class EnabledRequest(BaseModel):
+    enabled: bool
+
+
+def _mcp(ctx: CoreContext) -> MCPManager:
+    if ctx.mcp is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "MCP is not available")
+    return ctx.mcp
+
+
+@router.get("/mcp/servers", response_model=list[MCPServerInfo])
+async def list_mcp_servers(ctx: Ctx) -> list[MCPServerInfo]:
+    return _mcp(ctx).list()
+
+
+@router.post("/mcp/servers", response_model=MCPServerInfo, status_code=status.HTTP_201_CREATED)
+async def add_mcp_server(ctx: Ctx, body: MCPServerRequest) -> MCPServerInfo:
+    """Adds a program for UNIVERSE to run: only from your UI session (it carries the session token)."""
+    try:
+        return await _mcp(ctx).add(body)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.post("/mcp/servers/{server_id}/enabled", response_model=MCPServerInfo)
+async def enable_mcp_server(ctx: Ctx, server_id: str, body: EnabledRequest) -> MCPServerInfo:
+    info = await _mcp(ctx).set_enabled(server_id, body.enabled)
+    if info is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such MCP server")
+    return info
+
+
+@router.post("/mcp/servers/{server_id}/restart", response_model=MCPServerInfo)
+async def restart_mcp_server(ctx: Ctx, server_id: str) -> MCPServerInfo:
+    info = await _mcp(ctx).restart(server_id)
+    if info is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such MCP server")
+    return info
+
+
+@router.delete("/mcp/servers/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_mcp_server(ctx: Ctx, server_id: str) -> None:
+    if not await _mcp(ctx).remove(server_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such MCP server")

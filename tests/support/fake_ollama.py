@@ -301,6 +301,11 @@ def scripted_turn(body: dict) -> tuple[str, list[tuple[str, dict]]]:
         return "", [("vault__search", {"__raw__": "{not json"})]
     if "[[remember]]" in user and "memory__save" in tools and "memory__save" not in names:
         return "", [("memory__save", {"content": user.replace("[[remember]]", "").strip(), "about": "user"})]
+    if "[[mcp]]" in user and "mcp__demo__add" in tools:
+        result = next((r for n, _a, r in done if n == "mcp__demo__add"), None)
+        if result is None:
+            return "", [("mcp__demo__add", {"a": 2, "b": 3})]
+        return f"The MCP server says {_payload(result).strip()}.", []
     if (m := _LINK.search(user)) and "agent__delegate" in tools:
         topic, project = m.group(1).strip(), m.group(2).strip()
         delegated = next((r for n, _a, r in done if n == "agent__delegate"), None)

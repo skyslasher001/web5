@@ -20,6 +20,7 @@ dev = [
     "ruff>=0.17",
     "pyright>=1.1.414",
     "pre-commit>=4.6",
+    "mcp==2.2.0",  # dev only: a real MCP server for testing our client (ADR-0011)
 ]
 
 [tool.uv]

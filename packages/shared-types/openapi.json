@@ -1182,6 +1182,19 @@
         "title": "DiskInfo",
         "type": "object"
       },
+      "EnabledRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EnabledRequest",
+        "type": "object"
+      },
       "EngineStatus": {
         "properties": {
           "available": {
@@ -2677,6 +2690,110 @@
           "via"
         ],
         "title": "KillSwitchStatus",
+        "type": "object"
+      },
+      "MCPServerInfo": {
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "title": "Command",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "command",
+          "args",
+          "enabled",
+          "running",
+          "tools",
+          "error",
+          "created_at"
+        ],
+        "title": "MCPServerInfo",
+        "type": "object"
+      },
+      "MCPServerRequest": {
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Command",
+            "type": "string"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 50,
+            "title": "Env",
+            "type": "object"
+          },
+          "name": {
+            "description": "Short name: lowercase letters, digits and '-'",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "command"
+        ],
+        "title": "MCPServerRequest",
         "type": "object"
       },
       "Memory": {
@@ -6122,6 +6239,185 @@
           }
         },
         "summary": "Sync Killswitch"
+      }
+    },
+    "/api/v1/mcp/servers": {
+      "get": {
+        "operationId": "list_mcp_servers_api_v1_mcp_servers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MCPServerInfo"
+                  },
+                  "title": "Response List Mcp Servers Api V1 Mcp Servers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Mcp Servers"
+      },
+      "post": {
+        "description": "Adds a program for UNIVERSE to run: only from your UI session (it carries the session token).",
+        "operationId": "add_mcp_server_api_v1_mcp_servers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPServerInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Mcp Server"
+      }
+    },
+    "/api/v1/mcp/servers/{server_id}": {
+      "delete": {
+        "operationId": "remove_mcp_server_api_v1_mcp_servers__server_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Mcp Server"
+      }
+    },
+    "/api/v1/mcp/servers/{server_id}/enabled": {
+      "post": {
+        "operationId": "enable_mcp_server_api_v1_mcp_servers__server_id__enabled_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPServerInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Mcp Server"
+      }
+    },
+    "/api/v1/mcp/servers/{server_id}/restart": {
+      "post": {
+        "operationId": "restart_mcp_server_api_v1_mcp_servers__server_id__restart_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_id",
+            "required": true,
+            "schema": {
+              "title": "Server Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPServerInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restart Mcp Server"
       }
     },
     "/api/v1/memories": {

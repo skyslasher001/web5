@@ -7,7 +7,7 @@ escalate_to: local-large
 voice: calm-neutral # resolved to an installed TTS voice (Phase 7)
 color: cyan
 icon: orbit
-tools: [agent.delegate, vault.search, project.list, project.add_items, note.create, memory.search, memory.save, ui.show]
+tools: [agent.delegate, vault.search, project.list, project.add_items, note.create, memory.search, memory.save, ui.show, mcp.*]
 permission_tier: write
 memory: [shared, self]
 triggers:
