@@ -8,7 +8,7 @@ import { IDEA_STAGES, TYPE_CODE } from './types';
 
 type UniverseItems = components['schemas']['UniverseItems'];
 
-interface Row {
+export interface SceneRow {
   id: string;
   type: string;
   title: string;
@@ -77,7 +77,7 @@ interface LinkRows {
 
 /** Build the typed arrays from rows (≈10 ms at 50k). `galaxyOrder` is the projects' display order. */
 export function buildScene(
-  rows: Iterable<Row>,
+  rows: Iterable<SceneRow>,
   links: LinkRows,
   galaxyOrder: string[],
   now = Date.now() / 1000,
@@ -153,7 +153,7 @@ export function ideaStageCode(stage: string | null): number {
   return Math.max(0, IDEA_STAGES.indexOf((stage ?? '') as (typeof IDEA_STAGES)[number]));
 }
 
-function rowsOf(page: UniverseItems): Row[] {
+function rowsOf(page: UniverseItems): SceneRow[] {
   return page.ids.map((id, k) => ({
     id,
     type: page.types[k]!,
@@ -190,7 +190,7 @@ export const useScene = create<SceneState>()(() => ({
 
 /** Loads and keeps the scene current. One per app; the universe view starts it. */
 export class SceneLoader {
-  private rows = new Map<string, Row>();
+  private rows = new Map<string, SceneRow>();
   private links: LinkRows = { sources: [], targets: [], states: [] };
   private since: string | null = null;
   private galaxyOrder: string[] = [];

@@ -17,6 +17,7 @@ import { ItemLabels } from './scene/ItemLabels';
 import { ItemPoints } from './scene/ItemPoints';
 import { LayoutController, useLayout } from './scene/layoutController';
 import { OverlayContext } from './scene/overlay';
+import { PhotoPlanets } from './scene/PhotoPlanets';
 import { Probes } from './scene/Probes';
 import { SceneLoader, useScene } from './scene/sceneData';
 import { SelectionRing } from './scene/Selection';
@@ -128,6 +129,7 @@ function WebGLScene() {
         <group name="comets">
           <Comets />
         </group>
+        <PhotoPlanets />
         <SelectionRing />
         <group name="probes">
           <Probes />
