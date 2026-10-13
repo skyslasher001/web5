@@ -77,4 +77,4 @@ venvPath = "."
 venv = ".venv"
 
 [tool.ruff.lint.isort]
-known-first-party = ["universe_common", "universe_core", "universe_agents", "universe_models", "universe_supervisor", "tests"]
+known-first-party = ["universe_common", "universe_core", "universe_agents", "universe_models", "universe_supervisor", "universe_vault", "tests"]

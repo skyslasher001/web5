@@ -4,12 +4,12 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+
+from tests.support import files
 from universe_vault.extract import CHUNK_MAX, ExtractionError, Section, chunk_sections, extract_text
 from universe_vault.filetypes import detect_type
 from universe_vault.layout import Vault, VaultPathError, safe_filename, slugify
 from universe_vault.query import Project, parse
-
-from tests.support import files
 
 TODAY = date(2026, 10, 13)  # a Tuesday
 PROJECTS = [

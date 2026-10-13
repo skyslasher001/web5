@@ -1,23 +1,23 @@
 """Everything a running Core holds, built once in the app lifespan."""
 
 import asyncio
+import json
 import os
 import secrets
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
-from universe_vault import purge
-from universe_vault.layout import Vault
-from universe_vault.models import ModelInfo, pick_embedder, query_prefix
-from universe_vault.vectors import VectorStore, table_name
 
 from universe_agents.providers import OpenAICompatibleProvider
 from universe_agents.registry import AgentDefinition, load_agents
 from universe_agents.router import ModelRouter
 from universe_common.egress import EgressGate
+from universe_common.errors import capture_exception
 from universe_common.log import get_logger, register_secret
 from universe_common.timeutil import utcnow
+from universe_core.backups import BackupService
 from universe_core.chat import ChatService
 from universe_core.db import Databases
 from universe_core.errors import ErrorStore
@@ -30,6 +30,11 @@ from universe_core.vault_runtime import Governor, VaultDb, WorkerManager, worker
 from universe_models.hardware import HardwareInfo, detect
 from universe_models.ollama import OllamaClient
 from universe_models.recommend import Recommendation, recommend
+from universe_vault import jobs, purge
+from universe_vault.layout import Vault
+from universe_vault.models import ModelInfo, pick_embedder, query_prefix
+from universe_vault.vectors import VectorStore, table_name
+from universe_vault.watch import Folder, Watcher
 
 log = get_logger(__name__)
 
@@ -54,7 +59,9 @@ class CoreContext:
     vdb: VaultDb
     workers: WorkerManager
     internal_token: str
+    backups: BackupService | None = None
     governor: Governor | None = None
+    watcher: Watcher | None = None
     started: float = field(default_factory=time.monotonic)
     pid: int = field(default_factory=os.getpid)
     provider: OpenAICompatibleProvider | None = None
@@ -126,6 +133,12 @@ class CoreContext:
         )
         ctx_ref["ctx"] = ctx
         ctx.provider = provider
+        ctx.backups = BackupService(
+            vault=vault,
+            run_db=ctx.vdb.run,
+            publish=lambda event_type, payload: ctx.bus.publish(event_type, payload),
+            record_error=ctx.record_exception,
+        )
         ensure_seed_galaxies(dbs.universe, bus)
         return ctx
 
@@ -193,8 +206,60 @@ class CoreContext:
             current_embedder=self.current_embedder,
             purge_item=self.purge_item,
             publish=lambda event_type, payload: self.bus.publish(event_type, payload),
+            extra_tick=self.backups.tick if self.backups else None,
         )
         self.governor.start()
+        self.watcher = Watcher(self.vault, self._enqueue_from_watcher)
+        self.watcher.start()
+        self.refresh_watched(scan=True)
+
+    def _enqueue_from_watcher(self, kind: str, payload: dict[str, object]) -> None:
+        """Called on the watcher's thread: uses that thread's own connection."""
+        jobs.enqueue(self.vdb.conn(), kind, payload=payload, priority_class="background", priority=-1)
+
+    def refresh_watched(self, *, scan: bool = False, only: str | None = None) -> None:
+        """Point the watcher at the enabled watched folders; optionally queue a scan for changes made while off."""
+        rows = self.dbs.universe.execute("SELECT * FROM watched_folders WHERE enabled = 1").fetchall()
+        folders = [
+            Folder(
+                id=r["id"],
+                path=Path(r["path"]),
+                recursive=bool(r["recursive"]),
+                include=tuple(json.loads(r["include_globs"])),
+                exclude=tuple(json.loads(r["exclude_globs"])),
+                project_id=r["default_project_id"],
+            )
+            for r in rows
+            if Path(r["path"]).is_dir()
+        ]
+        if self.watcher is not None:
+            self.watcher.set_folders(folders)
+        if scan:
+            for folder in folders:
+                if only is None or folder.id == only:
+                    jobs.enqueue(
+                        self.dbs.universe,
+                        "import",
+                        payload={
+                            "path": str(folder.path),
+                            "folder_id": folder.id,
+                            "project_ids": [folder.project_id] if folder.project_id else [],
+                            "interactive": False,
+                        },
+                        priority_class="background",
+                        idempotency_key=f"scan:{folder.id}",
+                    )
+
+    def record_exception(self, exc: BaseException) -> None:
+        captured = capture_exception(exc)
+        self.errors.record(
+            service="core",
+            kind=captured.kind,
+            message=captured.message,
+            stack=captured.stack,
+            fingerprint=captured.fingerprint,
+            context=captured.context,
+        )
 
     async def current_embedder(self) -> ModelInfo | None:
         try:
@@ -224,6 +289,8 @@ class CoreContext:
         return deleted
 
     async def close(self) -> None:
+        if self.watcher is not None:
+            await asyncio.to_thread(self.watcher.stop)
         if self.governor is not None:
             await self.governor.stop()
         await self.workers.stop()

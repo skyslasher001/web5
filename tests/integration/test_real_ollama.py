@@ -17,8 +17,6 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from universe_vault.layout import Vault
-from universe_vault.worker import build_context, drain
 
 from tests.conftest import AUTH, free_port
 from tests.support.tiny_gguf import write_tiny_llama
@@ -28,6 +26,8 @@ from universe_common.egress import EgressGate
 from universe_core.app import create_app
 from universe_core.settings import CoreSettings
 from universe_models.ollama import OllamaClient
+from universe_vault.layout import Vault
+from universe_vault.worker import build_context, drain
 
 OLLAMA = os.environ.get("UNIVERSE_TEST_OLLAMA") or shutil.which("ollama")
 MODEL = "universe-tiny:latest"

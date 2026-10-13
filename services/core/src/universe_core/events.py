@@ -125,6 +125,8 @@ CATALOG: dict[str, EventType] = {
     "forge.rolled_back": _p("A change was rolled back"),
     "sentinel.alert": _p("Sentinel raised an alert"),
     "backup.completed": _p("Backup completed"),
+    "backup.failed": _p("A backup, restore or restore test failed"),
+    "backup.restored": _p("A backup was restored to a folder"),
     "backup.restore_tested": _p("Backup restore test ran"),
     # Models
     "model.pull.progress": _live("Model download progress"),

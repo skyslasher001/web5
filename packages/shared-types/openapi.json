@@ -296,6 +296,246 @@
         "title": "AuditVerification",
         "type": "object"
       },
+      "BackupConfigRequest": {
+        "properties": {
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "password": {
+            "maxLength": 500,
+            "minLength": 12,
+            "title": "Password",
+            "type": "string"
+          },
+          "restic_path": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restic Path"
+          },
+          "schedule_hour": {
+            "default": 3,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Schedule Hour",
+            "type": "integer"
+          },
+          "target": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "password"
+        ],
+        "title": "BackupConfigRequest",
+        "type": "object"
+      },
+      "BackupRecord": {
+        "properties": {
+          "bytes_added": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Added"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "files_new": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Files New"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "restic_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restic Snapshot Id"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "restic_snapshot_id",
+          "files_new",
+          "bytes_added",
+          "error",
+          "started_at",
+          "finished_at",
+          "verified_at"
+        ],
+        "title": "BackupRecord",
+        "type": "object"
+      },
+      "BackupStatus": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "install_hint": {
+            "default": "winget install restic.restic",
+            "title": "Install Hint",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_success": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "password_stored": {
+            "default": false,
+            "title": "Password Stored",
+            "type": "boolean"
+          },
+          "restic_found": {
+            "title": "Restic Found",
+            "type": "boolean"
+          },
+          "restic_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restic Path"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          },
+          "schedule_hour": {
+            "default": 3,
+            "title": "Schedule Hour",
+            "type": "integer"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "configured",
+          "target",
+          "enabled",
+          "schedule_hour",
+          "restic_found",
+          "restic_path",
+          "install_hint",
+          "password_stored",
+          "running",
+          "last",
+          "last_success"
+        ],
+        "title": "BackupStatus",
+        "type": "object"
+      },
       "Body_capture_files_api_v1_capture_files_post": {
         "properties": {
           "files": {
@@ -2623,6 +2863,29 @@
         "title": "Rejected",
         "type": "object"
       },
+      "RestoreRequest": {
+        "properties": {
+          "snapshot_id": {
+            "maxLength": 80,
+            "minLength": 6,
+            "pattern": "^[0-9a-f]+$",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "target"
+        ],
+        "title": "RestoreRequest",
+        "type": "object"
+      },
       "SearchHit": {
         "properties": {
           "item": {
@@ -2728,6 +2991,50 @@
           "timings_ms"
         ],
         "title": "SearchResponse",
+        "type": "object"
+      },
+      "Snapshot": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "short_id": {
+            "title": "Short Id",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "short_id",
+          "time",
+          "tags"
+        ],
+        "title": "Snapshot",
+        "type": "object"
+      },
+      "Started": {
+        "properties": {
+          "started": {
+            "title": "Started",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "started"
+        ],
+        "title": "Started",
         "type": "object"
       },
       "ValidationError": {
@@ -2900,6 +3207,220 @@
           "ollama"
         ],
         "title": "Vitals",
+        "type": "object"
+      },
+      "WatchedFolder": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "default_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Project Id"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exclude_globs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude Globs",
+            "type": "array"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "include_globs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Include Globs",
+            "type": "array"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_scan_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scan At"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "recursive": {
+            "title": "Recursive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "recursive",
+          "include_globs",
+          "exclude_globs",
+          "default_project_id",
+          "enabled",
+          "exists",
+          "last_scan_at",
+          "last_error",
+          "created_at"
+        ],
+        "title": "WatchedFolder",
+        "type": "object"
+      },
+      "WatchedFolderCreate": {
+        "properties": {
+          "default_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Project Id"
+          },
+          "exclude_globs": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Exclude Globs",
+            "type": "array"
+          },
+          "include_globs": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Include Globs",
+            "type": "array"
+          },
+          "path": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "recursive": {
+            "default": true,
+            "title": "Recursive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "WatchedFolderCreate",
+        "type": "object"
+      },
+      "WatchedFolderPatch": {
+        "properties": {
+          "default_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Project Id"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "exclude_globs": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude Globs"
+          },
+          "include_globs": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Globs"
+          },
+          "recursive": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recursive"
+          }
+        },
+        "title": "WatchedFolderPatch",
         "type": "object"
       },
       "WsTicket": {
@@ -3125,6 +3646,180 @@
           }
         },
         "summary": "Audit Verify"
+      }
+    },
+    "/api/v1/backups": {
+      "get": {
+        "operationId": "backup_history_api_v1_backups_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BackupRecord"
+                  },
+                  "title": "Response Backup History Api V1 Backups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backup History"
+      }
+    },
+    "/api/v1/backups/config": {
+      "put": {
+        "operationId": "configure_backups_api_v1_backups_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Configure Backups"
+      }
+    },
+    "/api/v1/backups/restore": {
+      "post": {
+        "operationId": "restore_backup_api_v1_backups_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Backup"
+      }
+    },
+    "/api/v1/backups/run": {
+      "post": {
+        "operationId": "run_backup_api_v1_backups_run_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Backup"
+      }
+    },
+    "/api/v1/backups/snapshots": {
+      "get": {
+        "operationId": "backup_snapshots_api_v1_backups_snapshots_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Snapshot"
+                  },
+                  "title": "Response Backup Snapshots Api V1 Backups Snapshots Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backup Snapshots"
+      }
+    },
+    "/api/v1/backups/status": {
+      "get": {
+        "operationId": "backup_status_api_v1_backups_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Backup Status"
+      }
+    },
+    "/api/v1/backups/verify": {
+      "post": {
+        "operationId": "verify_backup_api_v1_backups_verify_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Backup"
       }
     },
     "/api/v1/capture": {
@@ -4870,6 +5565,189 @@
           }
         },
         "summary": "Vitals"
+      }
+    },
+    "/api/v1/watched-folders": {
+      "get": {
+        "operationId": "list_watched_api_v1_watched_folders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WatchedFolder"
+                  },
+                  "title": "Response List Watched Api V1 Watched Folders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Watched"
+      },
+      "post": {
+        "operationId": "add_watched_api_v1_watched_folders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchedFolderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchedFolder"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Watched"
+      }
+    },
+    "/api/v1/watched-folders/{folder_id}": {
+      "delete": {
+        "operationId": "remove_watched_api_v1_watched_folders__folder_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchedFolder"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Watched"
+      },
+      "patch": {
+        "operationId": "patch_watched_api_v1_watched_folders__folder_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchedFolderPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchedFolder"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Watched"
+      }
+    },
+    "/api/v1/watched-folders/{folder_id}/scan": {
+      "post": {
+        "operationId": "scan_watched_api_v1_watched_folders__folder_id__scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "folder_id",
+            "required": true,
+            "schema": {
+              "title": "Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchedFolder"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Watched"
       }
     }
   }

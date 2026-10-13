@@ -199,6 +199,11 @@ async def models(ctx: Ctx) -> ModelsInfo:
         except httpx.HTTPError as exc:
             status_ = OllamaStatus(reachable=False, url=status_.url, error=str(exc) or type(exc).__name__)
     info = ModelsInfo(ollama=status_, installed=installed, assignments=ctx.assignments(), chat_model=None)
+    if not status_.reachable:
+        # Don't name a model from a stale cache when Ollama can't list its models right now.
+        info.chat_model_error = f"Ollama is not reachable at {status_.url}"
+        info.chat_model_hint = "Start Ollama, or let UNIVERSE start it (System → Services)."
+        return info
     try:
         info.chat_model = await ctx.router.resolve("local-fast")
     except NoModelAvailable as exc:

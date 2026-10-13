@@ -80,6 +80,8 @@ export const EVENT_TYPES = {
   "forge.rolled_back": { persisted: true, description: "A change was rolled back" },
   "sentinel.alert": { persisted: true, description: "Sentinel raised an alert" },
   "backup.completed": { persisted: true, description: "Backup completed" },
+  "backup.failed": { persisted: true, description: "A backup, restore or restore test failed" },
+  "backup.restored": { persisted: true, description: "A backup was restored to a folder" },
   "backup.restore_tested": { persisted: true, description: "Backup restore test ran" },
   "model.pull.progress": { persisted: false, description: "Model download progress" },
   "model.loaded": { persisted: false, description: "Model loaded" },

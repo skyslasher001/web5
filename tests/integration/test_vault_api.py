@@ -11,14 +11,14 @@ from typing import Any
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
-from universe_vault.layout import Vault
-from universe_vault.worker import EventSink, build_context, drain
 
 from tests.conftest import AUTH, free_port
 from tests.support import files
 from tests.support.fake_ollama import FakeOllama
 from universe_core.app import create_app
 from universe_core.settings import CoreSettings
+from universe_vault.layout import Vault
+from universe_vault.worker import EventSink, build_context, drain
 
 BASE = "http://127.0.0.1:47999"
 

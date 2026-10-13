@@ -90,6 +90,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup History */
+        get: operations["backup_history_api_v1_backups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Configure Backups */
+        put: operations["configure_backups_api_v1_backups_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Backup */
+        post: operations["restore_backup_api_v1_backups_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Backup */
+        post: operations["run_backup_api_v1_backups_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup Snapshots */
+        get: operations["backup_snapshots_api_v1_backups_snapshots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backup Status */
+        get: operations["backup_status_api_v1_backups_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backups/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Backup */
+        post: operations["verify_backup_api_v1_backups_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/capture": {
         parameters: {
             query?: never;
@@ -691,6 +810,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/watched-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Watched */
+        get: operations["list_watched_api_v1_watched_folders_get"];
+        put?: never;
+        /** Add Watched */
+        post: operations["add_watched_api_v1_watched_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watched-folders/{folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Watched */
+        delete: operations["remove_watched_api_v1_watched_folders__folder_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Watched */
+        patch: operations["patch_watched_api_v1_watched_folders__folder_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/watched-folders/{folder_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Watched */
+        post: operations["scan_watched_api_v1_watched_folders__folder_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -788,6 +960,86 @@ export interface components {
             first_bad_seq?: number | null;
             /** Ok */
             ok: boolean;
+        };
+        /** BackupConfigRequest */
+        BackupConfigRequest: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Password */
+            password: string;
+            /** Restic Path */
+            restic_path?: string | null;
+            /**
+             * Schedule Hour
+             * @default 3
+             */
+            schedule_hour: number;
+            /** Target */
+            target: string;
+        };
+        /** BackupRecord */
+        BackupRecord: {
+            /** Bytes Added */
+            bytes_added: number | null;
+            /** Error */
+            error: string | null;
+            /** Files New */
+            files_new: number | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Restic Snapshot Id */
+            restic_snapshot_id: string | null;
+            /** Started At */
+            started_at: string;
+            /** Status */
+            status: string;
+            /** Verified At */
+            verified_at: string | null;
+        };
+        /** BackupStatus */
+        BackupStatus: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Install Hint
+             * @default winget install restic.restic
+             */
+            install_hint: string;
+            last: components["schemas"]["BackupRecord"] | null;
+            last_success: components["schemas"]["BackupRecord"] | null;
+            /**
+             * Password Stored
+             * @default false
+             */
+            password_stored: boolean;
+            /** Restic Found */
+            restic_found: boolean;
+            /** Restic Path */
+            restic_path: string | null;
+            /**
+             * Running
+             * @default false
+             */
+            running: boolean;
+            /**
+             * Schedule Hour
+             * @default 3
+             */
+            schedule_hour: number;
+            /** Target */
+            target: string | null;
         };
         /** Body_capture_files_api_v1_capture_files_post */
         Body_capture_files_api_v1_capture_files_post: {
@@ -1544,6 +1796,13 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RestoreRequest */
+        RestoreRequest: {
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Target */
+            target: string;
+        };
         /** SearchHit */
         SearchHit: {
             item: components["schemas"]["ItemSummary"];
@@ -1576,6 +1835,22 @@ export interface components {
             };
             /** Took Ms */
             took_ms: number;
+        };
+        /** Snapshot */
+        Snapshot: {
+            /** Id */
+            id: string;
+            /** Short Id */
+            short_id: string;
+            /** Tags */
+            tags: string[];
+            /** Time */
+            time: string;
+        };
+        /** Started */
+        Started: {
+            /** Started */
+            started: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1640,6 +1915,60 @@ export interface components {
             version: string;
             /** Ws Clients */
             ws_clients: number;
+        };
+        /** WatchedFolder */
+        WatchedFolder: {
+            /** Created At */
+            created_at: string;
+            /** Default Project Id */
+            default_project_id: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Exclude Globs */
+            exclude_globs: string[];
+            /** Exists */
+            exists: boolean;
+            /** Id */
+            id: string;
+            /** Include Globs */
+            include_globs: string[];
+            /** Last Error */
+            last_error: string | null;
+            /** Last Scan At */
+            last_scan_at: string | null;
+            /** Path */
+            path: string;
+            /** Recursive */
+            recursive: boolean;
+        };
+        /** WatchedFolderCreate */
+        WatchedFolderCreate: {
+            /** Default Project Id */
+            default_project_id?: string | null;
+            /** Exclude Globs */
+            exclude_globs?: string[];
+            /** Include Globs */
+            include_globs?: string[];
+            /** Path */
+            path: string;
+            /**
+             * Recursive
+             * @default true
+             */
+            recursive: boolean;
+        };
+        /** WatchedFolderPatch */
+        WatchedFolderPatch: {
+            /** Default Project Id */
+            default_project_id?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Exclude Globs */
+            exclude_globs?: string[] | null;
+            /** Include Globs */
+            include_globs?: string[] | null;
+            /** Recursive */
+            recursive?: boolean | null;
         };
         /** WsTicket */
         WsTicket: {
@@ -1809,6 +2138,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditVerification"];
+                };
+            };
+        };
+    };
+    backup_history_api_v1_backups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRecord"][];
+                };
+            };
+        };
+    };
+    configure_backups_api_v1_backups_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackupConfigRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_backup_api_v1_backups_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Started"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_backup_api_v1_backups_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Started"];
+                };
+            };
+        };
+    };
+    backup_snapshots_api_v1_backups_snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"][];
+                };
+            };
+        };
+    };
+    backup_status_api_v1_backups_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupStatus"];
+                };
+            };
+        };
+    };
+    verify_backup_api_v1_backups_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Started"];
                 };
             };
         };
@@ -2919,6 +3414,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Vitals"];
+                };
+            };
+        };
+    };
+    list_watched_api_v1_watched_folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedFolder"][];
+                };
+            };
+        };
+    };
+    add_watched_api_v1_watched_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchedFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_watched_api_v1_watched_folders__folder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_watched_api_v1_watched_folders__folder_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchedFolderPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_watched_api_v1_watched_folders__folder_id__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchedFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

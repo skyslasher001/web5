@@ -8,13 +8,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from universe_vault import governor, ingest, purge
-from universe_vault.layout import Vault
-from universe_vault.models import ModelInfo
 
 from universe_common.sqlite import connect
 from universe_core.db import Databases
 from universe_core.vault_runtime import Governor
+from universe_vault import governor, ingest, purge
+from universe_vault.layout import Vault
+from universe_vault.models import ModelInfo
 
 
 @pytest.fixture

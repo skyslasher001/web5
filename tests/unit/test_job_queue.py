@@ -5,10 +5,10 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from universe_vault import governor, jobs
 
 from universe_common.sqlite import connect
 from universe_core.db import Databases
+from universe_vault import governor, jobs
 
 
 @pytest.fixture

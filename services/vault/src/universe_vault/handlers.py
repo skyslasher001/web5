@@ -11,7 +11,7 @@ from typing import Any
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_vault import jobs, sidecar, store
-from universe_vault.ingest import add_version, import_file, walk_folder
+from universe_vault.ingest import add_version, deleted_outside, import_file, walk_folder
 from universe_vault.jobs import Job
 from universe_vault.layout import Vault, sha256_file
 from universe_vault.media import OcrEngine, make_thumbnail
@@ -78,8 +78,19 @@ def handle_import(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     interactive = bool(p.get("interactive", True))
     if path.is_dir():
         count = 0
+        recursive, include, exclude = p.get("recursive", True), (), ()
+        if p.get("folder_id"):
+            folder = ctx.conn.execute("SELECT * FROM watched_folders WHERE id = ?", (p["folder_id"],)).fetchone()
+            if folder is None or not folder["enabled"]:
+                return {"status": "folder removed or disabled"}
+            recursive = bool(folder["recursive"])
+            include, exclude = tuple(json.loads(folder["include_globs"])), tuple(json.loads(folder["exclude_globs"]))
+            ctx.conn.execute(
+                "UPDATE watched_folders SET last_scan_at = ?, last_error = NULL WHERE id = ?",
+                (utcnow(), p["folder_id"]),
+            )
         with transaction(ctx.conn):
-            for file in walk_folder(path, recursive=p.get("recursive", True), skip=ctx.vault.root):
+            for file in walk_folder(path, recursive=recursive, include=include, exclude=exclude, skip=ctx.vault.root):
                 jobs.enqueue(
                     ctx.conn,
                     "import",
@@ -157,6 +168,30 @@ def _import_watched(ctx: WorkerContext, path: Path, folder_id: str, project_ids:
     )
     _announce_import(ctx, status, item_id, added)
     return {"status": status, "item_id": item_id}
+
+
+def handle_vault_file(ctx: WorkerContext, job: Job) -> dict[str, Any]:
+    """A file inside the vault changed, appeared or disappeared outside the app (the vault watcher)."""
+    path = Path(job.payload["path"])
+    if not ctx.vault.contains(path) or ctx.vault.in_index(path):
+        return {"status": "ignored"}
+    rel_path = ctx.vault.rel(path)
+    if job.payload.get("event") == "deleted":
+        item_id = deleted_outside(ctx.conn, ctx.vault, rel_path)
+        if item_id:
+            ctx.emit("item.trashed", {"item_id": item_id, "reason": "deleted outside the app"}, subject_id=item_id)
+        return {"status": "trashed" if item_id else "ignored"}
+    if not path.is_file():
+        return {"status": "gone"}
+    row = store.find_by_path(ctx.conn, rel_path)
+    if row is not None:
+        version = add_version(ctx.conn, ctx.vault, row["id"], new_source=None, actor="user")
+        if version:
+            ctx.emit("item.updated", {"item_id": row["id"], "version": version}, subject_id=row["id"])
+        return {"status": "new version" if version else "unchanged", "item_id": row["id"]}
+    result = import_file(ctx.conn, ctx.vault, path, source_kind="vault", origin=rel_path, interactive=False)
+    _announce_import(ctx, result.status, result.item_id, result.project_ids_added)
+    return {"status": result.status, "item_id": result.item_id}
 
 
 # ---------- pipeline, caption, embed, sidecar ----------
@@ -321,4 +356,5 @@ HANDLERS: dict[str, Callable[[WorkerContext, Job], dict[str, Any]]] = {
     "embed": handle_embed,
     "sidecar": handle_sidecar,
     "reembed": handle_reembed,
+    "vault_file": handle_vault_file,
 }

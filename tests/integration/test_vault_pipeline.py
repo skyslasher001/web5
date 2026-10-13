@@ -9,13 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from universe_vault import ingest, jobs, purge, search, store
-from universe_vault.handlers import WorkerContext
-from universe_vault.layout import Vault, sidecar_path
-from universe_vault.models import query_prefix
-from universe_vault.query import Project, parse
-from universe_vault.vectors import table_name
-from universe_vault.worker import EventSink, build_context, drain
 
 from tests.support import files
 from tests.support.fake_ollama import CAPTION, VISION_MODEL, FakeOllama, fake_embedding
@@ -23,6 +16,13 @@ from universe_common.sqlite import connect, transaction
 from universe_core.db import Databases
 from universe_core.events import EventBus
 from universe_core.seed import ensure_seed_galaxies
+from universe_vault import ingest, jobs, purge, search, store
+from universe_vault.handlers import WorkerContext
+from universe_vault.layout import Vault, sidecar_path
+from universe_vault.models import query_prefix
+from universe_vault.query import Project, parse
+from universe_vault.vectors import table_name
+from universe_vault.worker import EventSink, build_context, drain
 
 EMBED_TABLE = table_name("fake-embed:latest", "bbb")
 

@@ -17,6 +17,14 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+from universe_common.errors import fingerprint_from_text
+from universe_common.ids import uuid7
+from universe_common.schema import ApiModel
+from universe_common.sqlite import transaction
+from universe_common.timeutil import utcnow
+from universe_core.context import CoreContext
+from universe_core.events import CATALOG
 from universe_vault import governor, ingest, jobs, purge, search, store
 from universe_vault.filetypes import ItemType
 from universe_vault.layout import slugify
@@ -33,14 +41,6 @@ from universe_vault.schemas import (
     SearchHit,
     SearchResponse,
 )
-
-from universe_common.errors import fingerprint_from_text
-from universe_common.ids import uuid7
-from universe_common.schema import ApiModel
-from universe_common.sqlite import transaction
-from universe_common.timeutil import utcnow
-from universe_core.context import CoreContext
-from universe_core.events import CATALOG
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB per file through the local API
 URL_RE = re.compile(r"^https?://\S+$", re.IGNORECASE)
@@ -342,7 +342,11 @@ async def delete_item(ctx: Ctx, item_id: str, permanent: bool = False) -> Delete
 @router.post("/items/{item_id}/restore", response_model=Item)
 async def restore_item(ctx: Ctx, item_id: str) -> Item:
     await ctx.vdb.run(_require_item, item_id)
-    if await ctx.vdb.run(purge.restore, ctx.vault, item_id):
+    try:
+        restored = await ctx.vdb.run(purge.restore, ctx.vault, item_id)
+    except purge.PurgeError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if restored:
         _item_event(ctx, "item.restored", item_id)
     return await get_item(ctx, item_id)
 

@@ -232,14 +232,20 @@ class _Duplicate(Exception):
         self.row = row
 
 
+def is_markdown(row: sqlite3.Row) -> bool:
+    return str(row["path"]).lower().endswith((".md", ".markdown"))
+
+
 def add_version(
     conn: sqlite3.Connection, vault: Vault, item_id: str, *, new_source: Path | None, actor: str
 ) -> int | None:
-    """Record a new version of an item whose file changed (an edited note, or a changed watched-folder source).
+    """Record a new version of an item whose bytes changed. Returns the version number, or None if unchanged.
 
-    For notes the item's file in the vault was edited in place, so its new bytes are kept under versions/.
-    For other items `new_source` (outside the vault) is copied over a fresh vault file; the old file stays
-    as the previous version. Returns the new version number, or None if nothing changed.
+    - `new_source` given (a changed file in a watched folder): its bytes are copied into a fresh vault
+      file; the old vault file stays as the previous version.
+    - `new_source` None (the vault file itself was edited, e.g. in Obsidian): Markdown keeps every
+      version under `.universe/versions/`; other files record the edit, but the editor already replaced
+      the old bytes in place, so only the history entry remains.
     """
     row = store.get_row(conn, item_id)
     if row is None or row["trashed_at"] is not None:
@@ -250,29 +256,34 @@ def add_version(
     if content_hash == row["content_hash"]:
         return None
     n = int(row["current_version"]) + 1
-    if row["type"] == "note" and new_source is None:
-        version_path = _keep_note_version(vault, item_id, n, current)
-        rel_path, size = row["path"], current.stat().st_size
-    else:
+    note = "changed on disk"
+    if new_source is not None:
         dest = vault.free_path(current.parent, current.name)
         tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
         shutil.copy2(source, tmp)
         os.replace(tmp, dest)
         rel_path = version_path = vault.rel(dest)
-        size = dest.stat().st_size
+        note = "source changed"
+    elif is_markdown(row):
+        version_path = _keep_note_version(vault, item_id, n, current)
+        rel_path = row["path"]
+    else:
+        rel_path = version_path = row["path"]
+        note = "edited in place outside the app (previous bytes not kept)"
+    size = vault.abs(rel_path).stat().st_size
     with transaction(conn):
         conn.execute(
             "INSERT INTO versions (id, item_id, n, path, content_hash, size_bytes, created_by, note, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, 'changed on disk', ?)",
-            (uuid7(), item_id, n, version_path, content_hash, size, actor, utcnow()),
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (uuid7(), item_id, n, version_path, content_hash, size, actor, note, utcnow()),
         )
         conn.execute(
             "UPDATE items SET path = ?, content_hash = ?, size_bytes = ?, current_version = ?, updated_at = ?"
             " WHERE id = ?",
             (rel_path, content_hash, size, n, utcnow(), item_id),
         )
-        if row["type"] == "note":
-            title = note_title(current.read_text(encoding="utf-8", errors="replace")[:65536], row["title"])
+        if is_markdown(row):
+            title = note_title(vault.abs(rel_path).read_text(encoding="utf-8", errors="replace")[:65536], row["title"])
             conn.execute("UPDATE items SET title = ?, slug = ? WHERE id = ?", (title, slugify(title), item_id))
         for stage, status, detail in initial_stages(row["type"]):
             store.set_stage(conn, item_id, stage, status, detail=detail)
@@ -280,6 +291,21 @@ def add_version(
         store.reindex_item(conn, item_id)
         _queue_pipeline(conn, item_id, interactive=False)
     return n
+
+
+def deleted_outside(conn: sqlite3.Connection, vault: Vault, rel_path: str) -> str | None:
+    """The file of an item was deleted outside the app: move the item to the trash (purged after 30 days)."""
+    row = store.find_by_path(conn, rel_path)
+    if row is None or row["trashed_at"] is not None or vault.abs(rel_path).exists():
+        return None
+    with transaction(conn):
+        conn.execute(
+            "UPDATE items SET trashed_at = ?, metadata = json_set(metadata, '$.deleted_outside_app', json('true')),"
+            " updated_at = ? WHERE id = ?",
+            (utcnow(), utcnow(), row["id"]),
+        )
+        store.reindex_item(conn, row["id"])
+    return row["id"]
 
 
 def _frontmatter(fields: dict[str, object]) -> str:

@@ -60,6 +60,8 @@ def restore(conn: sqlite3.Connection, vault: Vault, item_id: str) -> bool:
     meta = json.loads(row["metadata"] or "{}")
     original_rel = meta.pop("trashed_from", None)
     current = vault.abs(row["path"])
+    if not current.exists():
+        raise PurgeError("The file was deleted outside the app, so there is nothing to restore.")
     target = vault.abs(original_rel) if original_rel else vault.root / "files" / current.name
     if target.exists():
         target = vault.free_path(target.parent, target.name)

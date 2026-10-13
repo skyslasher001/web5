@@ -22,11 +22,11 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import psutil
-from universe_vault import governor, jobs, purge
-from universe_vault.layout import Vault
 
 from universe_common.log import get_logger
 from universe_common.sqlite import connect, transaction
+from universe_vault import governor, jobs, purge
+from universe_vault.layout import Vault
 
 log = get_logger(__name__)
 T = TypeVar("T")
