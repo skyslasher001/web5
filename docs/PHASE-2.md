@@ -1,6 +1,6 @@
 # Phase 2: Vault + Recall
 
-Status: **delivered 2026-10-13, awaiting your approval.** Phase 3 (agents) doesn't start until you approve.
+Status: **delivered 2026-10-13, approved 2026-10-13.** Phase 3 (agent engine) is in progress.
 
 Phase 2 makes UNIVERSE a place to keep things and find them again. You can drop in files or folders, capture a note from any app, and find anything by its name, the words inside it, or what it's about, in well under a second. Design decisions are in [ADR-0010](adr/0010-phase-2-vault-pipeline.md).
 
@@ -106,4 +106,4 @@ Each has a regression test.
 
 ## What's next: Phase 3 (agents)
 
-Waiting for your approval. Phase 3 brings the agent engine and the specialists (Librarian first, which will use this vault). Useful from you now: fix the Actions setting so Windows CI runs, run the demo on your PC with `nomic-embed-text`, and tell me if `Ctrl+Space` works on your keyboard.
+Approved 2026-10-13 and in progress. Phase 3 brings the agent engine and the specialists (Librarian first, which will use this vault). Useful from you now: fix the Actions setting so Windows CI runs, run the demo on your PC with `nomic-embed-text`, and tell me if `Ctrl+Space` works on your keyboard.
