@@ -11,7 +11,8 @@ synopsis: >-
 model: local-large
 color: amber
 icon: wrench
-tools: [forge.issues, forge.issue, repo.search, repo.read, forge.begin, forge.write, forge.check, forge.propose]
+tools:
+  [forge.issues, forge.issue, repo.search, repo.read, forge.begin, forge.write, forge.check, forge.propose]
 permission_tier: write
 memory: []
 triggers:

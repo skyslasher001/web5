@@ -4,7 +4,7 @@
 // audit trail (needs the protected-core patch; without it the panels say agents chat without tools).
 // Uses the real Electron app, supervisor, Core and pipeline workers; only the model server is a stand-in.
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { createRequire } from 'node:module';
@@ -51,6 +51,7 @@ let fake: ChildProcess;
 let corePort: number;
 let netLog: string;
 let tmp: string;
+let forgeRepo: string;
 
 /** A Core REST call made from the renderer with the session token, the way the UI makes it. */
 function core<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -93,6 +94,16 @@ test.beforeAll(async () => {
   const ollamaPort = await freePort();
   corePort = await freePort();
   fake = await startFakeOllama(ollamaPort);
+  // Forge repairs a scratch repository with an injected bug, never this checkout (Phase 5).
+  forgeRepo = execFileSync(
+    'uv',
+    [
+      'run', '--quiet', 'python', '-c',
+      'import sys; from pathlib import Path; from tests.support.forge_repo import make_repo; print(make_repo(Path(sys.argv[1])))',
+      join(tmp, 'forge'),
+    ],
+    { cwd: root, encoding: 'utf8' },
+  ).trim(); // prettier-ignore
   app = await electron.launch({
     executablePath: electronPath,
     // CI runners have no GPU: allow Chromium's software WebGL so the 3D scene is exercised too.
@@ -112,6 +123,7 @@ test.beforeAll(async () => {
       UNIVERSE_OLLAMA_URL: `http://127.0.0.1:${ollamaPort}`,
       UNIVERSE_MANAGE_OLLAMA: '0',
       UNIVERSE_UI_URL: '', // use the built UI over app://
+      UNIVERSE_REPO_DIR: forgeRepo,
     },
   });
   page = await app.firstWindow();
@@ -408,6 +420,52 @@ test('done when: find notes, summarize them and link them to a galaxy, with an a
   for (const action of ['task.started', 'tool.call · project.add_items', 'approval.decided', 'item.linked']) {
     await expect(audit).toContainText(action);
   }
+});
+
+test('done when (Phase 5): Forge fixes an injected bug, you approve it, it applies, and rollback works', async () => {
+  const status = await core<{ agent: boolean; sentinel: boolean; available: boolean }>(
+    'GET',
+    '/forge/status',
+  );
+  expect(status.available).toBe(true); // the scratch repository
+  await page.getByRole('tab', { name: 'Forge' }).click();
+  await page.getByTestId('forge-report').fill('add(2, 3) returns -1 instead of 5');
+  await page.getByTestId('forge-report-send').click();
+  await expect(page.getByTestId('forge-issue').first()).toContainText('add(2, 3) returns -1');
+  if (!status.agent || !status.sentinel) {
+    // Without the Phase 5 protected-core patch the UI says what's missing and Forge can't start.
+    await expect(page.getByTestId('forge-missing')).toContainText('protected core');
+    await expect(page.getByTestId('forge-fix').first()).toBeDisabled();
+    test.skip(true, 'the rest needs the Phase 5 protected-core patch (Forge agent, Sentinel, releases)');
+  }
+  await page.getByTestId('forge-fix').first().click();
+  await page.getByRole('tab', { name: 'Forge' }).click(); // asking Forge shows its task; come back
+  const card = page.getByTestId('proposal').first();
+  await expect(card).toHaveAttribute('data-status', 'ready', { timeout: 180_000 });
+  await expect(page.getByTestId('forge-card')).toBeVisible(); // it waits in the approvals tray too
+  await card.locator('button').first().click();
+  await expect(card.getByTestId('proposal-diff')).toContainText('+    return a + b');
+  await expect(card.getByTestId('proposal-verification')).toContainText('fails on the old code');
+  await expect(card.getByTestId('proposal-reviews')).toContainText('passed');
+  await page.screenshot({ path: 'test-results/forge-proposal.png' });
+
+  // Approve: the native dialog in Electron main asks; answer "Apply" the way you would.
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = (async () => ({
+      response: 1,
+      checkboxChecked: false,
+    })) as typeof dialog.showMessageBox;
+  });
+  await card.getByTestId('proposal-approve').click();
+  const calc = join(forgeRepo, 'calc', '__init__.py');
+  await expect.poll(() => readFileSync(calc, 'utf8'), { timeout: 60_000 }).toContain('return a + b');
+  await expect(card).toHaveAttribute('data-status', 'applied', { timeout: 60_000 });
+
+  // One-click rollback from the System panel (the native dialog asks again).
+  await page.getByRole('tab', { name: 'System' }).click();
+  await page.getByTestId('release-rollback').first().click();
+  await expect.poll(() => readFileSync(calc, 'utf8'), { timeout: 60_000 }).toContain('return a - b');
+  await expect(page.getByTestId('core-status')).toHaveText(/Core online/, { timeout: 60_000 });
 });
 
 test('the kill switch stops agents and only a native dialog releases it', async () => {

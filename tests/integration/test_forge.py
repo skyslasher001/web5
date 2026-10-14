@@ -18,6 +18,7 @@ from tests.integration.test_vault_api import BASE, Api
 from tests.support.fake_ollama import FakeOllama
 from tests.support.forge_repo import head, make_repo
 from universe_core.app import create_app
+from universe_core.forge_tools import load_sentinel
 from universe_core.settings import CoreSettings
 
 REPO = Path(__file__).resolve().parents[2]
@@ -54,10 +55,13 @@ def wait_task(api: Api, task_id: str, timeout: float = 120) -> dict[str, Any]:
     raise AssertionError(f"task still {task.get('status')}")
 
 
-def test_without_the_patch_forge_says_what_is_missing(client: TestClient) -> None:
+def test_forge_says_what_is_installed_and_what_is_missing(client: TestClient) -> None:
     status = client.get("/api/v1/forge/status", headers=AUTH).json()
-    assert status["agent"] is False and "protected core" in status["agent_reason"]
-    assert status["sentinel"] is False and "Sentinel" in status["sentinel_reason"]
+    # Before the owner applies the Phase 5 protected-core patch, the agent and Sentinel are missing, and say why.
+    assert status["agent"] is (REPO / "agents" / "forge.yaml").is_file()
+    assert status["agent"] or "protected core" in status["agent_reason"]
+    assert status["sentinel"] is (load_sentinel() is not None)
+    assert status["sentinel"] or "Sentinel" in status["sentinel_reason"]
     assert status["available"] is False and "UNIVERSE_REPO_DIR" in status["reason"]  # tests set no codebase
 
 
@@ -82,7 +86,11 @@ def test_a_bug_report_becomes_a_verified_proposal_and_nothing_is_applied(forge_a
     assert "+    return a + b" in proposal["diff"] and proposal["diff_sha"]
     assert "subtracted" in proposal["root_cause"]
     assert proposal["reviews"]["critic"]["output"]  # Critic reviewed the diff
-    assert proposal["reviews"]["sentinel"]["available"] is False  # protected: not installed in this checkout
+    sentinel = proposal["reviews"]["sentinel"]
+    if load_sentinel() is None:  # protected core: not installed until the owner applies the Phase 5 patch
+        assert sentinel["available"] is False
+    else:
+        assert sentinel["verdict"] == "pass" and sentinel["risk"] == "low" and sentinel["findings"] == []
     assert not proposal["touches_protected"]
     assert api.get("/forge/issues")[0]["status"] == "proposed"
 

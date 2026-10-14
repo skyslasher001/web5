@@ -2,11 +2,11 @@
 import type { Approval } from '@universe/shared-types';
 import { tokens } from '@universe/design-tokens';
 import { useQueryClient } from '@tanstack/react-query';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import { useApi } from '../lib/api-context';
 import { attempt } from '../lib/attempt';
-import { useApprovals } from '../lib/queries';
+import { useApprovals, useForgeProposals } from '../lib/queries';
 import { useUniverse } from '../state/store';
 import { Button, Dot } from './ui';
 
@@ -79,10 +79,32 @@ function ApprovalCard({ approval }: { approval: Approval }) {
   );
 }
 
+/** A Forge proposal waiting for you (SPEC §7: the tray holds tool calls and Forge patches). */
+function ForgeCard({ id, title, risk }: { id: string; title: string; risk: string | null }) {
+  return (
+    <li
+      className="glass pointer-events-auto flex w-[26rem] items-center gap-2 p-3 text-xs"
+      data-testid="forge-card"
+    >
+      <Wrench className="size-4 shrink-0 text-amber" aria-hidden />
+      <span className="flex-1">
+        <span className="text-ink-3">Forge proposes a fix: </span>
+        <span className="text-ink-1">{title}</span>
+        {risk && <span className="text-ink-3"> · {risk} risk</span>}
+      </span>
+      <Button onClick={() => useUniverse.getState().openForge(id)} testid="forge-card-review">
+        Review
+      </Button>
+    </li>
+  );
+}
+
 export function ApprovalsTray() {
   const approvals = useApprovals();
+  const proposals = useForgeProposals();
   const list = approvals.data ?? [];
-  if (list.length === 0) return null;
+  const ready = (proposals.data ?? []).filter((p) => p.status === 'ready');
+  if (list.length === 0 && ready.length === 0) return null;
   return (
     <section
       aria-label="Approvals"
@@ -92,6 +114,9 @@ export function ApprovalsTray() {
       <ul className="flex flex-col gap-2" aria-live="polite">
         {list.slice(0, SHOWN).map((a) => (
           <ApprovalCard key={a.id} approval={a} />
+        ))}
+        {ready.slice(0, 2).map((p) => (
+          <ForgeCard key={p.id} id={p.id} title={p.title} risk={p.risk} />
         ))}
       </ul>
       {list.length > SHOWN && (

@@ -1,6 +1,7 @@
 import { useUniverse, type Panel } from '../state/store';
 import { AgentsPanel } from './AgentsPanel';
 import { ContextPanel } from './ContextPanel';
+import { ForgePanel } from './ForgePanel';
 import { SafetyPanel } from './SafetyPanel';
 import { SystemPanel } from './SystemPanel';
 import { VaultPanel } from './VaultPanel';
@@ -9,6 +10,7 @@ const TABS: { id: Panel; label: string }[] = [
   { id: 'context', label: 'Context' },
   { id: 'vault', label: 'Vault' },
   { id: 'agents', label: 'Agents' },
+  { id: 'forge', label: 'Forge' },
   { id: 'safety', label: 'Safety' },
   { id: 'system', label: 'System' },
 ];
@@ -43,6 +45,7 @@ export function SidePanel() {
             context: <ContextPanel />,
             vault: <VaultPanel />,
             agents: <AgentsPanel />,
+            forge: <ForgePanel />,
             safety: <SafetyPanel />,
             system: <SystemPanel />,
           }[panel]

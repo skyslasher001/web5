@@ -172,6 +172,25 @@ export function useEngine() {
   return useQuery({ queryKey: ['engine'], queryFn: api.engine, enabled: online, refetchInterval: 30_000 });
 }
 
+/** Forge: what's installed, the open issues and the proposals. Forge and agent events refresh them. */
+export function useForgeStatus() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['forge', 'status'], queryFn: api.forgeStatus, enabled: online });
+}
+
+export function useForgeIssues() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['forge', 'issues'], queryFn: api.forgeIssues, enabled: online });
+}
+
+export function useForgeProposals() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['forge', 'proposals'], queryFn: api.forgeProposals, enabled: online });
+}
+
 /** Every agent with its synopsis and stats (the Agents panel's roster). Agent events refresh it. */
 export function useAgentRoster() {
   const api = useApi();

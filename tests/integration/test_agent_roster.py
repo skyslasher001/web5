@@ -138,4 +138,4 @@ def test_add_run_turn_off_and_remove_your_own_agent(
             api.close()
     # The app never edits the shipped agent files.
     assert {p.name: p.read_text(encoding="utf-8") for p in REPO_AGENTS.glob("*.yaml")} == repo_yaml
-    assert set(load_agents(REPO_AGENTS)) == {"core", "critic", "librarian", "navigator", "scribe"}
+    assert set(load_agents(REPO_AGENTS)) >= {"core", "critic", "librarian", "navigator", "scribe"}

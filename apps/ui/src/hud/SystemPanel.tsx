@@ -1,7 +1,7 @@
 import { tokens } from '@universe/design-tokens';
 import type { components } from '@universe/shared-types';
-import { useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleAlert, RotateCw } from 'lucide-react';
+import { CheckCircle2, CircleAlert, History, RotateCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { attempt } from '../lib/attempt';
 import { bridge } from '../lib/bridge';
@@ -47,6 +47,65 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <SectionTitle>{title}</SectionTitle>
       {children}
     </section>
+  );
+}
+
+/** Releases Forge applied (SPEC §9: one-click rollback to any prior version). Through Electron main and the
+ * supervisor; rolling back asks in a native dialog. */
+function Releases() {
+  const client = useQueryClient();
+  const releases = useQuery({
+    queryKey: ['forge', 'releases'],
+    queryFn: () =>
+      window.universe?.getReleases() ??
+      Promise.resolve({ available: false, reason: 'Desktop app only', releases: [] }),
+  });
+  const r = releases.data;
+  if (!r) return null;
+  if (!r.available) return <p className="text-xs text-ink-3">{r.reason}</p>;
+  if (r.releases.length === 0) return <p className="text-xs text-ink-3">No Forge changes applied yet.</p>;
+  const rollback = (tag: string) =>
+    attempt(
+      'Roll back',
+      window.universe!.forgeRollback(tag).then((d) => {
+        useUniverse.getState().addNotice(d.ok ? 'good' : 'info', d.message);
+        return client.invalidateQueries({ queryKey: ['forge'] });
+      }),
+    );
+  return (
+    <ul className="space-y-1.5 text-xs" data-testid="releases">
+      {r.releases.map((rel) => (
+        <li key={rel.tag} className="flex items-center gap-2">
+          <Dot
+            color={
+              rel.status === 'rolled_back'
+                ? tokens.color.slate
+                : rel.status === 'watching'
+                  ? tokens.color.amber
+                  : tokens.color.green
+            }
+            label={rel.status}
+          />
+          <span className="flex-1 truncate">
+            {rel.title}{' '}
+            <span className="text-ink-3">
+              · {rel.tag.replace('universe/', '')}
+              {rel.current ? ' · current' : ''}
+            </span>
+          </span>
+          {rel.status !== 'rolled_back' && (
+            <button
+              type="button"
+              onClick={() => rollback(rel.tag)}
+              className="flex items-center gap-1 text-ink-3 hover:text-accent"
+              data-testid="release-rollback"
+            >
+              <History className="size-3" aria-hidden /> Roll back
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -433,6 +492,9 @@ export function SystemPanel() {
       </Section>
       <Section title="Services">
         <Services />
+      </Section>
+      <Section title="Releases">
+        <Releases />
       </Section>
       <Section title="Chat model">
         <ChatModel />

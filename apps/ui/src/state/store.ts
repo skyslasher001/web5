@@ -31,7 +31,7 @@ import {
   type ChatMessage,
 } from './reducers';
 
-export type Panel = 'context' | 'vault' | 'agents' | 'safety' | 'system';
+export type Panel = 'context' | 'vault' | 'agents' | 'forge' | 'safety' | 'system';
 export type View = 'universe' | 'grid' | 'list';
 export type Layout = 'project' | 'semantic' | 'time' | 'graph';
 export const LAYOUTS: Layout[] = ['project', 'semantic', 'time', 'graph'];
@@ -68,6 +68,8 @@ interface UniverseState {
   /** The agent the Agents panel runs tasks with, and the task whose trace it shows. */
   runAgentId: string;
   selectedTaskId: string | null;
+  /** The Forge proposal to show open in the Forge panel (from the approvals tray). */
+  forgeFocus: string | null;
   /** From Electron main: `available` is false until the protected kill-switch control is installed. */
   killSwitch: KillSwitchState;
   /** The universe's arrangement (keys 1–4) and the time slider (epoch seconds; null = now). */
@@ -134,6 +136,7 @@ interface UniverseState {
   setSmooth(smooth: boolean): void;
   openAgent(id: string): void;
   selectTask(id: string | null): void;
+  openForge(proposalId: string | null): void;
   setKillSwitch(state: KillSwitchState): void;
   setLayout(layout: Layout): void;
   setTimeCut(cut: number | null): void;
@@ -186,6 +189,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   agentSteps: {},
   runAgentId: 'core',
   selectedTaskId: null,
+  forgeFocus: null,
   killSwitch: { available: false, engaged: false },
   layout: 'project',
   timeCut: null,
@@ -291,6 +295,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
     set((s) => ({ resultsFocusTick: s.resultsFocusTick + 1, view: s.view === 'universe' ? 'list' : s.view })),
   openAgent: (runAgentId) => set({ runAgentId, panel: 'agents' }),
   selectTask: (selectedTaskId) => set({ selectedTaskId, panel: 'agents' }),
+  openForge: (forgeFocus) => set({ forgeFocus, panel: 'forge' }),
   setKillSwitch: (killSwitch) => set({ killSwitch }),
   // The time-travel slider only exists in the Time layout, so leaving it shows the universe as it is now.
   setLayout: (layout) => set((s) => ({ layout, timeCut: layout === 'time' ? s.timeCut : null })),

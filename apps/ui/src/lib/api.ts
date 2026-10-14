@@ -1,5 +1,8 @@
 // Typed REST client for Core. Types are generated from the backend's OpenAPI schema.
 import type {
+  ForgeIssue,
+  ForgeProposal,
+  ForgeStatus,
   AgentCreate,
   AgentInfo,
   AgentProfile,
@@ -247,6 +250,13 @@ export class CoreApi {
   // ---------- agent engine ----------
   engine = () => this.call<EngineStatus>('GET', '/engine');
   agentRoster = () => this.call<AgentProfile[]>('GET', '/agents/roster');
+  forgeStatus = () => this.call<ForgeStatus>('GET', '/forge/status');
+  forgeIssues = () => this.call<ForgeIssue[]>('GET', '/forge/issues');
+  forgeReport = (text: string) => this.call<ForgeIssue>('POST', '/forge/reports', { text });
+  forgeFix = (issueId: string) => this.call<{ task_id: string }>('POST', `/forge/issues/${issueId}/fix`);
+  forgeIgnore = (issueId: string) => this.call<ForgeIssue>('POST', `/forge/issues/${issueId}/ignore`);
+  forgeProposals = () => this.call<ForgeProposal[]>('GET', '/forge/proposals');
+  forgeReject = (id: string) => this.call<ForgeProposal>('POST', `/forge/proposals/${id}/reject`);
   addAgent = (body: AgentCreate) => this.call<AgentProfile>('POST', '/agents', body);
   updateAgent = (id: string, body: { enabled?: boolean; synopsis?: string }) =>
     this.call<AgentProfile>('PATCH', `/agents/${id}`, body);
