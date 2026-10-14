@@ -319,7 +319,9 @@ test('the note viewer edits Markdown safely and follows links', async () => {
   // Edit and save: a new version.
   await page.getByTestId('note-editor').fill('Edited in the viewer. See [[Parcel map]].');
   await page.getByTestId('note-save').click();
-  await expect(page.getByText('Version 2')).toBeVisible();
+  // The viewer shows the new version at once, and a notice confirms the save.
+  await expect(page.getByTestId('item-viewer').getByText('Version 2', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved version 2')).toBeVisible();
   const item = await core<{ versions: unknown[] }>('GET', `/items/${note.item_id}`);
   expect(item.versions).toHaveLength(2);
 
@@ -352,7 +354,7 @@ test('the note viewer edits Markdown safely and follows links', async () => {
   await page.getByTestId('search-input').press('Enter');
   await page.getByTestId('view-item').click();
   await expect(page.getByTestId('viewer-title')).toHaveText('Parcel map');
-  await expect(page.getByTestId('note-editor')).toHaveValue('Rewritten by an agent.');
+  await expect(page.getByTestId('note-editor')).toHaveValue(/^Rewritten by an agent\.\s*$/); // files end in a newline
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('item-viewer')).toHaveCount(0);
 });

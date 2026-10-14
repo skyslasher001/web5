@@ -134,9 +134,9 @@ From [PHASE-3.md](PHASE-3.md#setup), then:
 
 | Suite | Count | New in Phase 4 |
 | --- | --- | --- |
-| pytest (`uv run pytest`) | 213: 212 passed, 1 Windows-only skip | scene data paging and incremental updates, wikilinks resolving late, backlinks, manual links, note editing with versions and conflicts, the Semantic layout job, similar items, galaxy goals, the 50k seed generator, vector streaming, the semantic layout's clustering, probe targets |
-| Vitest (`pnpm exec vitest run`) | 89 | layouts (Project, Time, Graph, Semantic merge, 50k timing), scene data, celestial mapping, pick colours, nearest items, flights, constellations, quality detection, zoom levels |
-| Playwright Electron (`pnpm test:e2e`) | 20 | the 50k done-when: streaming, FPS measurements, search flying the camera, layouts, the note viewer (including hostile HTML in a note), dashboards, and no network traffic |
+| pytest (`uv run pytest`) | 222: 221 passed, 1 Windows-only skip | the review fixes (outside edits kept, simultaneous saves, wikilinks outliving their target, the backfill, the refresh margin and tombstones, bad vectors, shutdown), the agent roster, scene data paging and incremental updates, wikilinks resolving late, backlinks, manual links, note editing with versions and conflicts, the Semantic layout job, similar items, galaxy goals, the 50k seed generator, vector streaming, the semantic layout's clustering, probe targets |
+| Vitest (`pnpm exec vitest run`) | 112 | smooth zoom, scene refresh, layout controller, search and Enter, unsaved-edit guards, wikilinks in Markdown, texture eviction, agent stats, layouts (Project, Time, Graph, Semantic merge, 50k timing), scene data, celestial mapping, pick colours, nearest items, flights, constellations, quality detection, zoom levels |
+| Playwright Electron (`pnpm test:e2e`) | 22 | PDFs and songs in the packaged app, stale notes, shortcuts behind the viewer, the agent roster, the 50k done-when: streaming, FPS measurements, search flying the camera, layouts, the note viewer (including hostile HTML in a note), dashboards, and no network traffic |
 
 Everything listed passed here: `ruff`, `ruff format`, `pyright`, `eslint`, `prettier`, `tsc`, the generated-types check and `pnpm build`. The e2e suite ran under `xvfb-run`.
 
