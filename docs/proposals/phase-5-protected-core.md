@@ -41,7 +41,7 @@ In a scratch worktree at the branch head with this patch applied:
 - the desktop type check, eslint and its Vitest suite;
 - the done-when e2e: an injected bug in a scratch repository, reported in the Forge panel, fixed by Forge with a test that fails first, reviewed by Critic and Sentinel, approved through the native dialog, applied by the supervisor, then rolled back from the System panel.
 
-Results (2026-10-14): the patched e2e suite (`app.spec.ts` + `safe-mode.spec.ts`) passed 15 of 15, the done-when included; the desktop Vitest suite passed 36 of 36; the Python results are in [PHASE-5.md](../PHASE-5.md#tests).
+Results (2026-10-14): the patched e2e suite (`app.spec.ts` + `safe-mode.spec.ts`) passed 15 of 15, the done-when included; the desktop Vitest suite passed 36 of 36; the full Python suite passed 256 with 1 Windows-only skip (the real-Ollama tests included).
 
 ## To apply it
 

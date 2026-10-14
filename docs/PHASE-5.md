@@ -105,13 +105,19 @@ From [PHASE-4.md](PHASE-4.md#setup), then:
 
 | Suite | Count | New in Phase 5 |
 | --- | --- | --- |
-| pytest, main (`uv run pytest`) | PYTEST_MAIN | Forge core: protected paths, worktrees, writes outside the worktree, verification (fails on base, passes on head), triage and dedup, the daily cap, the API, Core checking "applied" against git; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
-| pytest, with the patch | PYTEST_PATCHED | + 8 Sentinel tests and 9 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
-| Vitest | VITEST_MAIN (+ 8 approval-dialog tests with the patch) | System Vitals, the approval dialog: refuses what isn't ready, applies only after the dialog, reports refusals, rollback, and Core catching up after a restart |
-| Playwright Electron | E2E_MAIN | the Phase 5 done-when (with the patch: the full loop; without: the missing-patch path), System Vitals |
+| pytest, main (`uv run pytest`) | 240: 239 passed, 1 Windows-only skip | Forge core: protected paths, worktrees, writes outside the worktree, verification (fails on base, passes on head), triage and dedup, the daily cap, the API, Core checking "applied" against git; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
+| pytest, with the patch | 257: 256 passed, 1 Windows-only skip | + 8 Sentinel tests and 9 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
+| Vitest | 121 (129 with the patch: + 8 approval-dialog tests) | System Vitals, the approval dialog: refuses what isn't ready, applies only after the dialog, reports refusals, rollback, and Core catching up after a restart |
+| Playwright Electron | 23 without the patch: 22 passed, the Phase 5 done-when stops after checking the missing-patch path · with the patch, `app.spec.ts` + `safe-mode.spec.ts`: 15 of 15 passed | the Phase 5 done-when (with the patch: the full loop; without: the missing-patch path), System Vitals |
 
 Everything listed passed here: `ruff`, `ruff format`, `pyright`, `eslint`, `prettier`, `tsc`, the
 generated-types check and `pnpm build`. The e2e suites ran under `xvfb-run`.
+
+The real-Ollama tests ran too (an `ollama` binary is on this machine): they passed in every idle run. Twice
+the chat test missed its 60-second budget while I was running other heavy jobs at the same time; I reproduced
+that with busy loops on every core (llama.cpp slows down sharply when its threads have to share cores). The
+reply normally takes about 3 s. The test is unchanged; [HANDOFF.md](HANDOFF.md#environment-notes-learned-the-hard-way)
+now says not to run heavy jobs alongside it.
 
 ### Bugs found and fixed while building Phase 5
 

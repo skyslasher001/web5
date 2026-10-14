@@ -98,6 +98,8 @@ then regenerate.
 **Tests that need a moment**
 - **Real Ollama tests** run when `ollama` is on `PATH` or `UNIVERSE_TEST_OLLAMA` is set; otherwise they're
   skipped. Everything else uses the fake Ollama (`tests/support/fake_ollama.py`, scripted tool calls included).
+- **Don't run heavy jobs next to the real-Ollama tests:** llama.cpp slows down sharply when its threads share
+  cores. A reply that takes 3 s idle missed the 60 s budget with every core busy.
 - **Slow tests:** the Phase 2 done-when test takes about 3 minutes (500 files), and the Phase 4 universe e2e
   seeds 50,000 items. A quiet test run is usually one of these, not a hang.
 
