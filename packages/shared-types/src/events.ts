@@ -29,6 +29,7 @@ export const EVENT_TYPES = {
   "layout.updated": { persisted: true, description: "A cached universe layout was recomputed" },
   "link.created": { persisted: true, description: "Two items were linked" },
   "link.deleted": { persisted: true, description: "A link was removed" },
+  "link.fired": { persisted: false, description: "Two items fired together: you or an agent moved from one to the other (a signal pulse)" },
   "navigator.action": { persisted: false, description: "Navigator executed a command" },
   "chat.message": { persisted: true, description: "A chat message was stored" },
   "chat.started": { persisted: false, description: "A reply started streaming" },

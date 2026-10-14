@@ -484,6 +484,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/forge/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Forge Issues */
+        get: operations["forge_issues_api_v1_forge_issues_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/issues/{issue_id}/fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fix Issue */
+        post: operations["fix_issue_api_v1_forge_issues__issue_id__fix_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/issues/{issue_id}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ignore Issue */
+        post: operations["ignore_issue_api_v1_forge_issues__issue_id__ignore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Forge Proposals */
+        get: operations["forge_proposals_api_v1_forge_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Forge Proposal */
+        get: operations["forge_proposal_api_v1_forge_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_api_v1_forge_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/proposals/{proposal_id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Release
+         * @description Electron main reports what the supervisor did. An 'applied' claim is checked against git.
+         */
+        post: operations["record_release_api_v1_forge_proposals__proposal_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forge Report */
+        post: operations["forge_report_api_v1_forge_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forge/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Forge Status */
+        get: operations["forge_status_api_v1_forge_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -2032,6 +2188,122 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** FixResponse */
+        FixResponse: {
+            /** Task Id */
+            task_id: string;
+        };
+        /** ForgeIssue */
+        ForgeIssue: {
+            /** Count */
+            count: number;
+            /** Detail */
+            detail: string;
+            /** First Seen */
+            first_seen: string;
+            /** Id */
+            id: string;
+            /** Last Seen */
+            last_seen: string;
+            /** Proposal Id */
+            proposal_id: string | null;
+            /** Score */
+            score: number;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "warning" | "error" | "critical";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "error" | "job" | "check" | "report";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "working" | "proposed" | "fixed" | "ignored";
+            /** Title */
+            title: string;
+        };
+        /** ForgeProposal */
+        ForgeProposal: {
+            /** Base Commit */
+            base_commit: string;
+            /** Branch */
+            branch: string;
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Diff */
+            diff: string;
+            /** Diff Sha */
+            diff_sha: string | null;
+            /** Files */
+            files: components["schemas"]["ProposalFile"][];
+            /** Head Commit */
+            head_commit: string | null;
+            /** Id */
+            id: string;
+            /** Issue Id */
+            issue_id: string | null;
+            /** Release */
+            release: string | null;
+            /** Repro Test */
+            repro_test: string | null;
+            /** Reviews */
+            reviews: {
+                [key: string]: unknown;
+            };
+            /** Risk */
+            risk: ("low" | "medium" | "high") | null;
+            /** Rollback Plan */
+            rollback_plan: string;
+            /** Root Cause */
+            root_cause: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "verifying" | "failed" | "ready" | "approved" | "applied" | "rolled_back" | "rejected";
+            /** Task Id */
+            task_id: string | null;
+            /** Title */
+            title: string;
+            /** Touches Protected */
+            touches_protected: boolean;
+            /** Updated At */
+            updated_at: string;
+            /** Verification */
+            verification: {
+                [key: string]: unknown;
+            };
+        };
+        /** ForgeStatus */
+        ForgeStatus: {
+            /** Agent */
+            agent: boolean;
+            /** Agent Reason */
+            agent_reason: string | null;
+            /** Available */
+            available: boolean;
+            /** Daily Cap */
+            daily_cap: number;
+            /** Head */
+            head: string | null;
+            /** Proposals Today */
+            proposals_today: number;
+            /** Reason */
+            reason: string | null;
+            /** Repo */
+            repo: string | null;
+            /** Sentinel */
+            sentinel: boolean;
+            /** Sentinel Reason */
+            sentinel_reason: string | null;
+        };
         /** GpuInfo */
         GpuInfo: {
             /** Cuda Driver */
@@ -2652,6 +2924,13 @@ export interface components {
             /** Status */
             status?: ("active" | "paused" | "done" | "archived") | null;
         };
+        /** ProposalFile */
+        ProposalFile: {
+            /** Path */
+            path: string;
+            /** Status */
+            status: string;
+        };
         /** QueueStats */
         QueueStats: {
             /** By Kind */
@@ -2736,6 +3015,21 @@ export interface components {
             path: string;
             /** Reason */
             reason: string;
+        };
+        /** ReleaseEvent */
+        ReleaseEvent: {
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: "applied" | "rolled_back";
+            /** Release */
+            release: string;
+        };
+        /** ReportRequest */
+        ReportRequest: {
+            /** Text */
+            text: string;
         };
         /** RestoreRequest */
         RestoreRequest: {
@@ -3948,6 +4242,280 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forge_issues_api_v1_forge_issues_get: {
+        parameters: {
+            query?: {
+                status_filter?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeIssue"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fix_issue_api_v1_forge_issues__issue_id__fix_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FixResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ignore_issue_api_v1_forge_issues__issue_id__ignore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeIssue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forge_proposals_api_v1_forge_proposals_get: {
+        parameters: {
+            query?: {
+                status_filter?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeProposal"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forge_proposal_api_v1_forge_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_proposal_api_v1_forge_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_release_api_v1_forge_proposals__proposal_id__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseEvent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forge_report_api_v1_forge_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeIssue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forge_status_api_v1_forge_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ForgeStatus"];
                 };
             };
         };

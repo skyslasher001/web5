@@ -461,6 +461,13 @@ class AgentEngine:
             return f"{output}\n\n— Checked by Critic."
         return f"{output}\n\n— Critic's notes: {verdict}"
 
+    async def review(self, ctx: ToolContext, reviewer: str, instruction: str) -> AgentTask | None:
+        """Have another agent (Critic, Sentinel) review something as a sub-task of the calling task."""
+        if reviewer not in self.agents or reviewer == ctx.agent_id:
+            return None
+        child, _outcome = await self.run(reviewer, instruction, parent=self._state_for(ctx))
+        return child
+
     def _state_for(self, ctx: ToolContext) -> TaskState:
         row = self._conn.execute("SELECT * FROM agent_tasks WHERE id = ?", (ctx.task_id,)).fetchone()
         return TaskState(

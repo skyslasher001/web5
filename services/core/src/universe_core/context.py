@@ -28,6 +28,8 @@ from universe_core.chat import ChatService
 from universe_core.db import Databases
 from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
+from universe_core.forge import Forge
+from universe_core.forge_tools import forge_tools
 from universe_core.mcp_client import MCPManager
 from universe_core.memory import MemoryStore
 from universe_core.protected.audit import AuditWriter
@@ -94,6 +96,7 @@ class CoreContext:
     engine: AgentEngine | None = None
     mcp: MCPManager | None = None
     roster: AgentRoster | None = None
+    forge: Forge | None = None
     safety: object | None = None  # the protected policy engine (policy, permissions, budget, kill switch)
     _hardware: HardwareInfo | None = None
     _hardware_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -175,6 +178,10 @@ class CoreContext:
         ensure_seed_galaxies(dbs.universe, bus)
         ctx.memory = MemoryStore(dbs.universe)
         for tool in builtin_tools(ctx):
+            ctx.tools.add(tool)
+        # Forge (Phase 5, ADR-0014): issues, worktrees, verification, proposals. Its agent YAML is protected.
+        ctx.forge = Forge(settings.index_dir / "universe.db", settings.repo_dir, settings.data_dir)
+        for tool in forge_tools(ctx):
             ctx.tools.add(tool)
         safety, reason = load_safety(ctx)
         if settings.safe_mode:

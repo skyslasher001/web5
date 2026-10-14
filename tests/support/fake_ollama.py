@@ -284,6 +284,58 @@ def _history(messages: list[dict]) -> list[tuple[str, dict, str]]:
     return calls
 
 
+_ISSUE_ID = re.compile(r"Fix issue ([0-9a-f-]{36})")
+_WRONG = re.compile(r"(\w+)\((-?\d+), (-?\d+)\) returns (-?\d+) instead of (-?\d+)")
+_NUMBERED = re.compile(r"^\s*\d+ (.*)$")
+
+
+def _forge_turn(user: str, done: list[tuple[str, dict, str]]) -> tuple[str, list[tuple[str, dict]]]:
+    """Forge's repair loop the way its prompt asks for it: read the issue, find the function, open a worktree,
+    write the failing test, fix the function, verify, propose. It handles one kind of bug report, "f(a, b)
+    returns X instead of Y" for a function whose body is one `return` line, which is all the tests need."""
+    last = {name: (args, result) for name, args, result in done}
+    issue_id = m.group(1) if (m := _ISSUE_ID.search(user)) else ""
+    if "forge__issue" not in last:
+        return "", [("forge__issue", {"issue_id": issue_id})]
+    wrong = _WRONG.search(_payload(last["forge__issue"][1]))
+    if wrong is None:
+        return "I couldn't tell from the issue what's wrong, so I didn't change anything.", []
+    func, a, b, _got, want = wrong.groups()
+    if "repo__search" not in last:
+        return "", [("repo__search", {"pattern": f"def {func}\\("})]
+    path = last["repo__search"][1].split(":", 1)[0]
+    if "repo__read" not in last:
+        return "", [("repo__read", {"path": path})]
+    if "forge__begin" not in last:
+        return "", [("forge__begin", {"title": f"Fix {func}", "issue_id": issue_id})]
+    module = path.removesuffix("/__init__.py").removesuffix(".py").replace("/", ".")
+    test_path = f"tests/test_{func}_regression.py"
+    writes = [args.get("path") for name, args, _r in done if name == "forge__write"]
+    if test_path not in writes:
+        test = f"from {module} import {func}\n\n\ndef test_{func}() -> None:\n    assert {func}({a}, {b}) == {want}\n"
+        return "", [("forge__write", {"path": test_path, "content": test})]
+    if path not in writes:
+        lines = [m.group(1) if (m := _NUMBERED.match(ln)) else ln for ln in last["repo__read"][1].splitlines()[1:]]
+        source, inside = [], False
+        for ln in lines:
+            if ln.startswith(f"def {func}("):
+                inside = True
+            elif inside and ln.strip().startswith("return") and " - " in ln:
+                ln = ln.split("#")[0].rstrip().replace(" - ", " + ")
+                inside = False
+            source.append(ln)
+        return "", [("forge__write", {"path": path, "content": "\n".join(source) + "\n"})]
+    checks = [r for name, _a, r in done if name == "forge__check"]
+    if not checks:
+        return "", [("forge__check", {"repro_test": f"{test_path}::test_{func}"})]
+    if not checks[-1].startswith("Everything passed"):
+        return f"The fix didn't pass verification:\n{checks[-1]}", []
+    if "forge__propose" not in last:
+        cause = f"{func}() subtracted its arguments instead of adding them, so {func}({a}, {b}) gave the wrong result."
+        return "", [("forge__propose", {"root_cause": cause, "risk": "low"})]
+    return f"Proposed a fix for {func}: {last['forge__propose'][1]}", []
+
+
 def scripted_turn(body: dict) -> tuple[str, list[tuple[str, dict]]]:
     messages = body["messages"]
     tools = {t["function"]["name"] for t in body.get("tools") or []}
@@ -293,6 +345,10 @@ def scripted_turn(body: dict) -> tuple[str, list[tuple[str, dict]]]:
     names = [name for name, _a, _r in done]
     if system.startswith("You are Critic"):
         return "OK", []
+    if system.startswith("You are Sentinel"):
+        return "PASS", []
+    if system.startswith("You are Forge"):
+        return _forge_turn(user, done)
     if "[[loop]]" in user:
         return "", [("vault__search", {"query": "same thing"})]
     if "[[unknown-tool]]" in user and not done:

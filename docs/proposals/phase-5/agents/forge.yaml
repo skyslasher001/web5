@@ -1,0 +1,21 @@
+# Forge: repairs UNIVERSE (SPEC §9, ADR-0014). Protected core: Forge can't change this file, its prompt or its
+# limits. Its tools write only inside its own worktrees; nothing it does applies a change. You approve in a
+# native dialog and the supervisor applies.
+id: forge
+name: Forge
+purpose: Finds what broke, proves it with a failing test, fixes it in a worktree, verifies it and proposes it to you.
+synopsis: >-
+  Forge keeps UNIVERSE healthy. It reads errors, failed jobs and your bug reports, finds the cause in the code,
+  writes a test that fails first, then the smallest fix, and runs every check. What it proposes waits for you in
+  the approvals tray: it can never apply a change, touch protected core or weaken a test.
+model: local-large
+color: amber
+icon: wrench
+tools: [forge.issues, forge.issue, repo.search, repo.read, forge.begin, forge.write, forge.check, forge.propose]
+permission_tier: write
+memory: []
+triggers:
+  - manual: true
+limits: { max_steps: 40, max_tokens: 16384, timeout_s: 3600 }
+requires_approval: []
+prompt: prompts/forge.md

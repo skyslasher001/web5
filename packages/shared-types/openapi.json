@@ -1786,6 +1786,394 @@
         "title": "FilterChip",
         "type": "object"
       },
+      "FixResponse": {
+        "properties": {
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "FixResponse",
+        "type": "object"
+      },
+      "ForgeIssue": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "first_seen": {
+            "title": "First Seen",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen": {
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "severity": {
+            "enum": [
+              "warning",
+              "error",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "error",
+              "job",
+              "check",
+              "report"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "working",
+              "proposed",
+              "fixed",
+              "ignored"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "title",
+          "detail",
+          "severity",
+          "count",
+          "status",
+          "score",
+          "first_seen",
+          "last_seen",
+          "proposal_id"
+        ],
+        "title": "ForgeIssue",
+        "type": "object"
+      },
+      "ForgeProposal": {
+        "properties": {
+          "base_commit": {
+            "title": "Base Commit",
+            "type": "string"
+          },
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "diff": {
+            "title": "Diff",
+            "type": "string"
+          },
+          "diff_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Sha"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Id"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release"
+          },
+          "repro_test": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repro Test"
+          },
+          "reviews": {
+            "additionalProperties": true,
+            "title": "Reviews",
+            "type": "object"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          },
+          "rollback_plan": {
+            "title": "Rollback Plan",
+            "type": "string"
+          },
+          "root_cause": {
+            "title": "Root Cause",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "verifying",
+              "failed",
+              "ready",
+              "approved",
+              "applied",
+              "rolled_back",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "touches_protected": {
+            "title": "Touches Protected",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "verification": {
+            "additionalProperties": true,
+            "title": "Verification",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "issue_id",
+          "task_id",
+          "title",
+          "root_cause",
+          "branch",
+          "base_commit",
+          "head_commit",
+          "diff",
+          "diff_sha",
+          "files",
+          "repro_test",
+          "verification",
+          "reviews",
+          "risk",
+          "rollback_plan",
+          "touches_protected",
+          "status",
+          "release",
+          "created_at",
+          "updated_at",
+          "decided_at"
+        ],
+        "title": "ForgeProposal",
+        "type": "object"
+      },
+      "ForgeStatus": {
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "boolean"
+          },
+          "agent_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Reason"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "daily_cap": {
+            "title": "Daily Cap",
+            "type": "integer"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "proposals_today": {
+            "title": "Proposals Today",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "sentinel": {
+            "title": "Sentinel",
+            "type": "boolean"
+          },
+          "sentinel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentinel Reason"
+          }
+        },
+        "required": [
+          "available",
+          "reason",
+          "agent",
+          "agent_reason",
+          "sentinel",
+          "sentinel_reason",
+          "proposals_today",
+          "daily_cap",
+          "repo",
+          "head"
+        ],
+        "title": "ForgeStatus",
+        "type": "object"
+      },
       "GpuInfo": {
         "properties": {
           "cuda_driver": {
@@ -3808,6 +4196,24 @@
         "title": "ProjectPatch",
         "type": "object"
       },
+      "ProposalFile": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "status"
+        ],
+        "title": "ProposalFile",
+        "type": "object"
+      },
       "QueueStats": {
         "properties": {
           "by_kind": {
@@ -4039,6 +4445,45 @@
           "reason"
         ],
         "title": "Rejected",
+        "type": "object"
+      },
+      "ReleaseEvent": {
+        "properties": {
+          "event": {
+            "enum": [
+              "applied",
+              "rolled_back"
+            ],
+            "title": "Event",
+            "type": "string"
+          },
+          "release": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Release",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "release"
+        ],
+        "title": "ReleaseEvent",
+        "type": "object"
+      },
+      "ReportRequest": {
+        "properties": {
+          "text": {
+            "maxLength": 4000,
+            "minLength": 5,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ReportRequest",
         "type": "object"
       },
       "RestoreRequest": {
@@ -6210,6 +6655,368 @@
           }
         },
         "summary": "Events"
+      }
+    },
+    "/api/v1/forge/issues": {
+      "get": {
+        "operationId": "forge_issues_api_v1_forge_issues_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ForgeIssue"
+                  },
+                  "title": "Response Forge Issues Api V1 Forge Issues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forge Issues"
+      }
+    },
+    "/api/v1/forge/issues/{issue_id}/fix": {
+      "post": {
+        "operationId": "fix_issue_api_v1_forge_issues__issue_id__fix_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fix Issue"
+      }
+    },
+    "/api/v1/forge/issues/{issue_id}/ignore": {
+      "post": {
+        "operationId": "ignore_issue_api_v1_forge_issues__issue_id__ignore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeIssue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ignore Issue"
+      }
+    },
+    "/api/v1/forge/proposals": {
+      "get": {
+        "operationId": "forge_proposals_api_v1_forge_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ForgeProposal"
+                  },
+                  "title": "Response Forge Proposals Api V1 Forge Proposals Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forge Proposals"
+      }
+    },
+    "/api/v1/forge/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "forge_proposal_api_v1_forge_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forge Proposal"
+      }
+    },
+    "/api/v1/forge/proposals/{proposal_id}/reject": {
+      "post": {
+        "operationId": "reject_proposal_api_v1_forge_proposals__proposal_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Proposal"
+      }
+    },
+    "/api/v1/forge/proposals/{proposal_id}/release": {
+      "post": {
+        "description": "Electron main reports what the supervisor did. An 'applied' claim is checked against git.",
+        "operationId": "record_release_api_v1_forge_proposals__proposal_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseEvent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Release"
+      }
+    },
+    "/api/v1/forge/reports": {
+      "post": {
+        "operationId": "forge_report_api_v1_forge_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeIssue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forge Report"
+      }
+    },
+    "/api/v1/forge/status": {
+      "get": {
+        "operationId": "forge_status_api_v1_forge_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForgeStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Forge Status"
       }
     },
     "/api/v1/health": {

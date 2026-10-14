@@ -29,6 +29,7 @@ class CoreSettings:
     data_dir: Path = Path()
     vault_dir: Path = Path()
     agents_dir: Path = Path()
+    repo_dir: Path | None = None  # the codebase Forge repairs (a git checkout); None = Forge has nothing to fix
     ollama_url: str = "http://127.0.0.1:11434"
     model_override: str | None = None
     safe_mode: bool = False
@@ -79,6 +80,7 @@ class CoreSettings:
             data_dir=Path(env.get("UNIVERSE_DATA_DIR") or default_data_dir()),
             vault_dir=Path(env.get("UNIVERSE_VAULT_DIR") or default_vault_dir()),
             agents_dir=Path(env.get("UNIVERSE_AGENTS_DIR") or agents_default),
+            repo_dir=Path(env["UNIVERSE_REPO_DIR"]) if env.get("UNIVERSE_REPO_DIR") else repo,
             ollama_url=ollama_url,
             model_override=env.get("UNIVERSE_MODEL_FAST") or None,
             safe_mode=_flag(env.get("UNIVERSE_SAFE_MODE")),
