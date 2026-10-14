@@ -625,6 +625,21 @@ Goal: Forge can fix and upgrade almost anything, yet **cannot** lock you out, de
 | **Prompt injection can't steer it** | Logs, error messages, screenshots and web pages are untrusted data. They're quoted in Forge's context with provenance markers, and since Forge's only side effects are inside a sandboxed worktree, an injected instruction can at worst produce a bad proposal, which then still faces verification, review and you. |
 | **Auto-apply is narrow and off** | Off by default (protected). When you enable it, it only covers categories you choose (e.g. patch-level dependency bumps that pass everything), still snapshots, still watches, and still auto-rolls back. |
 
+*Phase 5 as built (ADR-0014, [PHASE-5.md](PHASE-5.md)):*
+- **Where things are:**
+  - Worktrees live under `<data dir>/forge/worktrees/` on `forge/<id>` branches (not `.forge/`).
+  - Sentinel is `services/core/src/universe_core/protected/sentinel.py`: a deterministic diff review, standard library only.
+  - With the patch, `forge.py`, `forge_tools.py` and `forge_verify.py` are protected too, so Forge can't change how it's checked.
+- **What the build does differently from the design above:**
+  - **Sentinel's checks:** the test-integrity check reads the diff line by line, not an AST.
+  - **Dependencies:** a dependency change is flagged high risk, without a license or advisory lookup yet.
+  - **The watch:** it looks for two Core crashes or safe mode. Error rate, perf and request counts aren't watched yet.
+  - **Before apply:** the backup is a git tag (`universe/pre-release-N`), and Core snapshots its databases before any migration. There's no restic snapshot before apply yet.
+  - **Rollback:** it adds revert commits.
+  - **Proposals:** they aren't batched into a daily digest; the cap of 5 a day and the fingerprint dedup apply.
+  - **Applying** restarts Core only (UI changes need a rebuild).
+- **The record:** Electron main records each apply and rollback in Core, re-syncing from the supervisor's releases whenever Core comes back healthy.
+
 ### 7.3 The same policy engine guards every agent
 
 Every tool call passes `policy.check(agent, tool, args, task)`:

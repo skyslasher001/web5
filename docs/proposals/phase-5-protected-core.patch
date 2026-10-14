@@ -85,7 +85,7 @@ index 0000000..9fd6f11
 +requires_approval: []
 +prompt: prompts/sentinel.md
 diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
-index 5a3eff6..88aef9d 100644
+index 5a3eff6..d2ef76b 100644
 --- a/apps/desktop/src/main/index.ts
 +++ b/apps/desktop/src/main/index.ts
 @@ -35,6 +35,7 @@ import { isAllowedNavigation } from './navigation';
@@ -96,7 +96,15 @@ index 5a3eff6..88aef9d 100644
  import { SupervisorProcess } from './protected/supervisor';
  import { createTray } from './tray';
  import { insideFolder } from './vaultAccess';
-@@ -275,12 +276,16 @@ function registerIpc(): void {
+@@ -133,6 +134,7 @@ supervisor.on('state', (state: DesktopState) => {
+   send(state);
+   const core = state.supervisor?.services.core;
+   if (core?.state === 'healthy') void errorQueue.flush();
++  forge.coreState(core);
+   if (state.supervisor?.safe_mode.active && core?.state === 'failed') showSafeMode('core-failed');
+ });
+ 
+@@ -275,12 +277,16 @@ function registerIpc(): void {
    ipcMain.handle(CH.captureClipboard, saveClipboard);
  
    // ---------- kill switch (protected control) ----------
@@ -119,7 +127,7 @@ index 5a3eff6..88aef9d 100644
  
    ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
    ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
-@@ -315,6 +320,37 @@ function registerIpc(): void {
+@@ -315,6 +321,39 @@ function registerIpc(): void {
    });
  }
  
@@ -148,7 +156,9 @@ index 5a3eff6..88aef9d 100644
 +      cancelId: 0,
 +      noLink: true,
 +    };
-+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
++    const { response } = parent
++      ? await dialog.showMessageBox(parent, options)
++      : await dialog.showMessageBox(options);
 +    return response === 1;
 +  },
 +  log: (event, fields) => log.info(event, fields),
@@ -159,10 +169,10 @@ index 5a3eff6..88aef9d 100644
    setOnSupervisor: (engaged) => supervisor.setKillSwitch(engaged),
 diff --git a/apps/desktop/src/main/protected/forge.test.ts b/apps/desktop/src/main/protected/forge.test.ts
 new file mode 100644
-index 0000000..923b7b2
+index 0000000..d5dd764
 --- /dev/null
 +++ b/apps/desktop/src/main/protected/forge.test.ts
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,195 @@
 +import { describe, expect, it, vi } from 'vitest';
 +import { ForgeControl, notApprovable, type ForgeDeps, type ProposalForApproval } from './forge';
 +
@@ -220,7 +230,11 @@ index 0000000..923b7b2
 +    expect(result).toEqual(expect.objectContaining({ ok: true, release: 'universe/release-1' }));
 +    expect(d.confirm).toHaveBeenCalledOnce();
 +    expect(d.applyRelease).toHaveBeenCalledWith(
-+      expect.objectContaining({ proposal_id: 'p1', head_commit: READY.head_commit, diff_sha: READY.diff_sha }),
++      expect.objectContaining({
++        proposal_id: 'p1',
++        head_commit: READY.head_commit,
++        diff_sha: READY.diff_sha,
++      }),
 +    );
 +    expect(calls).toContain('POST /forge/proposals/p1/release');
 +  });
@@ -252,8 +266,13 @@ index 0000000..923b7b2
 +  });
 +
 +  it('reports a supervisor refusal as it is', async () => {
-+    const { d } = deps({ applyRelease: vi.fn(async () => ({ ok: false, error: 'The branch moved after it was verified' })) });
-+    expect(await new ForgeControl(d).approve('p1')).toEqual({ ok: false, message: 'The branch moved after it was verified' });
++    const { d } = deps({
++      applyRelease: vi.fn(async () => ({ ok: false, error: 'The branch moved after it was verified' })),
++    });
++    expect(await new ForgeControl(d).approve('p1')).toEqual({
++      ok: false,
++      message: 'The branch moved after it was verified',
++    });
 +  });
 +
 +  it('rolls back after the native dialog and tells Core', async () => {
@@ -266,13 +285,95 @@ index 0000000..923b7b2
 +    expect((await new ForgeControl(cancelled.d).rollback('universe/release-1')).ok).toBe(false);
 +    expect(cancelled.d.rollbackRelease).not.toHaveBeenCalled();
 +  });
++
++  it('catches Core up when it was restarting as the release was recorded (regression)', async () => {
++    // Core is down right after the supervisor applies: the record fails, then the next healthy status syncs it.
++    let coreUp = false;
++    let status = 'ready';
++    const posts: unknown[] = [];
++    const { d } = deps({
++      core: vi.fn(async (method: string, _path: string, body?: unknown) => {
++        if (method === 'POST') {
++          if (!coreUp) throw new Error('net::ERR_CONNECTION_REFUSED');
++          posts.push(body);
++          status = 'applied';
++          return {} as never;
++        }
++        return { ...READY, status } as never;
++      }) as ForgeDeps['core'],
++      listReleases: vi.fn(async () => ({
++        available: true,
++        releases: [
++          {
++            tag: 'universe/release-1', commit: 'c', proposal_id: 'p1', title: 'Fix add',
++            created_at: 1_800_000_000, status: 'watching' as const, current: true,
++          },
++        ],
++      })), // prettier-ignore
++    });
++    const forge = new ForgeControl(d);
++    expect((await forge.approve('p1')).ok).toBe(true);
++    expect(d.log).toHaveBeenCalledWith('forge_record_failed', expect.objectContaining({ event: 'applied' }));
++    forge.coreState({ state: 'starting', pid: null });
++    coreUp = true;
++    forge.coreState({ state: 'healthy', pid: 42 });
++    await vi.waitFor(() => expect(posts).toEqual([{ event: 'applied', release: 'universe/release-1' }]));
++    // In step now: the same Core process doesn't sync again.
++    await vi.waitFor(() => expect(d.log).toHaveBeenCalledWith('forge_synced', { recorded: 1 }));
++    forge.coreState({ state: 'healthy', pid: 42 });
++    expect(d.listReleases).toHaveBeenCalledTimes(1);
++  });
++
++  it('records a rollback the supervisor made on its own, and nothing when Core is already in step', async () => {
++    const posts: unknown[] = [];
++    const statuses: Record<string, string> = { p1: 'ready', p2: 'applied', p3: 'rolled_back' };
++    const release = (tag: string, proposal_id: string, status: 'good' | 'rolled_back') => ({
++      tag, commit: 'c', proposal_id, title: tag, created_at: 1_800_000_000, status, current: false,
++    }); // prettier-ignore
++    const { d } = deps({
++      core: vi.fn(async (method: string, path: string, body?: unknown) => {
++        if (method === 'POST') posts.push([path, body]);
++        return { ...READY, status: statuses[path.split('/')[3]!] } as never;
++      }) as ForgeDeps['core'],
++      listReleases: vi.fn(async () => ({
++        available: true,
++        releases: [
++          release('universe/release-1', 'p1', 'rolled_back'),
++          release('universe/release-2', 'p2', 'good'),
++          release('universe/release-3', 'p3', 'rolled_back'),
++        ],
++      })),
++    });
++    expect(await new ForgeControl(d).sync()).toBe(2);
++    expect(posts).toEqual([
++      ['/forge/proposals/p1/release', { event: 'applied', release: 'universe/release-1' }],
++      ['/forge/proposals/p1/release', { event: 'rolled_back', release: 'universe/release-1' }],
++    ]);
++  });
++
++  it('keeps retrying the sync while Core is unreachable', async () => {
++    let up = false;
++    const { d } = deps({
++      core: vi.fn(async () => {
++        if (!up) throw new Error('net::ERR_CONNECTION_REFUSED');
++        return { ...READY, status: 'applied' } as never;
++      }) as ForgeDeps['core'],
++    });
++    const forge = new ForgeControl(d);
++    forge.coreState({ state: 'healthy', pid: 7 });
++    await vi.waitFor(() => expect(d.log).toHaveBeenCalledWith('forge_sync_failed', expect.anything()));
++    up = true;
++    forge.coreState({ state: 'healthy', pid: 7 });
++    await vi.waitFor(() => expect(d.listReleases).toHaveBeenCalledTimes(2));
++    await vi.waitFor(() => expect(d.core).toHaveBeenCalledTimes(2));
++  });
 +});
 diff --git a/apps/desktop/src/main/protected/forge.ts b/apps/desktop/src/main/protected/forge.ts
 new file mode 100644
-index 0000000..b3c5911
+index 0000000..ca57a16
 --- /dev/null
 +++ b/apps/desktop/src/main/protected/forge.ts
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,218 @@
 +// Forge releases in Electron main (SPEC §9, ARCHITECTURE §7.2, ADR-0014). Protected core.
 +//
 +// The only way a Forge change gets applied: you click Approve on a card, this code fetches the proposal from
@@ -280,6 +381,10 @@ index 0000000..b3c5911
 +// shows a native dialog with what it changes and its hash. Renderer code can't click a native dialog, and
 +// neither Core nor the renderer holds the supervisor token. Only after you confirm does the supervisor apply,
 +// redoing every check itself. Rollback asks the same way.
++//
++// The supervisor restarts Core after every apply and rollback (and rolls back on its own if a change breaks
++// Core), so Core is often down right when there's something to record. Each time Core comes back healthy, this
++// brings Core's record in line with the supervisor's releases (`sync`).
 +import type { ForgeDecision, ReleaseInfo, ReleasesState } from '@universe/shared-types';
 +
 +export interface ProposalForApproval {
@@ -310,7 +415,9 @@ index 0000000..b3c5911
 +
 +export interface ForgeDeps {
 +  core<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T>;
-+  applyRelease(body: Record<string, string>): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }>;
++  applyRelease(
++    body: Record<string, string>,
++  ): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }>;
 +  rollbackRelease(tag: string): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }>;
 +  listReleases(): Promise<{ available: boolean; releases: SupervisorRelease[] }>;
 +  /** A native OS dialog; resolves true only when you press the confirm button. */
@@ -347,11 +454,86 @@ index 0000000..b3c5911
 +  ].join('\n');
 +}
 +
++/** How many of the latest releases `sync` looks at. */
++export const SYNC_RELEASES = 20;
++
++interface ProposalState {
++  status: string;
++}
++
 +export class ForgeControl {
++  private syncedPid: number | null = null;
++  private pending = false;
++  private syncing: Promise<number> | null = null;
++
 +  constructor(private readonly deps: ForgeDeps) {}
 +
++  /** Call with Core's state from every supervisor status: syncs once per Core process, and retries what failed. */
++  coreState(core: { state: string; pid: number | null } | undefined): void {
++    if (core?.state !== 'healthy' || core.pid === null || this.syncing) return;
++    if (core.pid === this.syncedPid && !this.pending) return;
++    const pid = core.pid;
++    this.syncing = this.sync()
++      .then((recorded) => {
++        this.syncedPid = pid;
++        this.pending = false;
++        if (recorded) this.deps.log('forge_synced', { recorded });
++        return recorded;
++      })
++      .catch((err: unknown) => {
++        this.pending = true;
++        this.deps.log('forge_sync_failed', { error: String(err) });
++        return 0;
++      })
++      .finally(() => {
++        this.syncing = null;
++      });
++  }
++
++  /**
++   * Record in Core what the supervisor did and Core missed. Core still checks an "applied" claim against git.
++   * Throws when Core or the supervisor can't be reached (try again later); returns how many records it made.
++   */
++  async sync(): Promise<number> {
++    const { available, releases } = await this.deps.listReleases();
++    if (!available) return 0;
++    let recorded = 0;
++    for (const r of releases.slice(-SYNC_RELEASES)) {
++      if (!r.proposal_id) continue;
++      const path = `/forge/proposals/${encodeURIComponent(r.proposal_id)}`;
++      const p = await this.deps.core<ProposalState>('GET', path);
++      let status = p.status;
++      if (status === 'ready' || status === 'approved') {
++        await this.deps.core('POST', `${path}/release`, { event: 'applied', release: r.tag });
++        status = 'applied';
++        recorded += 1;
++      }
++      if (r.status === 'rolled_back' && status === 'applied') {
++        await this.deps.core('POST', `${path}/release`, { event: 'rolled_back', release: r.tag });
++        recorded += 1;
++      }
++    }
++    return recorded;
++  }
++
++  private record(proposalId: string, event: 'applied' | 'rolled_back', tag: string): Promise<void> {
++    return this.deps
++      .core<unknown>('POST', `/forge/proposals/${encodeURIComponent(proposalId)}/release`, {
++        event,
++        release: tag,
++      })
++      .then(() => undefined)
++      .catch((err: unknown) => {
++        this.pending = true; // Core is likely restarting: the next healthy status syncs it
++        this.deps.log('forge_record_failed', { proposal: proposalId, event, error: String(err) });
++      });
++  }
++
 +  async approve(proposalId: string): Promise<ForgeDecision> {
-+    const p = await this.deps.core<ProposalForApproval>('GET', `/forge/proposals/${encodeURIComponent(proposalId)}`);
++    const p = await this.deps.core<ProposalForApproval>(
++      'GET',
++      `/forge/proposals/${encodeURIComponent(proposalId)}`,
++    );
 +    const blocked = notApprovable(p);
 +    if (blocked) return { ok: false, message: blocked };
 +    const yes = await this.deps.confirm({
@@ -370,11 +552,10 @@ index 0000000..b3c5911
 +      diff_sha: p.diff_sha!,
 +      title: p.title,
 +    });
-+    if (!result.ok || !result.release) return { ok: false, message: result.error ?? 'The supervisor refused it.' };
++    if (!result.ok || !result.release)
++      return { ok: false, message: result.error ?? 'The supervisor refused it.' };
 +    const tag = result.release.tag;
-+    await this.deps
-+      .core('POST', `/forge/proposals/${encodeURIComponent(p.id)}/release`, { event: 'applied', release: tag })
-+      .catch((err: unknown) => this.deps.log('forge_record_failed', { error: String(err) }));
++    await this.record(p.id, 'applied', tag);
 +    return { ok: true, message: `Applied as ${tag}. Watching it for 30 minutes.`, release: tag };
 +  }
 +
@@ -386,20 +567,14 @@ index 0000000..b3c5911
 +    const yes = await this.deps.confirm({
 +      title: 'Roll back a change',
 +      message: `Roll back “${release.title}” (${tag})?`,
-+      detail: 'The change is undone with a revert commit; anything committed since stays. The backend restarts.',
++      detail:
++        'The change is undone with a revert commit; anything committed since stays. The backend restarts.',
 +      confirmLabel: 'Roll back',
 +    });
 +    if (!yes) return { ok: false, message: 'You cancelled. Nothing changed.' };
 +    const result = await this.deps.rollbackRelease(tag);
 +    if (!result.ok) return { ok: false, message: result.error ?? 'The supervisor refused it.' };
-+    if (release.proposal_id) {
-+      await this.deps
-+        .core('POST', `/forge/proposals/${encodeURIComponent(release.proposal_id)}/release`, {
-+          event: 'rolled_back',
-+          release: tag,
-+        })
-+        .catch((err: unknown) => this.deps.log('forge_record_failed', { error: String(err) }));
-+    }
++    if (release.proposal_id) await this.record(release.proposal_id, 'rolled_back', tag);
 +    return { ok: true, message: `Rolled back ${tag}.`, release: tag };
 +  }
 +

@@ -4,7 +4,7 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 ## Status
 
-**Phase 4 (Universe interface) is delivered and waiting for review**, with a round of review fixes, smooth zoom and an agent roster added on top. Phases 1 (Foundation), 1.5 (fixes), 2 (Vault + Recall) and 3 (Agent engine) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
+**Phase 5 (Forge + Sentinel v1) is delivered and waiting for review**, together with a protected-core patch for you to apply ([docs/proposals/phase-5-protected-core.md](docs/proposals/phase-5-protected-core.md)). Phases 1 (Foundation), 1.5 (fixes), 2 (Vault + Recall), 3 (Agent engine) and 4 (Universe interface) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
 
@@ -13,6 +13,8 @@ New in Phase 2: a vault you can drop files and folders into, quick capture and s
 New in Phase 3: Core orchestrates four specialists (Navigator, Librarian, Scribe, Critic) with tools on your vault, an approvals tray, permission rules, task traces, memory you approve, MCP tool servers, a hash-chained audit log, budget caps and a kill switch (`Ctrl+Alt+Shift+K`). *"Find my notes about X, summarize them, and link them to project Y"* works end to end. Details, setup and the demo are in [docs/PHASE-3.md](docs/PHASE-3.md).
 
 New in Phase 4: the 3D universe on your own data. Notes are stars, photos planets, songs pulsars and projects galaxies. There are four layouts (Project, Semantic, Time, Graph) with animated transitions, zoom levels from the whole universe down to one item, viewers for notes (with `[[wikilinks]]` and versions), photos, PDFs, code, audio and video, galaxy dashboards, agent probes that fly to what they work on, search that lights up a constellation and flies the camera there, quality presets and a 2D Lite mode. A 50,000-item seed loads and searches; `pnpm bench:universe` measures the FPS budget on your machine. Details, setup and the demo are in [docs/PHASE-4.md](docs/PHASE-4.md). The Agents panel's Roster shows every agent with a synopsis and stats; you can add your own agents and turn agents off. A proposal for making the universe work like a brain is in [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md).
+
+New in Phase 5: Forge repairs UNIVERSE. Report a problem in the Forge panel (or let it pick up errors and failing background jobs), and Forge reproduces it with a failing test, fixes it in its own git worktree, runs lint, types and the test suites, and has Critic and Sentinel review it. The proposal card shows the diff, the tests and both reviews. Only Apply in a native dialog changes your code; the supervisor re-checks everything, watches the change for 30 minutes and rolls it back on its own if Core breaks, and System → Releases rolls it back in one click. The System panel's Vitals show services, loaded models, the queue, errors, Forge and backups at a glance. Details, setup and the demo are in [docs/PHASE-5.md](docs/PHASE-5.md).
 
 ## Setup (Windows 10/11)
 
@@ -76,6 +78,7 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
 | [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md) | Proposal: the universe as a neural network (pathways that strengthen with use, signal pulses), and the voice receive chain |
+| [docs/PHASE-5.md](docs/PHASE-5.md) | Phase 5 delivery: Forge (triage, test-first fixes in worktrees, verification, proposals), Sentinel, apply/watch/rollback, System Vitals; setup, demo script, known limitations |
 | [docs/PHASE-4.md](docs/PHASE-4.md) | Phase 4 delivery: 3D universe, layouts, viewers, dashboards, quality presets, Lite mode; setup, demo script, measured numbers, known limitations |
 | [docs/PHASE-3.md](docs/PHASE-3.md) | Phase 3 delivery: agent engine, approvals, memory, MCP, audit, budget, kill switch; setup, demo script, known limitations |
 | [docs/PHASE-2.md](docs/PHASE-2.md) | Phase 2 delivery: vault, search, command bar, backups; setup, demo script, measured numbers, known limitations |
