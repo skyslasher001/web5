@@ -80,6 +80,8 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
 | [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md) | Proposal: the universe as a neural network (pathways that strengthen with use, signal pulses), and the voice receive chain |
+| [docs/PHASE-6-PLAN.md](docs/PHASE-6-PLAN.md) | Phase 6 (Research) prep: scope, verified dependencies, build order, test strategy, and the egress/privacy/injection review (ADR-0015) |
+| [docs/IDEAS-smooth-and-intelligent.md](docs/IDEAS-smooth-and-intelligent.md) | Ranked ideas toward a smoother, more intelligent universe, mapped to phases |
 | [docs/handoff/PROJECT-BRIEF.md](docs/handoff/PROJECT-BRIEF.md) | Everything about the project so far in one document: vision, status, features, architecture, decisions, rules, open items, roadmap |
 | [docs/handoff/DECISIONS.md](docs/handoff/DECISIONS.md) | Every owner message and decision, verbatim, with what was done |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | Working on UNIVERSE with any AI assistant (Claude Code, Codex, Copilot, Cursor, Windsurf, Cline, Gemini CLI, Aider): the start prompt, how to work and deliver a phase, environment notes, which instruction file each tool reads |
