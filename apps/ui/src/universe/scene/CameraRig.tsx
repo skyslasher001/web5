@@ -194,6 +194,10 @@ export function CameraRig() {
     rig.home();
   }, [kind]);
 
+  // The selection effects follow the layout's kind and whether one exists yet, never its identity: a data
+  // refresh (or a Semantic poll) publishes a new layout object and must not yank the camera back.
+  const hasLayout = layout !== null;
+
   // Fly to a selected galaxy (Galaxy zoom).
   useEffect(() => {
     if (!selectedProject || view !== 'universe' || selectedItem) return;
@@ -202,15 +206,15 @@ export function CameraRig() {
     if (!current || g < 0) return;
     const c = current.galaxyCentres;
     rig.flyTo(new Vector3(c[g * 3], c[g * 3 + 1], c[g * 3 + 2]), Math.max(30, current.galaxyRadii[g]! * 2.8));
-  }, [selectedProject, view, selectedItem, layout]);
+  }, [selectedProject, view, selectedItem, kind, hasLayout]);
 
-  // Fly to a selected item (System zoom: the item and its neighbours).
+  // Fly to a selected item (System zoom: the item and its neighbours), again when the layout changes.
   useEffect(() => {
     if (!selectedItem || view !== 'universe') return;
     const index = useScene.getState().scene.index.get(selectedItem);
     const position = index === undefined ? null : itemPosition(index);
     if (position) rig.flyTo(position, 16);
-  }, [selectedItem, view]);
+  }, [selectedItem, view, kind, hasLayout]);
 
   // Search results: frame the constellation when the results change. A refresh that returns the same
   // results doesn't move the camera (it would undo flying to the one you picked with Enter).

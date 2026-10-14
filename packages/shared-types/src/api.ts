@@ -14,11 +14,47 @@ export interface paths {
         /** Agents */
         get: operations["agents_api_v1_agents_get"];
         put?: never;
+        /** Add Agent */
+        post: operations["add_agent_api_v1_agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/roster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Agent Roster */
+        get: operations["agent_roster_api_v1_agents_roster_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Agent */
+        delete: operations["remove_agent_api_v1_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Agent */
+        patch: operations["update_agent_api_v1_agents__agent_id__patch"];
         trace?: never;
     };
     "/api/v1/agents/{agent_id}/run": {
@@ -1375,6 +1411,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AgentCreate */
+        AgentCreate: {
+            /**
+             * Color
+             * @default cyan
+             */
+            color: string;
+            /** Instructions */
+            instructions: string;
+            /**
+             * Max Steps
+             * @default 12
+             */
+            max_steps: number;
+            /**
+             * Model
+             * @default local-fast
+             * @enum {string}
+             */
+            model: "local-fast" | "local-large";
+            /** Name */
+            name: string;
+            /**
+             * Permission Tier
+             * @default read
+             * @enum {string}
+             */
+            permission_tier: "read" | "write";
+            /** Purpose */
+            purpose: string;
+            /**
+             * Synopsis
+             * @default
+             */
+            synopsis: string;
+            /** Tools */
+            tools?: string[];
+        };
         /** AgentInfo */
         AgentInfo: {
             /** Color */
@@ -1396,6 +1470,69 @@ export interface components {
              * @enum {string}
              */
             status: "idle" | "working" | "disabled";
+        };
+        /** AgentPatch */
+        AgentPatch: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Synopsis */
+            synopsis?: string | null;
+        };
+        /** AgentProfile */
+        AgentProfile: {
+            /** Busy */
+            busy: boolean;
+            /** Color */
+            color: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Icon */
+            icon: string | null;
+            /** Id */
+            id: string;
+            /** Locked Reason */
+            locked_reason: string | null;
+            /** Model */
+            model: string;
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "built-in" | "custom";
+            /** Permission Tier */
+            permission_tier: string;
+            /** Purpose */
+            purpose: string;
+            stats: components["schemas"]["AgentStatsOut"];
+            /** Synopsis */
+            synopsis: string;
+            /** Tools */
+            tools: string[];
+        };
+        /** AgentStatsOut */
+        AgentStatsOut: {
+            /** Avg Steps */
+            avg_steps: number | null;
+            /** Cancelled */
+            cancelled: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Done */
+            done: number;
+            /** Failed */
+            failed: number;
+            /** Last Active */
+            last_active: string | null;
+            /** Success Rate */
+            success_rate: number | null;
+            /** Tasks */
+            tasks: number;
+            /** Tokens In */
+            tokens_in: number;
+            /** Tokens Out */
+            tokens_out: number;
         };
         /** AgentTask */
         AgentTask: {
@@ -2920,6 +3057,123 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentInfo"][];
+                };
+            };
+        };
+    };
+    add_agent_api_v1_agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agent_roster_api_v1_agents_roster_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfile"][];
+                };
+            };
+        };
+    };
+    remove_agent_api_v1_agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_api_v1_agents__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

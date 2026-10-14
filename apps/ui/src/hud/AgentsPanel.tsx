@@ -1,4 +1,5 @@
-// The agent engine: run a task, follow its trace, and look after what agents remember.
+// The agent engine: run a task, follow its trace, look after what agents remember, and manage the roster
+// (every agent with its synopsis and stats; add, turn off, remove).
 import type { AgentTask, Memory, TaskStep } from '@universe/shared-types';
 import { tokens } from '@universe/design-tokens';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { attempt } from '../lib/attempt';
 import { timeAgo } from '../lib/format';
 import { useEngine, useMemories, useTask, useTasks } from '../lib/queries';
 import { useUniverse } from '../state/store';
+import { AgentRoster } from './AgentRoster';
 import { Button, Dot, inputClass, Section } from './ui';
 
 const STATUS_COLOR: Record<AgentTask['status'], string> = {
@@ -437,27 +439,28 @@ function Memories() {
 }
 
 export function AgentsPanel() {
-  const [view, setView] = useState<'tasks' | 'memory'>('tasks');
+  const [view, setView] = useState<'tasks' | 'memory' | 'roster'>('tasks');
   const proposed = useMemories('proposed');
   const waiting = proposed.data?.length ?? 0;
   return (
     <div className="space-y-4" data-testid="agents-panel">
       <EngineNotice />
       <div className="flex gap-1 rounded-md bg-space-2 p-0.5 text-xs">
-        {(['tasks', 'memory'] as const).map((v) => (
+        {(['tasks', 'memory', 'roster'] as const).map((v) => (
           <button
             key={v}
             type="button"
             aria-pressed={view === v}
             onClick={() => setView(v)}
             className={`flex-1 rounded-sm px-2 py-1 capitalize ${view === v ? 'bg-space-3 text-ink-1' : 'text-ink-3'}`}
+            data-testid={`agents-view-${v}`}
           >
             {v}
             {v === 'memory' && waiting > 0 && ` (${waiting})`}
           </button>
         ))}
       </div>
-      {view === 'tasks' ? <Tasks /> : <Memories />}
+      {view === 'tasks' ? <Tasks /> : view === 'memory' ? <Memories /> : <AgentRoster />}
     </div>
   );
 }

@@ -2,6 +2,8 @@
 id: librarian
 name: Librarian
 purpose: Finds, reads and summarizes your notes and files, always citing which items it used.
+synopsis: >-
+  Librarian knows what's in your vault. It searches by keyword and by meaning, reads notes and files, summarizes them and always lists the items it used, so you can check its sources.
 model: local-fast
 color: amber
 icon: library

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAccelerator, formatBytes, formatDuration, timeAgo } from './format';
+import { agentStatsLine, formatAccelerator, formatBytes, formatDuration, timeAgo } from './format';
 
 describe('format', () => {
   it('bytes', () => {
@@ -22,5 +22,39 @@ describe('format', () => {
     expect(formatAccelerator('CommandOrControl+Space')).toBe('Ctrl+Space');
     expect(formatAccelerator('CmdOrCtrl+Shift+K')).toBe('Ctrl+Shift+K');
     expect(formatAccelerator('Alt+F1')).toBe('Alt+F1');
+  });
+});
+
+describe('agent stats', () => {
+  const none = {
+    tasks: 0,
+    done: 0,
+    failed: 0,
+    cancelled: 0,
+    success_rate: null,
+    tokens_in: 0,
+    tokens_out: 0,
+    cost_usd: 0,
+    avg_steps: null,
+    last_active: null,
+  };
+  it('summarize an agent in one line', () => {
+    expect(agentStatsLine(none)).toBe('No tasks yet');
+    const now = Date.parse('2026-10-14T12:00:00Z');
+    const busy = {
+      ...none,
+      tasks: 4,
+      done: 3,
+      failed: 1,
+      success_rate: 0.75,
+      avg_steps: 3.5,
+      tokens_in: 1800,
+      tokens_out: 700,
+      last_active: '2026-10-14T11:00:00Z',
+    };
+    expect(agentStatsLine(busy, now)).toBe(
+      '4 tasks · 75% succeeded · 3.5 steps avg · 2.5k tokens · last 1h ago',
+    );
+    expect(agentStatsLine({ ...none, tasks: 1 }, now)).toBe('1 task');
   });
 });

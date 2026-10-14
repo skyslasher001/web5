@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
@@ -254,31 +255,33 @@ def add_version(
       version under `.universe/versions/`; other files record the edit, but the editor already replaced
       the old bytes in place, so only the history entry remains.
     """
-    row = store.get_row(conn, item_id)
-    if row is None or row["trashed_at"] is not None:
-        return None
-    current = vault.abs(row["path"])
-    source = new_source or current
-    content_hash = sha256_file(source)
-    if content_hash == row["content_hash"]:
-        return None
-    n = int(row["current_version"]) + 1
-    note = note or "changed on disk"
-    if new_source is not None:
-        dest = vault.free_path(current.parent, current.name)
-        tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
-        shutil.copy2(source, tmp)
-        os.replace(tmp, dest)
-        rel_path = version_path = vault.rel(dest)
-        note = "source changed"
-    elif is_markdown(row):
-        version_path = _keep_note_version(vault, item_id, n, current)
-        rel_path = row["path"]
-    else:
-        rel_path = version_path = row["path"]
-        note = "edited in place outside the app (previous bytes not kept)"
-    size = vault.abs(rel_path).stat().st_size
+    # The row is read and the version number taken inside the write transaction (BEGIN IMMEDIATE), so two
+    # writers, in this process or the worker's, can't both claim version n or both record the same change.
     with transaction(conn):
+        row = store.get_row(conn, item_id)
+        if row is None or row["trashed_at"] is not None:
+            return None
+        current = vault.abs(row["path"])
+        source = new_source or current
+        content_hash = sha256_file(source)
+        if content_hash == row["content_hash"]:
+            return None
+        n = int(row["current_version"]) + 1
+        note = note or "changed on disk"
+        if new_source is not None:
+            dest = vault.free_path(current.parent, current.name)
+            tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
+            shutil.copy2(source, tmp)
+            os.replace(tmp, dest)
+            rel_path = version_path = vault.rel(dest)
+            note = "source changed"
+        elif is_markdown(row):
+            version_path = _keep_note_version(vault, item_id, n, current)
+            rel_path = row["path"]
+        else:
+            rel_path = version_path = row["path"]
+            note = "edited in place outside the app (previous bytes not kept)"
+        size = vault.abs(rel_path).stat().st_size
         conn.execute(
             "INSERT INTO versions (id, item_id, n, path, content_hash, size_bytes, created_by, note, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -309,20 +312,57 @@ def split_frontmatter(text: str) -> tuple[str, str]:
     return (match.group(0), text[match.end() :]) if match else ("", text)
 
 
-def edit_note(conn: sqlite3.Connection, vault: Vault, item_id: str, body: str, *, actor: str = "user") -> int | None:
-    """Replace a Markdown note's body (its frontmatter stays) and record a new version. None if unchanged."""
-    row = store.get_row(conn, item_id)
-    if row is None or row["trashed_at"] is not None:
-        raise LookupError(f"no item with id {item_id}")
-    if not is_markdown(row):
-        raise ValueError("only Markdown notes can be edited in UNIVERSE")
-    path = vault.abs(row["path"])
-    front, _old = split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
-    content = front + body.rstrip() + "\n"
-    tmp = path.with_name(f".{path.name}.{uuid7()}.part")
-    tmp.write_text(content, encoding="utf-8", newline="\n")
-    os.replace(tmp, path)
-    return add_version(conn, vault, item_id, new_source=None, actor=actor, note="edited in UNIVERSE")
+class NoteConflict(Exception):
+    """The note changed since the editor opened it; nothing was overwritten."""
+
+    def __init__(self, version: int) -> None:
+        super().__init__(f"The note changed since you opened it (version {version}); reload it before saving")
+        self.version = version
+
+
+_note_locks: dict[str, threading.Lock] = {}
+_note_locks_guard = threading.Lock()
+
+
+def _note_lock(item_id: str) -> threading.Lock:
+    with _note_locks_guard:
+        return _note_locks.setdefault(item_id, threading.Lock())
+
+
+def edit_note(
+    conn: sqlite3.Connection,
+    vault: Vault,
+    item_id: str,
+    body: str,
+    *,
+    actor: str = "user",
+    base_version: int | None = None,
+) -> int | None:
+    """Replace a Markdown note's body (its frontmatter stays) and record a new version. None if unchanged.
+
+    `base_version` is the version the editor opened. If the note moved on since then, or its file was changed
+    on disk and that change isn't recorded yet (an edit in Obsidian the watcher hasn't seen), nothing is
+    written: the on-disk change is recorded as its own version first, so it's never lost, and NoteConflict
+    is raised. Saves of the same note are serialized, so two editors can't both build on one version.
+    """
+    with _note_lock(item_id):
+        row = store.get_row(conn, item_id)
+        if row is None or row["trashed_at"] is not None:
+            raise LookupError(f"no item with id {item_id}")
+        if not is_markdown(row):
+            raise ValueError("only Markdown notes can be edited in UNIVERSE")
+        path = vault.abs(row["path"])
+        if sha256_file(path) != row["content_hash"]:
+            recorded = add_version(conn, vault, item_id, new_source=None, actor="system")
+            raise NoteConflict(recorded or int(row["current_version"]))
+        if base_version is not None and int(row["current_version"]) != base_version:
+            raise NoteConflict(int(row["current_version"]))
+        front, _old = split_frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        content = front + body.rstrip() + "\n"
+        tmp = path.with_name(f".{path.name}.{uuid7()}.part")
+        tmp.write_text(content, encoding="utf-8", newline="\n")
+        os.replace(tmp, path)
+        return add_version(conn, vault, item_id, new_source=None, actor=actor, note="edited in UNIVERSE")
 
 
 def deleted_outside(conn: sqlite3.Connection, vault: Vault, rel_path: str) -> str | None:

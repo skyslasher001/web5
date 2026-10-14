@@ -4,7 +4,7 @@ note editing and similar items. Every handler is `async def`; vault work goes th
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from universe_common.schema import ApiModel
 from universe_common.sqlite import transaction
-from universe_common.timeutil import utcnow
 from universe_core.context import CoreContext
 from universe_vault import ingest, jobs, links, store
 from universe_vault.schemas import ItemSummary
@@ -100,8 +99,14 @@ def _epoch(value: str | None) -> int:
     return int(datetime.fromisoformat(value).timestamp()) if value else 0
 
 
+# A worker can stamp `updated_at` a moment before its transaction commits; a refresh that read in between would
+# miss that row for good with a strict `since`. So the time handed back for the next refresh is a little earlier
+# than now: a row may come twice, which the client's upsert absorbs.
+SINCE_MARGIN = timedelta(seconds=5)
+
+
 def _items_page(conn: sqlite3.Connection, cursor: str | None, limit: int, since: str | None) -> UniverseItems:
-    server_time = utcnow()
+    server_time = (datetime.now(UTC) - SINCE_MARGIN).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     after = int(cursor) if cursor else 0
     where = "i.rowid > ?"
     params: list[object] = [after]
@@ -136,6 +141,9 @@ def _items_page(conn: sqlite3.Connection, cursor: str | None, limit: int, since:
         total=conn.execute("SELECT COUNT(*) FROM items WHERE trashed_at IS NULL").fetchone()[0],
         server_time=server_time,
     )
+    if since and not cursor:
+        # Deleted for good (no longer in `items`): from the tombstones (migration 0005).
+        page.removed += [r["id"] for r in conn.execute("SELECT id FROM removed_items WHERE removed_at > ?", (since,))]
     for r in rows:
         if r["trashed_at"] is not None:
             page.removed.append(r["id"])
@@ -186,14 +194,16 @@ async def universe_links(ctx: Ctx) -> UniverseLinks:
 # ---------- the Semantic layout (computed by a worker, cached per embedding model) ----------
 
 
-def _semantic(conn: sqlite3.Connection, name: str, model: str) -> SemanticLayout:
+def _semantic(conn: sqlite3.Connection, name: str, model: str, digest: str) -> SemanticLayout:
     row = conn.execute(
         "SELECT item_count, data FROM layout_cache WHERE kind = 'semantic' AND model = ?", (name,)
     ).fetchone()
+    # Counted for the exact model (name and digest), like the cache key and the vector table.
     embedded = conn.execute(
         "SELECT COUNT(*) FROM item_stages s JOIN items i ON i.id = s.item_id"
-        " WHERE s.stage = 'embed' AND s.status = 'done' AND s.model = ? AND i.trashed_at IS NULL",
-        (model,),
+        " WHERE s.stage = 'embed' AND s.status = 'done' AND s.model = ? AND s.model_version = ?"
+        " AND i.trashed_at IS NULL",
+        (model, digest),
     ).fetchone()[0]
     if row is None:
         if embedded == 0:
@@ -237,7 +247,7 @@ async def semantic_layout(ctx: Ctx) -> SemanticLayout:
             ids=[],
             positions=[],
         )
-    return await ctx.vdb.run(_semantic, table_name(embedder.name, embedder.digest), embedder.name)
+    return await ctx.vdb.run(_semantic, table_name(embedder.name, embedder.digest), embedder.name, embedder.digest)
 
 
 # ---------- links ----------
@@ -316,13 +326,13 @@ async def note_content(ctx: Ctx, item_id: str) -> NoteContent:
 
 
 def _edit(conn: sqlite3.Connection, ctx: CoreContext, item_id: str, body: NoteEdit) -> tuple[NoteContent, bool]:
-    current = _note(conn, ctx, item_id)
-    if current.version != body.base_version:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"The note changed since you opened it (version {current.version}); reload it before saving",
-        )
-    n = ingest.edit_note(conn, ctx.vault, item_id, body.body, actor="user")
+    _note(conn, ctx, item_id)  # 404 / 422 before anything else
+    try:
+        # The version check, the write and the new version happen together under the note's lock; a change
+        # on disk that isn't recorded yet is kept as its own version and refused (ingest.edit_note).
+        n = ingest.edit_note(conn, ctx.vault, item_id, body.body, actor="user", base_version=body.base_version)
+    except ingest.NoteConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return _note(conn, ctx, item_id), n is not None
 
 

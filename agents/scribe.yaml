@@ -2,6 +2,8 @@
 id: scribe
 name: Scribe
 purpose: Writes summaries, notes and drafts into your vault, in your voice.
+synopsis: >-
+  Scribe writes into your vault: summaries, notes and drafts, in your voice. Every note it writes is a new item, so nothing you wrote is ever overwritten.
 model: local-fast
 color: green
 icon: pen-line

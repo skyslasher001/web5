@@ -1,6 +1,8 @@
 // Typed REST client for Core. Types are generated from the backend's OpenAPI schema.
 import type {
+  AgentCreate,
   AgentInfo,
+  AgentProfile,
   AgentTask,
   Approval,
   AuditEntry,
@@ -244,6 +246,11 @@ export class CoreApi {
 
   // ---------- agent engine ----------
   engine = () => this.call<EngineStatus>('GET', '/engine');
+  agentRoster = () => this.call<AgentProfile[]>('GET', '/agents/roster');
+  addAgent = (body: AgentCreate) => this.call<AgentProfile>('POST', '/agents', body);
+  updateAgent = (id: string, body: { enabled?: boolean; synopsis?: string }) =>
+    this.call<AgentProfile>('PATCH', `/agents/${id}`, body);
+  removeAgent = (id: string) => this.send('DELETE', `/agents/${id}`).then(() => undefined);
   runAgent = (agentId: string, instruction: string) =>
     this.call<{ task_id: string }>('POST', `/agents/${agentId}/run`, { instruction });
   tasks = (q: { agent?: string; status?: string; limit?: number } = {}) =>

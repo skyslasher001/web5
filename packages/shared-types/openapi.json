@@ -1,6 +1,80 @@
 {
   "components": {
     "schemas": {
+      "AgentCreate": {
+        "properties": {
+          "color": {
+            "default": "cyan",
+            "pattern": "^(cyan|violet|amber|rose|green|blue|slate|#[0-9A-Fa-f]{6})$",
+            "title": "Color",
+            "type": "string"
+          },
+          "instructions": {
+            "maxLength": 8000,
+            "minLength": 10,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "max_steps": {
+            "default": 12,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Max Steps",
+            "type": "integer"
+          },
+          "model": {
+            "default": "local-fast",
+            "enum": [
+              "local-fast",
+              "local-large"
+            ],
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "permission_tier": {
+            "default": "read",
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "Permission Tier",
+            "type": "string"
+          },
+          "purpose": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Purpose",
+            "type": "string"
+          },
+          "synopsis": {
+            "default": "",
+            "maxLength": 1200,
+            "title": "Synopsis",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 40,
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "purpose",
+          "instructions"
+        ],
+        "title": "AgentCreate",
+        "type": "object"
+      },
       "AgentInfo": {
         "properties": {
           "color": {
@@ -59,6 +133,212 @@
           "status"
         ],
         "title": "AgentInfo",
+        "type": "object"
+      },
+      "AgentPatch": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "synopsis": {
+            "anyOf": [
+              {
+                "maxLength": 1200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synopsis"
+          }
+        },
+        "title": "AgentPatch",
+        "type": "object"
+      },
+      "AgentProfile": {
+        "properties": {
+          "busy": {
+            "title": "Busy",
+            "type": "boolean"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "locked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Reason"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "built-in",
+              "custom"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "permission_tier": {
+            "title": "Permission Tier",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/AgentStatsOut"
+          },
+          "synopsis": {
+            "title": "Synopsis",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "purpose",
+          "synopsis",
+          "color",
+          "icon",
+          "model",
+          "permission_tier",
+          "tools",
+          "origin",
+          "enabled",
+          "busy",
+          "locked_reason",
+          "stats"
+        ],
+        "title": "AgentProfile",
+        "type": "object"
+      },
+      "AgentStatsOut": {
+        "properties": {
+          "avg_steps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Steps"
+          },
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "last_active": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active"
+          },
+          "success_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Rate"
+          },
+          "tasks": {
+            "title": "Tasks",
+            "type": "integer"
+          },
+          "tokens_in": {
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks",
+          "done",
+          "failed",
+          "cancelled",
+          "success_rate",
+          "tokens_in",
+          "tokens_out",
+          "cost_usd",
+          "avg_steps",
+          "last_active"
+        ],
+        "title": "AgentStatsOut",
         "type": "object"
       },
       "AgentTask": {
@@ -4779,6 +5059,143 @@
           }
         },
         "summary": "Agents"
+      },
+      "post": {
+        "operationId": "add_agent_api_v1_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Agent"
+      }
+    },
+    "/api/v1/agents/roster": {
+      "get": {
+        "operationId": "agent_roster_api_v1_agents_roster_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentProfile"
+                  },
+                  "title": "Response Agent Roster Api V1 Agents Roster Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agent Roster"
+      }
+    },
+    "/api/v1/agents/{agent_id}": {
+      "delete": {
+        "operationId": "remove_agent_api_v1_agents__agent_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Agent"
+      },
+      "patch": {
+        "operationId": "update_agent_api_v1_agents__agent_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agent"
       }
     },
     "/api/v1/agents/{agent_id}/run": {

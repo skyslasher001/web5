@@ -32,6 +32,7 @@ class AgentDefinition(BaseModel):
     id: str
     name: str
     purpose: str
+    synopsis: str = Field(default="", max_length=1200)  # a few sentences for the Agents tab
     model: str  # router tier name, e.g. "local-fast"
     escalate_to: str | None = None
     voice: str | None = None

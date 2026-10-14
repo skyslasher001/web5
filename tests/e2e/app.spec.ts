@@ -321,6 +321,51 @@ test('the agent dock, agents and safety panels show the engine', async () => {
   await page.screenshot({ path: 'test-results/safety.png' });
 });
 
+test('the agent roster shows synopses and stats, and agents can be added, turned off and removed', async () => {
+  await page.getByRole('tab', { name: 'Agents' }).click();
+  await page.getByTestId('agents-view-roster').click();
+  const roster = page.getByTestId('agent-roster');
+  for (const id of ['core', 'navigator', 'librarian', 'scribe', 'critic']) {
+    const card = roster.locator(`[data-agent="${id}"]`);
+    await expect(card.getByTestId('roster-synopsis')).not.toHaveText('No synopsis yet.');
+    await expect(card.getByTestId('roster-stats')).toBeVisible();
+  }
+  await expect(roster.locator('[data-agent="core"]').getByTestId('roster-toggle')).toBeDisabled();
+
+  // Add one: it shows in the roster and in the dock.
+  await page.getByTestId('add-agent').click();
+  await page.getByTestId('add-agent-name').fill('Deal Scout');
+  await page.getByTestId('add-agent-purpose').fill('Finds land-deal notes and lists open questions.');
+  await page
+    .getByTestId('add-agent-synopsis')
+    .fill('Reads your land-deal notes and says what is unanswered.');
+  await page
+    .getByTestId('add-agent-instructions')
+    .fill('List the open questions in the land-deal notes, citing each.');
+  await page.getByTestId('add-agent-save').click();
+  const scout = roster.locator('[data-agent="deal-scout"]');
+  await expect(scout.getByTestId('roster-synopsis')).toHaveText(/what is unanswered/);
+  await expect(page.getByTestId('agent-deal-scout')).toBeVisible();
+
+  // Turn a built-in off (it leaves the dock) and back on; edit a synopsis; remove yours.
+  const librarian = roster.locator('[data-agent="librarian"]');
+  await librarian.getByTestId('roster-toggle').click();
+  await expect(librarian.getByTestId('roster-state')).toHaveText('off');
+  await expect(page.getByTestId('agent-librarian')).toHaveCount(0);
+  await librarian.getByTestId('roster-toggle').click();
+  await expect(page.getByTestId('agent-librarian')).toBeVisible();
+  await scout.getByRole('button', { name: /Edit Deal Scout/ }).click();
+  await scout.getByTestId('roster-synopsis-editor').fill('Land questions, nothing else.');
+  await scout.getByTestId('roster-synopsis-save').click();
+  await expect(scout.getByTestId('roster-synopsis')).toHaveText('Land questions, nothing else.');
+  page.once('dialog', (d) => void d.accept());
+  await scout.getByTestId('roster-remove').click();
+  await expect(scout).toHaveCount(0);
+  await expect(page.getByTestId('agent-deal-scout')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/agent-roster.png' });
+  await page.getByTestId('agents-view-tasks').click();
+});
+
 test('done when: find notes, summarize them and link them to a galaxy, with an approval and an audit trail', async () => {
   const engine = await core<EngineStatus>('GET', '/engine');
   test.skip(!engine.available, `needs the Phase 3 protected-core patch: ${engine.reason}`);

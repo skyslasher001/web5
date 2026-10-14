@@ -34,13 +34,22 @@ CREATE_NO_WINDOW = 0x08000000
 
 
 class VaultDb:
-    """One SQLite connection per thread for vault work done off the event loop."""
+    """One SQLite connection per thread for vault work done off the event loop.
+
+    Cancelling an awaiting task doesn't stop its thread, so `close()` waits for calls still running (closing a
+    connection another thread is using crashes the process) and refuses new ones.
+    """
+
+    CLOSE_WAIT_S = 10.0
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._local = threading.local()
         self._all: list[sqlite3.Connection] = []
         self._lock = threading.Lock()
+        self._idle = threading.Condition(self._lock)
+        self._running = 0
+        self._closed = False
 
     def conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
@@ -53,12 +62,25 @@ class VaultDb:
 
     async def run(self, fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         def call() -> T:
-            return fn(self.conn(), *args, **kwargs)
+            with self._lock:
+                if self._closed:
+                    raise RuntimeError("the vault database is closed (Core is shutting down)")
+                self._running += 1
+            try:
+                return fn(self.conn(), *args, **kwargs)
+            finally:
+                with self._lock:
+                    self._running -= 1
+                    self._idle.notify_all()
 
         return await asyncio.to_thread(call)
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
+            if not self._idle.wait_for(lambda: self._running == 0, timeout=self.CLOSE_WAIT_S):
+                log.warning("vault_db_close_timeout", running=self._running)
+                return  # leave them open rather than crash a thread mid-query; the OS reclaims them
             for conn in self._all:
                 with contextlib.suppress(sqlite3.ProgrammingError):  # its thread is gone; the OS reclaims it
                     conn.close()
@@ -276,7 +298,17 @@ class Governor:
                 jobs.enqueue(self._conn, "reembed", priority=-5, idempotency_key="reembed")
         log.info("embedder_changed", embedder=key or None)
 
+    def queue_wikilink_backfill(self) -> None:
+        """Migration 0005 leaves a flag when the vault had notes from before Phase 4: read their [[wikilinks]]
+        once, in the background."""
+        if self._conn.execute("SELECT 1 FROM settings WHERE key = 'vault.wikilinks_backfill'").fetchone() is None:
+            return
+        with transaction(self._conn):
+            jobs.enqueue(self._conn, "wikilinks", priority=-5, idempotency_key="wikilinks:backfill")
+            self._conn.execute("DELETE FROM settings WHERE key = 'vault.wikilinks_backfill'")
+
     async def housekeeping(self) -> None:
+        self.queue_wikilink_backfill()
         for item_id in purge.expired_trash(self._conn):
             await self._purge_item(item_id)
         jobs.prune_finished(self._conn)

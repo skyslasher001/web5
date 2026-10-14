@@ -1,3 +1,5 @@
+import type { AgentProfile } from '@universe/shared-types';
+
 export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -37,4 +39,16 @@ export function formatAccelerator(accelerator: string): string {
 
 export function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+/** One line of stats: tasks, success rate, average steps, tokens, last active. */
+export function agentStatsLine(s: AgentProfile['stats'], now = Date.now()): string {
+  if (!s.tasks) return 'No tasks yet';
+  const parts = [`${s.tasks} task${s.tasks === 1 ? '' : 's'}`];
+  if (s.success_rate !== null) parts.push(`${Math.round(s.success_rate * 100)}% succeeded`);
+  if (s.avg_steps !== null) parts.push(`${s.avg_steps} steps avg`);
+  const tokens = s.tokens_in + s.tokens_out;
+  if (tokens) parts.push(tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k tokens` : `${tokens} tokens`);
+  if (s.last_active) parts.push(`last ${timeAgo(s.last_active, now)}`);
+  return parts.join(' · ');
 }

@@ -15,7 +15,7 @@ import { tokens } from '@universe/design-tokens';
 import { useEffect, useRef } from 'react';
 import { formatUsd } from '../lib/format';
 import { useBudget, useEngine, useModels, useQueueStats, useVitals } from '../lib/queries';
-import { useInteraction } from '../universe/scene/interaction';
+import { enterTarget, useInteraction } from '../universe/scene/interaction';
 import { useScene } from '../universe/scene/sceneData';
 import { formatBytes } from '../lib/format';
 import { useUniverse, type View } from '../state/store';
@@ -158,10 +158,14 @@ function SearchField() {
           } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
             e.preventDefault();
             const s = useUniverse.getState();
-            const top = useInteraction.getState().results[0];
-            const id = top !== undefined ? useScene.getState().scene.ids[top] : undefined;
+            const inter = useInteraction.getState();
+            const top = enterTarget(inter, query);
+            const id = top !== null ? useScene.getState().scene.ids[top] : undefined;
             // In the universe, Enter flies to the best match; otherwise hand the keyboard to the results list.
+            // Results still showing the previous query don't count: the flight waits for this query's.
             if (e.key === 'Enter' && s.view === 'universe' && id) s.selectItem(id);
+            else if (e.key === 'Enter' && s.view === 'universe' && query.trim())
+              inter.setPendingFly(query.trim());
             else s.focusResults();
           }
         }}

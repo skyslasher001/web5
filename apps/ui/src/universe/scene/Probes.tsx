@@ -3,7 +3,7 @@
 // they all park there (ARCHITECTURE.md §6.6).
 import type { AgentInfo } from '@universe/shared-types';
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   AdditiveBlending,
   BufferAttribute,
@@ -73,11 +73,21 @@ function Probe({ agent, slot, total }: { agent: AgentInfo; slot: number; total: 
       colors.set([color.r * f, color.g * f, color.b * f], k * 3);
     }
     g.setAttribute('color', new BufferAttribute(colors, 3));
-    return new Line(
+    const line = new Line(
       g,
       new LineBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending }),
     );
+    line.frustumCulled = false; // its bounds move every frame; a stale bounding sphere would hide it
+    return line;
   }, [color]);
+  useEffect(
+    () => () => {
+      trail.geometry.dispose();
+      (trail.material as LineBasicMaterial).dispose();
+    },
+    [trail],
+  );
+  useEffect(() => () => geometry.dispose(), [geometry]);
   const position = useRef(new Vector3(8, 0, 0));
   const history = useRef<Vector3[]>([]);
 

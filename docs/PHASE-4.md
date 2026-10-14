@@ -1,6 +1,6 @@
 # Phase 4: Universe interface
 
-Status: **delivered 2026-10-14, waiting for your review.**
+Status: **delivered 2026-10-14; review fixes, smooth zoom and the agent roster added the same day. Waiting for your review.**
 
 Phase 4 turns the Phase 1 starfield into the universe of your own data. Every item is drawn as what it is (a note is a star, a photo a planet, a song a pulsar, a repository a space station), in your galaxies, by meaning, along time, or as a graph of links. You fly around it, open anything in a viewer that unfolds over it, and search lights up the answers and flies you there. Design decisions are in [ADR-0012](adr/0012-phase-4-universe-renderer.md).
 
@@ -53,6 +53,12 @@ Phase 4 turns the Phase 1 starfield into the universe of your own data. Every it
   - **Item:** double-click, or **View** in the panel, opens its viewer.
 
   `Esc` steps back a level, `H` flies home to the Core, and the minimap flies wherever you click.
+- **Smooth, scalable zoom** (added after review):
+  - Scrolling zooms on a log scale toward whatever is under the cursor, gliding to a stop, from the whole universe down to a single star.
+  - Stars fade in and out instead of popping.
+  - Zooming into a galaxy is enough to be "in" it: the breadcrumb follows.
+  - `+` and `−` keys and a zoom slider in the navigator.
+  - Lite mode zooms the same way.
 - **Agents fly**: each agent is a probe with its own shape, colour and trail, flying to the item or galaxy its current tool works on. With the kill switch engaged, they all park at the Core.
 - **Links**: notes link with `[[Title]]` (Obsidian style). A link to a note that doesn't exist yet connects once it does. You can link any two items by hand. Suggested links show dashed (auto-suggestions arrive in Phase 9).
 
@@ -83,6 +89,16 @@ Every viewer has **Ask Core about this**.
   - If frames keep dropping, Auto steps down a preset and tells you.
   - Ultra and High add bloom.
 - **Text size** and **high contrast**.
+
+**Agents panel → Roster** (added after review, [ADR-0013](adr/0013-agents-you-add.md))
+- Every agent with a short synopsis (edit it with the pencil) and its stats: tasks, success rate, average steps, tokens, last active.
+- **Add an agent:**
+  - give it a name, a one-line purpose, a synopsis and instructions;
+  - pick read or read-and-write access, a model and its tools.
+
+  Every tool call still goes through your permission rules and approvals. Your agents live in your data folder, never in the app's files, and Core can delegate to them right away.
+- **Turn agents off and on:** Core and Critic always stay on.
+- **Remove agents you added:** their files are kept aside, not deleted.
 
 **HUD**
 - **Bottom left:** navigator (minimap, breadcrumb, zoom level, layouts, time slider) under the activity ribbon.
@@ -135,6 +151,35 @@ Each has a regression test.
 - **Search vs. Enter:** a search refresh after pressing Enter re-framed all results, undoing the flight to the one you picked.
 - **Lite mode sorted 50k nodes by z-index on every frame,** about 2 s a frame in software rendering. It no longer sorts.
 
+### Review round (2026-10-14): 29 findings, all fixed
+
+Three reviewers went through the Phase 4 code before your approval: backend, 3D scene, and HUD/viewers. Each fix has a regression test that fails on the old code.
+
+- **Notes and your data**
+  - **Data loss:** saving a note could overwrite an edit made outside the app (in Obsidian, say) that the watcher hadn't recorded yet. Now that edit is kept as its own version and the save is refused, with a reload.
+  - **Simultaneous saves:** two saves from the same version could both "win", or fail with an error. Saves are now serialized and the version number is taken inside the write.
+  - **Unsaved edits lost:** opening another item, a backlink or a dashboard, or pressing `Z`, threw away unsaved note edits. Shortcuts no longer act behind an open viewer, and letters typed on a dropdown no longer trigger shortcuts.
+  - **Typing during a save** was overwritten, and a second `Ctrl+S` conflicted with the first. Reopened notes could show stale text.
+- **Links**
+  - A `[[link]]` vanished for good when its target was trashed or deleted. Now it waits for the target again and finds a new note with that name.
+  - `[[slug-style]]` links never resolved.
+  - Notes from before Phase 4 never had their links read. A one-time background job (migration 0005) reads them.
+- **PDFs and songs** didn't load in the packaged app: the security policy blocks the blob reads pdf.js and the waveform used. They now read the bytes directly, and each PDF frees its worker thread on close.
+- **Universe refresh**
+  - The incremental refresh could miss changes: a worker committing just after a refresh read, a multi-page refresh, events arriving during a refresh, items deleted outright.
+- **3D scene**
+  - While a layout recomputed (seconds for Graph), clicks, hovers and search highlights could land on the wrong item.
+  - Layout requests piled up during an import.
+  - A selected galaxy yanked the camera back every few seconds.
+  - A selected item wasn't flown to again after a layout switch.
+  - An emptied vault left the old universe on screen.
+  - Interrupted transitions jumped.
+- **Search**
+  - A single search result was re-selected on every refresh.
+  - `Enter` could fly to the previous search's best match.
+  - The time filter stayed on after leaving the Time layout.
+- **Leaks and safety:** photo textures, bloom passes and probe trails leaked GPU memory. Wikilinks inside code blocks rendered as links and their labels weren't escaped (DOMPurify still sanitized everything). One bad embedding (an infinite value) stopped the Semantic layout from ever updating.
+
 ## Known limitations
 
 - **The FPS budget isn't proven on recommended hardware yet.** This machine has no GPU (see the table above). Please run `pnpm bench:universe` on your PC and send me the output. If a number misses its budget, I'll profile on that data. The most likely levers are the size-based level of detail and the Balanced preset.
@@ -150,7 +195,17 @@ Each has a regression test.
 - **2D views:** Grid and List exist (Phase 2). Table, Timeline, Kanban and Map are not built yet; Map comes with the creative studios (Phase 10).
 - **Tag filter chip:** search with `#tag` in the query instead.
 - **No network/offline pill yet:** nothing goes online until Research (Phase 6).
+- **GPU picking on Windows (unconfirmed):** small points might be harder to hover on some graphics drivers (ANGLE drops points whose centre is off the 1-pixel pick view). Worth a look when you run the benchmark.
 - **Not yet run on Windows** (CI still ends in `startup_failure` before any job runs).
+
+## The neural universe
+
+Your idea of the universe as a brain is thought through in [VISION-neural-universe.md](VISION-neural-universe.md):
+- how to map it so it holds up (links as synapses that strengthen with use, galaxies as synaptic hubs, agents as firing neurons);
+- what to add, phase by phase;
+- the full voice receive chain for Phase 7.
+
+It ends with three decisions for you.
 
 ## What's next: Phase 5 (Forge + Sentinel v1)
 

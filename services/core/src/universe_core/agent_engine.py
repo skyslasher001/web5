@@ -617,6 +617,12 @@ def _iso(dt: datetime) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def specialists_block(agents: dict[str, AgentDefinition], me: str) -> str:
+    """The specialists an orchestrator can delegate to right now (the Agents tab can add or turn them off)."""
+    lines = [f"- {a.id}: {a.purpose}" for a in agents.values() if a.id != me]
+    return "Specialists you can delegate to with agent.delegate:\n" + "\n".join(lines) if lines else ""
+
+
 class _Hooks:
     """TaskHooks for the runtime: Core's stores, events, audit and memory."""
 
@@ -703,4 +709,7 @@ class _Hooks:
         )
 
     def context(self, agent: AgentDefinition, text: str) -> str:
-        return self._engine.memory.context_block(text, scopes_for(agent.id, agent.memory))
+        memory = self._engine.memory.context_block(text, scopes_for(agent.id, agent.memory))
+        if "agent.delegate" not in agent.tools:
+            return memory
+        return "\n\n".join(p for p in (specialists_block(self._engine.agents, agent.id), memory) if p)

@@ -4,7 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import { SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import { useApi } from '../../lib/api-context';
-import { nearestInFront } from './helpers';
+import { nearestInFront, texturesToEvict } from './helpers';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
 import { TYPE_CODE } from './types';
@@ -26,10 +26,13 @@ export function PhotoPlanets({ max = 16 }: { max?: number }) {
   const cache = useRef(new Map<string, Texture | 'missing' | 'loading'>());
   const last = useRef(0);
   const forward = useRef(new Vector3());
+  const alive = useRef(true);
 
   useEffect(() => {
     const textures = cache.current;
+    alive.current = true;
     return () => {
+      alive.current = false; // a thumbnail that arrives later is disposed, not cached
       for (const t of textures.values()) if (t instanceof Texture) t.dispose();
       textures.clear();
     };
@@ -50,21 +53,40 @@ export function PhotoPlanets({ max = 16 }: { max?: number }) {
     for (const index of near.slice(0, max)) {
       const id = scene.ids[index]!;
       const cached = cache.current.get(id);
-      if (cached instanceof Texture) next.push({ index, id, texture: cached });
-      else if (cached === undefined) {
+      if (cached instanceof Texture) {
+        next.push({ index, id, texture: cached });
+        cache.current.delete(id); // most recently shown goes to the end of the eviction order
+        cache.current.set(id, cached);
+      } else if (cached === undefined) {
         cache.current.set(id, 'loading');
         api
           .thumbnail(id)
           .then((blob) => {
             const url = URL.createObjectURL(blob);
-            new TextureLoader().load(url, (texture) => {
-              texture.colorSpace = SRGBColorSpace;
-              cache.current.set(id, texture);
-              URL.revokeObjectURL(url);
-            });
+            new TextureLoader().load(
+              url,
+              (texture) => {
+                URL.revokeObjectURL(url);
+                if (!alive.current) return texture.dispose();
+                texture.colorSpace = SRGBColorSpace;
+                cache.current.set(id, texture);
+              },
+              undefined,
+              () => {
+                URL.revokeObjectURL(url);
+                cache.current.set(id, 'missing'); // an unreadable thumbnail: it stays a point
+              },
+            );
           })
           .catch(() => cache.current.set(id, 'missing')); // no thumbnail (yet): it stays a point
       }
+    }
+    // Keep GPU memory bounded while flying past thousands of photos.
+    const textures = [...cache.current].filter(([, t]) => t instanceof Texture).map(([k]) => k);
+    for (const id of texturesToEvict(textures, new Set(next.map((p) => p.id)))) {
+      const t = cache.current.get(id);
+      if (t instanceof Texture) t.dispose();
+      cache.current.delete(id);
     }
     setPlanets((prev) =>
       prev.length === next.length && prev.every((p, k) => p.id === next[k]!.id) ? prev : next,

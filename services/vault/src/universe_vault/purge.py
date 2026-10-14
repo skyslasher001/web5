@@ -13,7 +13,7 @@ from pathlib import Path
 
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
-from universe_vault import store
+from universe_vault import links, store
 from universe_vault.jobs import iso, now_dt
 from universe_vault.layout import Vault, sidecar_path
 from universe_vault.vectors import VectorStore
@@ -99,6 +99,10 @@ def purge(conn: sqlite3.Connection, vault: Vault, vectors: VectorStore, item_id:
         conn.execute("DELETE FROM items_fts WHERE item_id = ?", (item_id,))
         conn.execute("DELETE FROM items_trigram WHERE item_id = ?", (item_id,))
         conn.execute("UPDATE source_files SET item_id = NULL WHERE item_id = ?", (item_id,))
+        links.unresolve(conn, item_id)  # [[links]] to it survive its deletion, waiting for a new target
+        # The universe's incremental refresh learns about it here (it won't be in `items` any more).
+        conn.execute("INSERT OR REPLACE INTO removed_items (id, removed_at) VALUES (?, ?)", (item_id, utcnow()))
+        conn.execute("DELETE FROM removed_items WHERE removed_at < ?", (iso(now_dt() - timedelta(days=30)),))
         source_id = row["source_id"]
         # Cascades to versions, stages, chunks (and their FTS rows), tags, project membership and jobs.
         conn.execute("DELETE FROM items WHERE id = ?", (item_id,))

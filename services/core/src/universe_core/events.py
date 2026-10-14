@@ -81,6 +81,9 @@ CATALOG: dict[str, EventType] = {
     "agent.completed": _p("An agent finished a task"),
     "agent.failed": _p("An agent task failed"),
     "agent.reloaded": _p("Agent definition reloaded"),
+    "agent.added": _p("The owner added an agent"),
+    "agent.updated": _p("An agent was turned on or off, or its synopsis changed"),
+    "agent.removed": _p("The owner removed one of their agents"),
     # Approvals (Phase 3)
     "approval.requested": _p("Approval requested"),
     "approval.decided": _p("Approval decided"),

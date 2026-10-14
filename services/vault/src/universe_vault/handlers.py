@@ -8,9 +8,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
-from universe_vault import jobs, semantic, sidecar, store
+from universe_vault import jobs, links, semantic, sidecar, store
 from universe_vault.ingest import add_version, deleted_outside, import_file, walk_folder
 from universe_vault.jobs import Job
 from universe_vault.layout import Vault, sha256_file
@@ -361,7 +363,9 @@ def handle_layout(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     started = time.monotonic()
     ids, vectors = ctx.vectors.item_means(name)
     live = {r["id"] for r in ctx.conn.execute("SELECT id FROM items WHERE trashed_at IS NULL")}
-    keep = [i for i, item_id in enumerate(ids) if item_id in live]
+    # A vector with a NaN or infinity (a bad embedding) would break the whole layout: leave that item out.
+    finite = np.isfinite(vectors).all(axis=1) if len(ids) else np.zeros(0, dtype=bool)
+    keep = [i for i, item_id in enumerate(ids) if item_id in live and finite[i]]
     ids = [ids[i] for i in keep]
     positions = semantic.layout(vectors[keep]) if keep else semantic.layout([])
     data = {"ids": ids, "positions": [round(float(v), 2) for v in positions.reshape(-1)]}
@@ -377,6 +381,28 @@ def handle_layout(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     return {"items": len(ids), "seconds": seconds}
 
 
+def handle_wikilinks(ctx: WorkerContext, job: Job) -> dict[str, Any]:
+    """Read the [[wikilinks]] of every live note once (queued by migration 0005 for notes from before Phase 4;
+    new and edited notes get theirs in the extract stage). Small transactions, so the UI never waits."""
+    notes = [
+        (r["id"], r["path"])
+        for r in ctx.conn.execute(
+            "SELECT id, path FROM items WHERE trashed_at IS NULL"
+            " AND (lower(path) LIKE '%.md' OR lower(path) LIKE '%.markdown')"
+        )
+    ]
+    linked = 0
+    for start in range(0, len(notes), 200):
+        with transaction(ctx.conn):
+            for item_id, rel in notes[start : start + 200]:
+                path = ctx.vault.abs(rel)
+                if path.is_file():
+                    linked += links.sync_wikilinks(
+                        ctx.conn, item_id, path.read_text(encoding="utf-8", errors="replace")
+                    )
+    return {"notes": len(notes), "links": linked}
+
+
 HANDLERS: dict[str, Callable[[WorkerContext, Job], dict[str, Any]]] = {
     "import": handle_import,
     "pipeline": handle_pipeline,
@@ -386,4 +412,5 @@ HANDLERS: dict[str, Callable[[WorkerContext, Job], dict[str, Any]]] = {
     "reembed": handle_reembed,
     "vault_file": handle_vault_file,
     "layout": handle_layout,
+    "wikilinks": handle_wikilinks,
 }

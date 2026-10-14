@@ -1,0 +1,109 @@
+// Regression tests for the Phase 4 review fixes in the scene (data refresh, search, textures).
+import type { CoreEvent } from '@universe/shared-types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { CoreApi } from '../../lib/api';
+import { texturesToEvict } from './helpers';
+import { enterTarget } from './interaction';
+import { SceneLoader, useScene } from './sceneData';
+import { shouldAutoSelect } from './useConstellation';
+
+function page(ids: string[], serverTime: string, next: string | null = null) {
+  return {
+    ids,
+    types: ids.map(() => 'note'),
+    titles: ids,
+    galaxies: ids.map(() => null),
+    created: ids.map(() => 1_700_000_000),
+    captured: ids.map(() => 1_700_000_000),
+    opened: ids.map(() => 0),
+    opens: ids.map(() => 0),
+    statuses: ids.map(() => 'active'),
+    idea_stages: ids.map(() => null),
+    pinned: ids.map(() => false),
+    removed: [] as string[],
+    next_cursor: next,
+    total: ids.length,
+    server_time: serverTime,
+  };
+}
+
+const event = (type: string) => ({ type }) as unknown as CoreEvent;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('incremental scene refresh', () => {
+  it('resumes from the first page of a multi-page refresh, so rows changed meanwhile come again', async () => {
+    vi.useFakeTimers();
+    const calls: (string | null | undefined)[] = [];
+    const pages: Record<string, ReturnType<typeof page>> = {
+      'load:': page(['a'], 'T0'),
+      'since:': page(['b'], 'T1', '2'),
+      'since:2': page(['c'], 'T2'),
+    };
+    const api = {
+      universeLinks: async () => ({ ids: [], sources: [], targets: [], kinds: [], states: [] }),
+      universeItems: async ({ cursor, since }: { cursor?: string | null; since?: string | null }) => {
+        calls.push(since);
+        return pages[`${since ? 'since' : 'load'}:${cursor ?? ''}`]!;
+      },
+    } as unknown as CoreApi;
+    const loader = new SceneLoader(api);
+    await loader.load();
+    loader.onEvent(event('item.updated'));
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(useScene.getState().scene.n).toBe(3);
+    pages['since:'] = page([], 'T9');
+    loader.onEvent(event('item.updated'));
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(calls.at(-1)).toBe('T1'); // not T2, the last page's time
+  });
+
+  it('runs again for events that arrived while a refresh was running', async () => {
+    vi.useFakeTimers();
+    let release: () => void = () => {};
+    let refreshes = 0;
+    const api = {
+      universeLinks: async () => ({ ids: [], sources: [], targets: [], kinds: [], states: [] }),
+      universeItems: async ({ since }: { since?: string | null }) => {
+        if (!since) return page(['a'], 'T0');
+        refreshes++;
+        if (refreshes === 1) await new Promise<void>((r) => (release = r));
+        return page([`n${refreshes}`], `T${refreshes}`);
+      },
+    } as unknown as CoreApi;
+    const loader = new SceneLoader(api);
+    await loader.load();
+    loader.onEvent(event('item.created'));
+    await vi.advanceTimersByTimeAsync(1300); // the first refresh starts and waits
+    loader.onEvent(event('item.created')); // arrives while it runs
+    await vi.advanceTimersByTimeAsync(1300); // its timer fires while the first is still busy
+    release();
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(refreshes).toBe(2);
+    expect(useScene.getState().scene.ids).toContain('n2');
+  });
+});
+
+describe('search in the universe', () => {
+  it('flies Enter only to results that answer what is typed now', () => {
+    expect(enterTarget({ results: [7, 3], resultsFor: 'python' }, 'python ')).toBe(7);
+    expect(enterTarget({ results: [7, 3], resultsFor: 'python' }, 'rust')).toBeNull(); // previous query's
+    expect(enterTarget({ results: [], resultsFor: 'rust' }, 'rust')).toBeNull();
+  });
+
+  it('selects a single hit once per search, not on every refresh', () => {
+    expect(shouldAutoSelect('', 'lake', 'id1')).toBe(true);
+    expect(shouldAutoSelect('lake\u0000id1', 'lake', 'id1')).toBe(false);
+    expect(shouldAutoSelect('lake\u0000id1', 'lake lot', 'id1')).toBe(true);
+  });
+});
+
+describe('photo planet textures', () => {
+  it('stay bounded, evicting the least recently shown and never one on screen', () => {
+    const order = ['a', 'b', 'c', 'd', 'e'];
+    expect(texturesToEvict(order, new Set(['a']), 3)).toEqual(['b', 'c']);
+    expect(texturesToEvict(order, new Set(), 5)).toEqual([]);
+  });
+});

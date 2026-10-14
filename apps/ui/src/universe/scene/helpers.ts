@@ -3,7 +3,7 @@
 import type { ItemType } from '@universe/shared-types';
 import { Vector3 } from 'three';
 import { useLayout } from './layoutController';
-import type { SceneData } from './sceneData';
+import { useScene, type SceneData } from './sceneData';
 import { styleFor, TYPE_ORDER } from './types';
 
 const DAY = 86_400;
@@ -102,10 +102,11 @@ export function mulberry32(seed: number): () => number {
   };
 }
 
-/** Where an item is in the current layout. */
+/** Where an item is in the current layout (null while the layout is for an older scene version). */
 export function itemPosition(index: number): Vector3 | null {
   const layout = useLayout.getState().current;
-  if (!layout || index < 0 || index * 3 + 2 >= layout.positions.length) return null;
+  if (!layout || layout.sceneVersion !== useScene.getState().version) return null;
+  if (index < 0 || index * 3 + 2 >= layout.positions.length) return null;
   const p = layout.positions;
   return new Vector3(p[index * 3], p[index * 3 + 1], p[index * 3 + 2]);
 }
@@ -145,4 +146,20 @@ export function zoomLevel(
   if (s.selectedItemId) return 'System';
   if (s.selectedProjectId || zoomedIntoGalaxy) return 'Galaxy';
   return 'Universe';
+}
+
+/** Photo textures kept on the GPU at most (least recently shown go first). */
+export const MAX_TEXTURES = 64;
+
+/** Ids to evict so at most `max` textures stay, oldest first, never one on screen. `order` is oldest first. */
+export function texturesToEvict(order: string[], onScreen: Set<string>, max = MAX_TEXTURES): string[] {
+  const out: string[] = [];
+  let extra = order.length - max;
+  for (const id of order) {
+    if (extra <= 0) break;
+    if (onScreen.has(id)) continue;
+    out.push(id);
+    extra--;
+  }
+  return out;
 }

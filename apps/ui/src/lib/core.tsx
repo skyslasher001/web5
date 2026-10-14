@@ -71,7 +71,15 @@ export function CoreProvider({
               () => {},
             );
         },
-        onEvent: (event) => useUniverse.getState().applyEvent(event),
+        onEvent: (event) => {
+          useUniverse.getState().applyEvent(event);
+          // The roster changed (Agents panel): the dock lists the agents that are on.
+          if (/^agent\.(added|updated|removed)$/.test(event.type))
+            client.agents().then(
+              (a) => useUniverse.getState().setAgents(a),
+              () => {},
+            );
+        },
       });
       socket.start();
     })().catch((err: unknown) => setFatal(err instanceof Error ? err.message : String(err)));

@@ -2,6 +2,8 @@
 id: critic
 name: Critic
 purpose: Checks results for errors, gaps and risky actions before you see them.
+synopsis: >-
+  Critic reads what the other agents produced before you see it: wrong facts, missing pieces, risky actions. It runs automatically after any task that changed something, and it can't change anything itself.
 model: local-fast
 color: rose
 icon: scale

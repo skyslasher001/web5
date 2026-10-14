@@ -234,6 +234,10 @@ export class SceneLoader {
   onEvent(event: CoreEvent): void {
     if (/^(item\.|pipeline\.stage\.completed)/.test(event.type)) this.dirtyItems = true;
     if (/^(link\.|item\.processed|item\.deleted|item\.trashed)/.test(event.type)) this.dirtyLinks = true;
+    this.schedule();
+  }
+
+  private schedule(): void {
     if ((this.dirtyItems || this.dirtyLinks) && this.timer === null) {
       this.timer = setTimeout(() => {
         this.timer = null;
@@ -251,16 +255,17 @@ export class SceneLoader {
     try {
       if (items) {
         let cursor: string | null = null;
-        let next = this.since;
+        // The first page's time: rows changed while later pages were read come again next time.
+        let next: string | null = null;
         do {
           const page: UniverseItems = await this.api.universeItems({ cursor, since: this.since });
           for (const id of page.removed) this.rows.delete(id);
           for (const row of rowsOf(page)) this.rows.set(row.id, row);
-          next = page.server_time;
+          next ??= page.server_time;
           cursor = page.next_cursor ?? null;
           useScene.setState({ total: page.total });
         } while (cursor);
-        this.since = next;
+        this.since = next ?? this.since;
       }
       if (links) this.links = await this.api.universeLinks();
       this.publish();
@@ -270,6 +275,7 @@ export class SceneLoader {
       this.dirtyLinks ||= links;
     } finally {
       this.busy = false;
+      this.schedule(); // events that arrived while this refresh ran
     }
   }
 

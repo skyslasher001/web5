@@ -26,7 +26,7 @@ export function staleQueriesFor(eventType: string): string[] {
   if (eventType.startsWith('approval.')) return ['approvals', 'engine', 'tasks', 'task', 'audit'];
   if (eventType.startsWith('killswitch.')) return ['engine', 'approvals', 'tasks', 'task', 'audit'];
   if (eventType === 'agent.step') return ['task'];
-  if (eventType.startsWith('agent.')) return ['tasks', 'task', 'budget', 'audit'];
+  if (eventType.startsWith('agent.')) return ['tasks', 'task', 'budget', 'audit', 'roster'];
   if (eventType.startsWith('memory.')) return ['memories'];
   if (eventType.startsWith('budget.')) return ['budget'];
   if (eventType.startsWith('permission.')) return ['rules'];

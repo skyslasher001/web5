@@ -2,6 +2,8 @@
 id: navigator
 name: Navigator
 purpose: Finds where things are and shows them to you in the universe.
+synopsis: >-
+  Navigator moves you around the universe: it finds where things are and shows them to you, flying the camera there. It reads but never writes.
 model: local-fast
 color: blue
 icon: compass

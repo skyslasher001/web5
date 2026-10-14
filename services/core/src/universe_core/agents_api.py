@@ -1,4 +1,5 @@
-"""REST for the agent engine (ARCHITECTURE.md §5.1): tasks, approvals, memories, permissions, budget, kill switch.
+"""REST for the agent engine (ARCHITECTURE.md §5.1): the agent roster, tasks, approvals, memories, permissions,
+budget, kill switch.
 
 Permission rules, budget caps and the kill switch belong to the protected policy engine; until the owner
 applies the Phase 3 protected-core patch those endpoints answer 503 with the reason.
@@ -9,8 +10,10 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from universe_agents.registry import AgentConfigError
 from universe_common.schema import ApiModel
 from universe_core.agent_engine import AgentEngine, AgentTask, Approval, EngineUnavailable, TaskDetail
+from universe_core.agent_roster import AgentRoster, AgentStats
 from universe_core.context import CoreContext
 from universe_core.mcp_client import MCPManager, MCPServerInfo, MCPServerRequest
 from universe_core.memory import Memory
@@ -95,6 +98,168 @@ async def engine_status(ctx: Ctx) -> EngineStatus:
         killswitch_engaged=bool(killswitch and killswitch.engaged),
         pending_approvals=len(engine.approvals("pending")),
     )
+
+
+# ---------- the roster (Agents tab): synopsis, stats, adding, turning off, removing ----------
+
+
+class AgentStatsOut(ApiModel):
+    tasks: int
+    done: int
+    failed: int
+    cancelled: int
+    success_rate: float | None
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float
+    avg_steps: float | None
+    last_active: str | None
+
+
+class AgentProfile(ApiModel):
+    id: str
+    name: str
+    purpose: str
+    synopsis: str
+    color: str
+    icon: str | None
+    model: str
+    permission_tier: str
+    tools: list[str]
+    origin: Literal["built-in", "custom"]
+    enabled: bool
+    busy: bool
+    locked_reason: str | None
+    stats: AgentStatsOut
+
+
+class AgentCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=40)
+    purpose: str = Field(min_length=3, max_length=200)
+    synopsis: str = Field(default="", max_length=1200)
+    instructions: str = Field(min_length=10, max_length=8000)  # its system prompt
+    color: str = Field(default="cyan", pattern=r"^(cyan|violet|amber|rose|green|blue|slate|#[0-9A-Fa-f]{6})$")
+    tools: list[str] = Field(default_factory=list, max_length=40)
+    permission_tier: Literal["read", "write"] = "read"
+    model: Literal["local-fast", "local-large"] = "local-fast"
+    max_steps: int = Field(default=12, ge=1, le=40)
+
+
+class AgentPatch(BaseModel):
+    enabled: bool | None = None
+    synopsis: str | None = Field(default=None, max_length=1200)
+
+
+def _roster(ctx: CoreContext) -> AgentRoster:
+    if ctx.roster is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "The agent roster isn't loaded")
+    return ctx.roster
+
+
+def _busy(ctx: CoreContext, agent_id: str) -> bool:
+    return ctx.chat.is_agent_busy(agent_id) or (ctx.engine is not None and ctx.engine.busy(agent_id))
+
+
+def _profiles(ctx: CoreContext) -> list[AgentProfile]:
+    roster = _roster(ctx)
+    stats = roster.stats()
+    out = []
+    for e in roster.entries():
+        a, st = e.agent, stats.get(e.agent.id, AgentStats())
+        out.append(
+            AgentProfile(
+                id=a.id,
+                name=a.name,
+                purpose=a.purpose,
+                synopsis=a.synopsis,
+                color=a.color,
+                icon=a.icon,
+                model=a.model,
+                permission_tier=a.permission_tier,
+                tools=a.tools,
+                origin="custom" if e.origin == "custom" else "built-in",
+                enabled=e.enabled,
+                busy=_busy(ctx, a.id),
+                locked_reason=e.locked_reason,
+                stats=AgentStatsOut(
+                    tasks=st.tasks,
+                    done=st.done,
+                    failed=st.failed,
+                    cancelled=st.cancelled,
+                    success_rate=st.success_rate,
+                    tokens_in=st.tokens_in,
+                    tokens_out=st.tokens_out,
+                    cost_usd=st.cost_usd,
+                    avg_steps=st.avg_steps,
+                    last_active=st.last_active,
+                ),
+            )
+        )
+    return out
+
+
+def _profile(ctx: CoreContext, agent_id: str) -> AgentProfile:
+    for p in _profiles(ctx):
+        if p.id == agent_id:
+            return p
+    raise HTTPException(status.HTTP_404_NOT_FOUND, f"No agent called '{agent_id}'")
+
+
+@router.get("/agents/roster", response_model=list[AgentProfile])
+async def agent_roster(ctx: Ctx) -> list[AgentProfile]:
+    return _profiles(ctx)
+
+
+@router.post("/agents", response_model=AgentProfile, status_code=status.HTTP_201_CREATED)
+async def add_agent(ctx: Ctx, body: AgentCreate) -> AgentProfile:
+    try:
+        agent = _roster(ctx).create(**body.model_dump(), known_tools=set(ctx.tools.names()))
+    except (ValueError, AgentConfigError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    details = {"tools": agent.tools, "permission_tier": agent.permission_tier}
+    ctx.audit.append(actor="user", action="agent.added", target_type="agent", target_id=agent.id, details=details)
+    ctx.bus.publish("agent.added", {"agent_id": agent.id, "name": agent.name}, actor="user")
+    return _profile(ctx, agent.id)
+
+
+@router.patch("/agents/{agent_id}", response_model=AgentProfile)
+async def update_agent(ctx: Ctx, agent_id: str, body: AgentPatch) -> AgentProfile:
+    roster = _roster(ctx)
+    try:
+        roster.entry(agent_id)
+        if body.enabled is False and _busy(ctx, agent_id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "It's working on a task: wait or cancel the task first")
+        if body.enabled is not None:
+            roster.set_enabled(agent_id, body.enabled)
+        if body.synopsis is not None:
+            roster.set_synopsis(agent_id, body.synopsis)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    changed = {"enabled": body.enabled} if body.enabled is not None else {}
+    if body.synopsis is not None:
+        changed["synopsis_edited"] = True
+    ctx.audit.append(actor="user", action="agent.updated", target_type="agent", target_id=agent_id, details=changed)
+    ctx.bus.publish("agent.updated", {"agent_id": agent_id, **changed}, actor="user")
+    return _profile(ctx, agent_id)
+
+
+@router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_agent(ctx: Ctx, agent_id: str) -> None:
+    roster = _roster(ctx)
+    try:
+        roster.entry(agent_id)
+        if _busy(ctx, agent_id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "It's working on a task: wait or cancel the task first")
+        kept = roster.remove(agent_id)
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    details = {"kept_in": str(kept)}
+    ctx.audit.append(actor="user", action="agent.removed", target_type="agent", target_id=agent_id, details=details)
+    ctx.bus.publish("agent.removed", {"agent_id": agent_id}, actor="user")
 
 
 # ---------- tasks ----------

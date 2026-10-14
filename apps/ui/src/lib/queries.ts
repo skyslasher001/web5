@@ -172,6 +172,13 @@ export function useEngine() {
   return useQuery({ queryKey: ['engine'], queryFn: api.engine, enabled: online, refetchInterval: 30_000 });
 }
 
+/** Every agent with its synopsis and stats (the Agents panel's roster). Agent events refresh it. */
+export function useAgentRoster() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['roster'], queryFn: api.agentRoster, enabled: online });
+}
+
 /** Top-level tasks (not specialists' sub-tasks), newest first. Events refresh it (refreshForEvent). */
 export function useTasks() {
   const api = useApi();

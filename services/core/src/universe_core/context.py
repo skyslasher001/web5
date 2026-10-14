@@ -21,6 +21,7 @@ from universe_common.errors import capture_exception
 from universe_common.log import get_logger, register_secret
 from universe_common.timeutil import utcnow
 from universe_core.agent_engine import AgentEngine
+from universe_core.agent_roster import AgentRoster
 from universe_core.agent_tools import builtin_tools
 from universe_core.backups import BackupService
 from universe_core.chat import ChatService
@@ -92,6 +93,7 @@ class CoreContext:
     tools: ToolRegistry = field(default_factory=ToolRegistry)
     engine: AgentEngine | None = None
     mcp: MCPManager | None = None
+    roster: AgentRoster | None = None
     safety: object | None = None  # the protected policy engine (policy, permissions, budget, kill switch)
     _hardware: HardwareInfo | None = None
     _hardware_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -107,6 +109,8 @@ class CoreContext:
         agents = load_agents(settings.agents_dir)
         if "core" not in agents:
             raise RuntimeError(f"agents/core.yaml is missing from {settings.agents_dir}")
+        # Your own agents and the ones you turned off (the Agents tab); `agents` stays the live dict.
+        roster = AgentRoster(dbs.universe, dict(agents), settings.data_dir / "agents", agents)
         ctx_ref: dict[str, CoreContext] = {}
 
         def assignment(tier: str) -> str | None:
@@ -160,6 +164,7 @@ class CoreContext:
             internal_token=internal_token,
         )
         ctx_ref["ctx"] = ctx
+        ctx.roster = roster
         ctx.provider = provider
         ctx.backups = BackupService(
             vault=vault,

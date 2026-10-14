@@ -6,16 +6,29 @@ interface Interaction {
   hovered: number; // item index under the pointer, -1 none
   /** Search results shown as a constellation: item indices in rank order. */
   results: number[];
+  /** The query those results answer (while typing, the previous query's results stay on screen). */
+  resultsFor: string;
+  /** Enter was pressed before the results for this query arrived: fly to its best match when they do. */
+  pendingFly: string | null;
   setHovered(index: number): void;
-  setResults(results: number[]): void;
+  setResults(results: number[], query?: string): void;
+  setPendingFly(query: string | null): void;
 }
 
 export const useInteraction = create<Interaction>()((set) => ({
   hovered: -1,
   results: [],
+  resultsFor: '',
+  pendingFly: null,
   setHovered: (hovered) => set((s) => (s.hovered === hovered ? s : { hovered })),
-  setResults: (results) => set({ results }),
+  setResults: (results, query = '') => set({ results, resultsFor: query }),
+  setPendingFly: (pendingFly) => set({ pendingFly }),
 }));
+
+/** The result Enter should fly to: the best match, but only if the results answer what's typed now. */
+export function enterTarget(s: { results: number[]; resultsFor: string }, typed: string): number | null {
+  return s.resultsFor === typed.trim() && s.results.length ? s.results[0]! : null;
+}
 
 /** Set by ItemPoints once the GPU picking pass is ready: item index at a canvas pixel, or -1. */
 export const picker: { pick: (x: number, y: number) => number } = { pick: () => -1 };

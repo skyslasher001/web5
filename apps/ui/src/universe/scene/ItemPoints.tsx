@@ -129,13 +129,17 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
   const points = useRef<Points>(null);
   const gpu = useRef<Gpu | null>(null);
   const transition = useRef<{ start: number } | null>(null);
-  const shown = useRef<{ ids: string[]; positions: Float32Array } | null>(null);
+  const shown = useRef<{ ids: string[]; from: Float32Array; to: Float32Array } | null>(null);
+  // The scene version the geometry on screen was built from. Until the layout for a newer version arrives
+  // (seconds for Graph), indices from the newer scene (picks, results) would land on the wrong points.
   const builtVersion = useRef(-1);
 
   // The GPU objects live for the component's lifetime; the <points> element gets them once mounted.
   useEffect(() => {
     const created = createGpu();
     gpu.current = created;
+    builtVersion.current = -1; // fresh geometry (a remount): rebuild every attribute
+    shown.current = null;
     if (points.current) {
       points.current.geometry = created.geometry;
       points.current.material = created.material;
@@ -159,18 +163,21 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
     const from = new Float32Array(to.length);
     const prev = shown.current;
     const prevIndex = prev ? new Map(prev.ids.map((id, i) => [id, i])) : null;
+    // Start from where each point is drawn right now, even mid-transition, so nothing jumps.
+    const mix = g.material.uniforms.uMix!.value as number;
     for (let i = 0; i < scene.n; i++) {
       const j = prevIndex?.get(scene.ids[i]!);
-      const src = j !== undefined && prev ? prev.positions : to;
-      const k = j !== undefined ? j : i;
-      from[i * 3] = src[k * 3]!;
-      from[i * 3 + 1] = src[k * 3 + 1]!;
-      from[i * 3 + 2] = src[k * 3 + 2]!;
+      for (let c = 0; c < 3; c++) {
+        from[i * 3 + c] =
+          j !== undefined && prev
+            ? prev.from[j * 3 + c]! + (prev.to[j * 3 + c]! - prev.from[j * 3 + c]!) * mix
+            : to[i * 3 + c]!;
+      }
     }
     g.geometry.setAttribute('position', new BufferAttribute(to, 3));
     g.geometry.setAttribute('aFrom', new BufferAttribute(from, 3));
     g.geometry.computeBoundingSphere();
-    shown.current = { ids: scene.ids, positions: to };
+    shown.current = { ids: scene.ids, from, to };
     const animate = prev !== null && !STILL;
     g.material.uniforms.uMix!.value = animate ? 0 : 1;
     transition.current = animate ? { start: performance.now() } : null;
@@ -180,13 +187,13 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
   useEffect(() => {
     const g = gpu.current;
     const attr = g?.geometry.getAttribute('aState') as BufferAttribute | undefined;
-    if (!g || !attr) return;
+    if (!g || !attr || builtVersion.current !== version) return; // re-run once the matching layout is drawn
     const state = attr.array as Float32Array;
     state.fill(0);
     for (const i of results) if (i < state.length) state[i] = 1;
     attr.needsUpdate = true;
     g.material.uniforms.uDim!.value = results.length ? 1 : 0;
-  }, [results, layout]);
+  }, [results, layout, version]);
 
   // The type chips hide every other type.
   useEffect(() => {
@@ -211,6 +218,7 @@ export function ItemPoints({ sizeMul = 1 }: { sizeMul?: number }) {
     picker.pick = (x, y) => {
       const g = gpu.current;
       if (!g || !g.geometry.getAttribute('position')) return -1;
+      if (builtVersion.current !== useScene.getState().version) return -1; // indices wouldn't match the scene
       const ratio = gl.getPixelRatio();
       const cam = camera as typeof camera & {
         setViewOffset?: (fw: number, fh: number, x: number, y: number, w: number, h: number) => void;

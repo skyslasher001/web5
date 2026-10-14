@@ -19,6 +19,7 @@ export function Bloom({ strength = 0.7 }: { strength?: number }) {
     c.addPass(new OutputPass());
     composer.current = c;
     return () => {
+      for (const pass of c.passes) pass.dispose(); // the composer frees only its own targets
       c.dispose();
       composer.current = null;
     };

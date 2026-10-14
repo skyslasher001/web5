@@ -1,7 +1,9 @@
 """Links between items: the filaments in the universe, note backlinks and the graph layout (ADR-0012).
 
 Notes link with `[[Title]]` (Obsidian style; `[[Title|label]]` and `[[Title#heading]]` work too). A link
-whose target doesn't exist yet is kept by title and resolves when an item with that title appears.
+whose target doesn't exist yet is kept by title and resolves when an item with that title appears. Wikilinks
+keep their target text (`to_title`) after resolving, so when the target is trashed or deleted the link goes
+back to waiting for it instead of disappearing.
 Plain functions over a connection; callers own transactions.
 """
 
@@ -58,17 +60,21 @@ def sync_wikilinks(conn: sqlite3.Connection, item_id: str, text: str) -> int:
         conn.execute(
             "INSERT OR IGNORE INTO links (id, from_id, to_id, to_title, kind, created_by, created_at)"
             " VALUES (?, ?, ?, ?, 'wikilink', 'system', ?)",
-            (uuid7(), item_id, to_id, None if to_id else target, now),
+            (uuid7(), item_id, to_id, target, now),
         )
         count += 1
     return count
 
 
 def resolve_pending(conn: sqlite3.Connection, item_id: str, title: str) -> int:
-    """An item with this title exists now: links that were waiting for it point to it."""
+    """An item with this title exists now: links that were waiting for it point to it. Matches the way
+    `resolve` does: the item's id, its title (any case) or its slug."""
+    slug_row = conn.execute("SELECT slug FROM items WHERE id = ?", (item_id,)).fetchone()
+    slug = slug_row["slug"] if slug_row and slug_row["slug"] else title.lower()
     rows = conn.execute(
-        "SELECT id, from_id FROM links WHERE to_id IS NULL AND to_title = ? COLLATE NOCASE AND from_id != ?",
-        (title, item_id),
+        "SELECT id, from_id FROM links WHERE to_id IS NULL AND from_id != ?"
+        " AND (to_title = ? COLLATE NOCASE OR to_title = ? COLLATE NOCASE OR to_title = ?)",
+        (item_id, title, slug, item_id),
     ).fetchall()
     for row in rows:
         exists = conn.execute(
@@ -77,7 +83,32 @@ def resolve_pending(conn: sqlite3.Connection, item_id: str, title: str) -> int:
         if exists:
             conn.execute("DELETE FROM links WHERE id = ?", (row["id"],))
         else:
-            conn.execute("UPDATE links SET to_id = ?, to_title = NULL WHERE id = ?", (item_id, row["id"]))
+            conn.execute("UPDATE links SET to_id = ? WHERE id = ?", (item_id, row["id"]))
+    return len(rows)
+
+
+def unresolve(conn: sqlite3.Connection, item_id: str) -> int:
+    """The item was trashed or is being deleted: wikilinks to it wait for their target again (another live
+    item with that name, if there is one, or the next one to appear). Manual links stay; they're hidden while
+    the item is in the trash and removed with it."""
+    rows = conn.execute(
+        "SELECT l.id, l.from_id, COALESCE(l.to_title, i.title) AS target FROM links l"
+        " JOIN items i ON i.id = l.to_id WHERE l.to_id = ? AND l.kind = 'wikilink'",
+        (item_id,),
+    ).fetchall()
+    for row in rows:
+        other = resolve(conn, row["target"])
+        if other in (row["from_id"], item_id):  # never itself (a live item being deleted) or a self-link
+            other = None
+        taken = conn.execute(
+            "SELECT 1 FROM links WHERE from_id = ? AND kind = 'wikilink' AND"
+            " (to_id = ? OR (to_id IS NULL AND to_title = ? COLLATE NOCASE)) AND id != ?",
+            (row["from_id"], other, row["target"], row["id"]),
+        ).fetchone()
+        if taken:
+            conn.execute("DELETE FROM links WHERE id = ?", (row["id"],))
+        else:
+            conn.execute("UPDATE links SET to_id = ?, to_title = ? WHERE id = ?", (other, row["target"], row["id"]))
     return len(rows)
 
 

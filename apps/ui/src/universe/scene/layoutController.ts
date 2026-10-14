@@ -31,6 +31,10 @@ export class LayoutController {
   private cache = new Map<string, PlacedLayout>();
   private wanted: { kind: Layout; scene: SceneData; version: number } | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
+  // At most one worker computation in flight; while it runs, only the newest request waits (an import can
+  // bump the scene every second or two, and a Graph layout at 50k takes seconds).
+  private running = false;
+  private next: { kind: LayoutKind; scene: SceneData; version: number } | null = null;
 
   constructor(private readonly api: CoreApi) {}
 
@@ -67,13 +71,22 @@ export class LayoutController {
       return;
     }
     if (scene.n === 0) {
-      useLayout.setState({ current: null, computing: null, notice: null });
+      // An empty layout, not null: what was drawn before has to go (the last items were trashed).
+      const empty: PlacedLayout = {
+        positions: new Float32Array(0),
+        galaxyCentres: new Float32Array(0),
+        galaxyRadii: new Float32Array(0),
+        extent: 300,
+        kind,
+        sceneVersion: version,
+      };
+      useLayout.setState({ current: empty, computing: null, notice: null });
       return;
     }
     useLayout.setState({ computing: kind });
     if (kind !== 'semantic') {
-      const response = await this.compute(kind, scene);
-      this.accept(kind, version, response.result, null);
+      this.next = { kind, scene, version };
+      if (!this.running) void this.drain();
       return;
     }
     try {
@@ -92,7 +105,7 @@ export class LayoutController {
       const fallback = await this.projectFor(scene, version);
       if (!this.isWanted('semantic', version)) return;
       useLayout.setState({
-        current: { ...fallback, kind: 'project' },
+        current: fallback, // the same object on every poll, so nothing downstream rebuilds
         computing: semantic.status === 'computing' ? 'semantic' : null,
         notice: semantic.reason ?? 'The Semantic layout is not available yet.',
       });
@@ -104,6 +117,21 @@ export class LayoutController {
         computing: null,
         notice: `Semantic layout failed to load: ${err instanceof Error ? err.message : String(err)}`,
       });
+    }
+  }
+
+  private async drain(): Promise<void> {
+    this.running = true;
+    try {
+      while (this.next) {
+        const job = this.next;
+        this.next = null;
+        if (!this.isWanted(job.kind, job.version)) continue; // superseded while it waited
+        const response = await this.compute(job.kind, job.scene);
+        this.accept(job.kind, job.version, response.result, null);
+      }
+    } finally {
+      this.running = false;
     }
   }
 

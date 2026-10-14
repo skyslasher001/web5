@@ -9,5 +9,8 @@ describe('engine query refresh', () => {
     expect(staleQueriesFor('killswitch.engaged')).toContain('engine');
     expect(staleQueriesFor('memory.proposed')).toEqual(['memories']);
     expect(staleQueriesFor('item.created')).toEqual([]);
+    // The roster's stats and list follow agent events (a task finished, an agent added or turned off).
+    expect(staleQueriesFor('agent.completed')).toContain('roster');
+    expect(staleQueriesFor('agent.added')).toContain('roster');
   });
 });

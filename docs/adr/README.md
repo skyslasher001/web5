@@ -31,3 +31,4 @@ Template:
 | [0010](0010-phase-2-vault-pipeline.md) | Phase 2 vault pipeline: workers under Core, Ollama embeddings, staged model roles | Accepted |
 | [0011](0011-phase-3-agent-engine.md) | Phase 3 agent engine: loop, approvals, protected policy, minimal MCP client | Accepted |
 | [0012](0012-phase-4-universe-renderer.md) | Phase 4 universe: scene data, layouts, renderer, Lite mode and viewers | Accepted |
+| [0013](0013-agents-you-add.md) | Agents you add: the roster, custom agents and turning agents off | Accepted |

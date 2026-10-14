@@ -2,6 +2,8 @@
 id: core
 name: Core
 purpose: Orchestrator and your main point of contact. Plans, delegates, merges.
+synopsis: >-
+  Core is the one you talk to. It plans the work, hands pieces to the specialists, checks what comes back and gives you one answer. It can also file items into galaxies and write notes itself, within the permissions and approvals you set.
 model: local-fast # router tier, resolved to an installed model
 escalate_to: local-large
 voice: calm-neutral # resolved to an installed TTS voice (Phase 7)

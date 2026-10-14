@@ -220,7 +220,10 @@ def reindex_item(conn: sqlite3.Connection, item_id: str) -> None:
     conn.execute("DELETE FROM items_fts WHERE item_id = ?", (item_id,))
     conn.execute("DELETE FROM items_trigram WHERE item_id = ?", (item_id,))
     row = get_row(conn, item_id)
-    if row is None or row["trashed_at"] is not None:
+    if row is None:
+        return
+    if row["trashed_at"] is not None:
+        links.unresolve(conn, item_id)  # wikilinks to it wait for it again
         return
     tags = " ".join(
         r["name"]
