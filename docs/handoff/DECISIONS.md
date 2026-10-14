@@ -36,6 +36,7 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 | 15 | 2026-10-14 03:27 | Answers to three questions: **"Approve 4, start Phase 5 (Recommended)"**; to *"Should links that strengthen with use (the 'synapses': paths you use get brighter, unused ones fade) go into SPEC as part of Phase 9, with usage data collected from now on?"* **"Yes, add to SPEC (Recommended)"**; to *"Should I add signal pulses along the links and have agents fly the pathways, as a small Phase 4 polish item?"* **"Yes, build them (Recommended)"** | Phase 4 approved. SPEC amended: neural pathways in §7, §10 and Phase 9. Link firings are recorded from now on (`link_activity` table, `link.fired` event) so Phase 9 has history to learn from. Signal pulses travel along links, and agent probes fly the link paths (`99867fe`). Vision items 4–8 stay parked for their phases. |
 | 16 | 2026-10-14 03:28 (sent mid-task) | "i also want to be port this project and instructions to other ai as well so make that possible at this stage once you finish phase 5" | After Phase 5 was delivered (`aa30b1b` … `eeb7c4f`): [`docs/HANDOFF.md`](../HANDOFF.md) with a start prompt for any assistant, plus pointer files for Copilot, Gemini CLI and Aider. `AGENTS.md` became the single source of truth (`5224182`). |
 | 17 | 2026-10-14 05:31 | "we are going to get everything ready to be exported and handed off  to various other ai. that is the main focus make sure to relay all and every information thus far about the project. make evrything downloadable or able to be accessed by the ai I select" | This handoff package: [`PROJECT-BRIEF.md`](PROJECT-BRIEF.md) (everything so far in one document), this log, [`llms.txt`](../../llms.txt), and `pnpm handoff`. That command builds a downloadable zip with single-file context packs, the full source and the full git history (see [HANDOFF.md](../HANDOFF.md#getting-the-project-to-another-ai)). |
+| 18 | 2026-10-14 | Answer to *"Should I open a pull request to bring UNIVERSE into main?"* (main still holds the old Bolt landing page): **"Leave it on the branch"** | No pull request. All work stays on `claude/phase-0-delivery-zuqlfx`, and every handoff document tells AIs to use that branch. Don't open a PR or push to `main` unless the owner asks. |
 
 ## Standing decisions (still in force)
 
@@ -44,7 +45,8 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 | Local-first Windows desktop app; data never leaves the machine unless the owner enables it | SPEC | SPEC §3 |
 | Permissive licenses only; GPL/AGPL/non-commercial flagged with an alternative | SPEC | SPEC §3, [ADR-0008](../adr/0008-license-policy.md) |
 | Mic, screen and camera off by default | SPEC | SPEC §3 |
-| Replace the old Bolt site in this repo with the monorepo | row 2 | `main` still holds the old site; the work is on `claude/phase-0-delivery-zuqlfx` |
+| Replace the old Bolt site in this repo with the monorepo | row 2 | in history; `main` still holds the old site |
+| All work stays on the branch `claude/phase-0-delivery-zuqlfx`; no PR into `main` for now | row 18 | every handoff document names the branch |
 | DevMind: build fresh; port its pieces once its repo is shared | row 2 | still not shared |
 | Container runtime: Podman + WSL2 | row 2 | needed from Phase 6 (SearXNG) and for real Forge isolation |
 | Voice: English only | row 2 | Phase 7 |
@@ -66,7 +68,5 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 - **The `pre-universe` tag** (the old Bolt page): the build environment couldn't push tags. Command in
   [PHASE-1.5.md](../PHASE-1.5.md#known-limitations-still-open).
 - **The DevMind repository**, if its pieces should be reused.
-- **Which branch should be the default.** `main` still holds the old Bolt site; all UNIVERSE work is on
-  `claude/phase-0-delivery-zuqlfx`.
 - **Vision items 4–8** (spreading activation, a Cluster zoom level, dream replay, visible working memory,
   system state as body signals): parked for their phases unless the owner moves them earlier.

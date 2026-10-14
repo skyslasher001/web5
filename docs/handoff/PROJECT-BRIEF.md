@@ -333,8 +333,8 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
    then.
 4. Fix GitHub Actions. CI ends in `startup_failure` before any job runs: an Actions setting or minutes and
    billing on this private repo. **Nothing has run on Windows yet.**
-5. Decide the default branch. `main` still holds the old Bolt landing page; all UNIVERSE work is on
-   `claude/phase-0-delivery-zuqlfx`.
+5. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
+   work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
 6. Push the `pre-universe` tag (the build environment couldn't push tags):
    `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`.
 7. Share the DevMind repository if its pieces should be reused.
