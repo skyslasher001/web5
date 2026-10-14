@@ -120,7 +120,7 @@ Versions are the current releases on npm / PyPI as of **2026-10-12**; licenses c
 | --- | --- | --- | --- |
 | Desktop shell | **Electron 44** + electron-builder 26 / electron-updater 6 (installer: Phase 12). Chromium background traffic disabled ([ADR-0009](adr/0009-electron-privacy-hardening.md)) | Chromium everywhere means WebGL/WebGPU parity, WebRTC echo cancellation and desktopCapturer, plus the same stack as DevMind for reuse. Tauri's RAM saving doesn't matter against a 1 GB idle budget. ([ADR-0001](adr/0001-process-model-and-supervisor.md)) | MIT |
 | Frontend | **React 19.3 + TypeScript 6.0 + Vite 8** | TS pinned to 6.0 because typescript-eslint 8.71 supports `<6.1`. Move to TS 7 (native compiler) when lint tooling catches up. ([ADR-0007](adr/0007-runtime-pins.md)) | MIT / Apache-2.0 / MIT |
-| 3D universe | three 0.186, @react-three/fiber 9.8 (Phase 1); drei 10.7 and postprocessing 6.39 added when Phase 4 needs them | InstancedMesh + LOD + GPU picking cover 50k items. R3F keeps the scene declarative. Labels are a DOM overlay, not extra React roots. | MIT / MIT / MIT / Zlib |
+| 3D universe | three 0.186, @react-three/fiber 9.8 · Lite: sigma 3.0.3 + graphology 0.26 · Graph layout: d3-force-3d 3.0.6 | *Phase 4 as built (ADR-0012):* one `THREE.Points` draw with procedural shapes per type, size-based LOD and GPU picking cover 50k items; layouts run in a Web Worker; bloom from three's own `UnrealBloomPass` (no drei/postprocessing). Labels are a DOM overlay, not extra React roots. | MIT |
 | 2D Lite graph | **sigma 4 + graphology** | WebGL 2D graph built for large node counts. Chosen over force-graph because rendering and layout are separate (layout runs in a worker). | MIT |
 | UI kit | Radix primitives, Tailwind 4.3, Motion 14, cmdk 1.1, lucide-react icons | Accessible primitives. Tailwind v4 themes from CSS variables generated from the design tokens. | MIT / MIT / MIT / MIT / ISC |
 | UI state & data | Zustand 5, TanStack Query 5, TanStack Virtual 3 | Small stores. Server cache, invalidated by WS events. Virtualized lists everywhere. | MIT |
@@ -148,7 +148,7 @@ Versions are the current releases on npm / PyPI as of **2026-10-12**; licenses c
 | Audio metadata | **tinytag** (instead of mutagen) **Δ** | mutagen is GPL-2.0+. tinytag (MIT) reads ID3/MP4/FLAC/OGG/WAV tags. | MIT |
 | Media decode | PyAV 19 (bundled LGPL FFmpeg) · LGPL FFmpeg build as a separate binary | Audio from video for transcription, plus thumbnails. LGPL is fine when dynamically linked or run as a separate process. | BSD-3 / LGPL-2.1+ |
 | Images | Pillow 12, ImageHash 4 (pHash dedupe), pillow-heif (HEIC) ⚠ | Standard stack. iPhone HEIC needs libheif (§2.2). | MIT-CMU / BSD-2 / BSD-3 |
-| Semantic layout | umap-learn 0.5 (backend, cached) · umap-js for small incremental updates | 50k-point UMAP belongs off the UI thread. Positions are cached per embedding model. | BSD-3 / MIT |
+| Semantic layout | **numpy** in the vault worker process (random projection → PCA → k-means → cluster-centre PCA to 3D), cached in `layout_cache` **Δ** | *Phase 4 as built (ADR-0012):* 50k in ≈14 s with no new dependency; umap-learn (≈200 MB native deps, minutes per layout) can replace it behind the same `/layout/semantic` endpoint if clustering is poor. | BSD-3 |
 | Audio analysis (Phase 10) | librosa 1.0, Demucs 4, basic-pitch 0.4 | Per SPEC. | ISC / MIT / Apache-2.0 |
 | Web search / fetch (Phase 6) | SearXNG (container, unmodified) ⚠ · trafilatura 2.3 · Playwright 1.63 · ddgs fallback | SearXNG is AGPL but runs unmodified as a separate service, so no copyleft reaches our code. | AGPL-3.0 / Apache-2.0 / Apache-2.0 / MIT |
 | Sandbox & sidecars | **Podman on WSL2** (default) or Docker Desktop: rootless containers, `--network none`, read-only bind mounts | The only real isolation on Windows Home. Choice pending (Question 3). | Apache-2.0 (Podman) |
@@ -510,6 +510,8 @@ MCP servers are wrapped as `Tool`s (tier defaults to `write`, `side_effects=True
 | Z-layers | universe 0 · HUD 10 · panels 20 · command bar 30 · approvals/dialogs 40 · consent indicators 50 (always on top) |
 
 Agents get one of the 8 hues plus a unique *probe shape* (so two agents sharing cyan stay distinguishable without relying on colour).
+
+*Phase 4 as built:* quality presets Ultra / High / Balanced / Lite (Auto picks from the GPU and steps down when frames drop; software rendering → Lite). Lite is a sigma 2D graph of the same data, sharing selection, search and viewers. Viewers (`hud/viewers/`) open over the dimmed universe; the navigator card (minimap, breadcrumb, zoom level, layouts, time slider) sits bottom left. Measured numbers are in [PHASE-4.md](PHASE-4.md).
 
 ### 6.3 Main screen wireframe (Universe view, HUD visible)
 

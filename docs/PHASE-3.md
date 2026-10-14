@@ -89,4 +89,7 @@ Each has a regression test.
 
 ## What's next: Phase 4 (Universe interface)
 
+Delivered 2026-10-14: see [PHASE-4.md](PHASE-4.md).
+
+
 SPEC §25: the 3D universe on real data, celestial mapping, four layouts, zoom levels with LOD, the complete HUD, item viewers, agent probes, constellation results, quality presets and Lite mode. Useful from you now: review Phase 3, try the demo with `gemma4:e4b` or `qwen3:8b`, and fix the Actions setting so Windows CI runs.

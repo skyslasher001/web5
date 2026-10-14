@@ -52,6 +52,8 @@ Checked for this decision (2026-10-13), all permissive, each pinned to the newes
 - One draw call for every item keeps 50k items cheap. The cost moves into the shader and the picking pass, which is a second, tiny draw.
 - The semantic layout is an approximation. If it clusters badly on real embeddings, `umap-learn` can replace step 3 behind the same endpoint.
 - **Flag (performance):** CI renders in software (SwiftShader), so the FPS budget is measured there and reported as measured. The recommended-hardware number has to be measured on your PC.
+- Measured in software rendering at 50k (PHASE-4.md): 3D Balanced ≈30 FPS in the Project layout, 3D High ≈4 FPS, Graph layout 11 s, Semantic layout 13.6 s. Software rendering therefore maps to Lite under Auto.
+- sigma's z-index sorting is off in Lite: sorting 50k nodes cost about 2 s per frame in software.
 - New UI weight: pdf.js is the largest piece. It and highlight.js load only when a viewer needs them.
 
 ## Alternatives considered

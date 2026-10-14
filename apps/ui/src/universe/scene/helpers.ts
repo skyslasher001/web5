@@ -114,7 +114,13 @@ export function itemPosition(index: number): Vector3 | null {
 export const rig = {
   flyTo: (_target: Vector3, _distance: number): void => {},
   home: (): void => {},
-  state: () => ({ position: [0, 0, 0] as number[], target: [0, 0, 0] as number[], flying: false }),
+  state: () => ({
+    position: [0, 0, 0] as number[],
+    target: [0, 0, 0] as number[],
+    flying: false,
+    /** The last finished flight: planned and actual duration (ms). */
+    lastFlight: null as { planned: number; actual: number } | null,
+  }),
 };
 
 /** Universe → Galaxy → System (an item and its neighbours) → Item (its viewer is open) (SPEC §7). */

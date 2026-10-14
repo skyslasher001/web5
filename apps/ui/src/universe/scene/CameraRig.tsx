@@ -28,6 +28,7 @@ export function CameraRig() {
   const { camera, gl } = useThree();
   const controls = useRef<OrbitControls | null>(null);
   const flight = useRef<Flight | null>(null);
+  const lastFlight = useRef<{ planned: number; actual: number } | null>(null);
   const placedOnce = useRef(false);
   const layout = useLayout((s) => s.current);
   const selectedItem = useUniverse((s) => s.selectedItemId);
@@ -78,6 +79,7 @@ export function CameraRig() {
       position: camera.position.toArray(),
       target: c.target.toArray(),
       flying: flight.current !== null,
+      lastFlight: lastFlight.current,
     });
     return () => {
       c.dispose();
@@ -129,9 +131,14 @@ export function CameraRig() {
     if (position) rig.flyTo(position, 16);
   }, [selectedItem, view]);
 
-  // Search results: frame the constellation (unless you've picked one: then the camera stays with it).
+  // Search results: frame the constellation when the results change. A refresh that returns the same
+  // results doesn't move the camera (it would undo flying to the one you picked with Enter).
+  const framed = useRef('');
   useEffect(() => {
-    if (!results.length || view !== 'universe' || useUniverse.getState().selectedItemId) return;
+    const key = results.join(',');
+    if (key === framed.current) return;
+    framed.current = key;
+    if (!results.length || view !== 'universe') return;
     const points = results
       .slice(0, 40)
       .map(itemPosition)
@@ -151,7 +158,10 @@ export function CameraRig() {
       const e = easeInOutCubic(t);
       camera.position.lerpVectors(f.fromPos, f.toPos, e);
       c.target.lerpVectors(f.fromTarget, f.toTarget, e);
-      if (t >= 1) flight.current = null;
+      if (t >= 1) {
+        lastFlight.current = { planned: f.duration, actual: Math.round(performance.now() - f.start) };
+        flight.current = null;
+      }
     }
     c.update();
   });

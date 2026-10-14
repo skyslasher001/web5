@@ -11,7 +11,7 @@ import { CoreStar, Starfield } from './scene/Backdrop';
 import { Bloom } from './scene/Bloom';
 import { CameraRig } from './scene/CameraRig';
 import { rig } from './scene/helpers';
-import { tuning } from './scene/interaction';
+import { tuning, useInteraction } from './scene/interaction';
 import { Comets } from './scene/Comets';
 import { Filaments } from './scene/Filaments';
 import { Galaxies, GalaxyLabels } from './scene/Galaxies';
@@ -90,6 +90,7 @@ function useUniverseData() {
       camera: () => rig.state(),
       items: () => useScene.getState().scene.n,
       layout: () => useLayout.getState().current?.kind ?? null,
+      results: () => useInteraction.getState().results.length,
     };
   }, []);
 }

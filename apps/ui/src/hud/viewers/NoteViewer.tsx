@@ -124,6 +124,11 @@ export function NoteViewer({ id }: { id: string }) {
   const body = draft ?? note.data?.body ?? '';
   const preview = useMemo(() => renderMarkdown(body), [body]);
   const dirty = draft !== null && draft !== note.data?.body;
+  const setViewerDirty = useUniverse((s) => s.setViewerDirty);
+  useEffect(() => {
+    setViewerDirty(dirty);
+    return () => setViewerDirty(false);
+  }, [dirty, setViewerDirty]);
 
   const save = () => {
     const base = note.data;

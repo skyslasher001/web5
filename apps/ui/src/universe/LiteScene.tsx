@@ -58,10 +58,11 @@ export default function LiteScene() {
       labelFont: 'Inter Variable, system-ui, sans-serif',
       labelSize: 11,
       defaultEdgeColor: '#1f3a4f',
-      zIndex: true,
+      zIndex: false, // sorting 50k nodes by z-index cost ~2 s a frame in software rendering (measured)
       minCameraRatio: 0.002,
       maxCameraRatio: 4,
       hideEdgesOnMove: true,
+      hideLabelsOnMove: true, // labels for 50k nodes are the slowest part of a frame
     });
     renderer.on('clickNode', ({ node }) => {
       const s = useUniverse.getState();
@@ -79,7 +80,12 @@ export default function LiteScene() {
     const camera = renderer.getCamera();
     rig.state = () => {
       const c = camera.getState();
-      return { position: [c.x, c.y, c.ratio], target: [c.x, c.y, 0], flying: camera.isAnimated() };
+      return {
+        position: [c.x, c.y, c.ratio],
+        target: [c.x, c.y, 0],
+        flying: camera.isAnimated(),
+        lastFlight: null,
+      };
     };
     return () => {
       renderer.kill();

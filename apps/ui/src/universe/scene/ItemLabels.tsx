@@ -44,7 +44,7 @@ export function ItemLabels({ count = 18, reach = 70 }: { count?: number; reach?:
     const make = (cls: string) => {
       const el = document.createElement('span');
       el.className = cls;
-      el.style.opacity = '0';
+      el.style.visibility = 'hidden';
       layer.appendChild(el);
       return el;
     };
@@ -196,23 +196,23 @@ export function ItemLabels({ count = 18, reach = 70 }: { count?: number; reach?:
       const p = layout.positions;
       v.set(p[index * 3]!, p[index * 3 + 1]!, p[index * 3 + 2]!).project(camera);
       if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) {
-        el.style.opacity = '0';
+        el.style.visibility = 'hidden';
         return;
       }
       if (text !== null && el.textContent !== text) el.textContent = text;
       const x = ((v.x + 1) / 2) * size.width;
       const y = ((1 - v.y) / 2) * size.height;
       el.style.transform = `translate(${x + 8}px, ${y - 8}px)`;
-      el.style.opacity = '1';
+      el.style.visibility = 'visible';
     };
     badges.current.forEach((el, k) => {
       const index = results[k];
-      if (index === undefined || index >= scene.n) el.style.opacity = '0';
+      if (index === undefined || index >= scene.n) el.style.visibility = 'hidden';
       else place(el, index, null);
     });
     pool.current.forEach((el, k) => {
       const index = chosen.current[k];
-      if (index === undefined || index >= scene.n) el.style.opacity = '0';
+      if (index === undefined || index >= scene.n) el.style.visibility = 'hidden';
       else place(el, index, scene.titles[index] ?? '');
     });
   });

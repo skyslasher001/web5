@@ -76,6 +76,8 @@ interface UniverseState {
   /** The item whose viewer is open (Item zoom level), or the galaxy whose dashboard is. */
   viewerItemId: string | null;
   dashboardProjectId: string | null;
+  /** A note in the viewer has unsaved edits: closing asks first. */
+  viewerDirty: boolean;
   /** Bumped to fly the camera home to the Core (H). */
   homeTick: number;
   agentTargets: Record<string, ProbeTarget>;
@@ -138,6 +140,7 @@ interface UniverseState {
   openViewer(id: string): void;
   closeViewer(): void;
   openDashboard(projectId: string): void;
+  setViewerDirty(dirty: boolean): void;
   flyHome(): void;
   /** Esc in the universe: close the viewer, then deselect the item, then the galaxy. */
   zoomOut(): boolean;
@@ -183,6 +186,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   timeCut: null,
   viewerItemId: null,
   dashboardProjectId: null,
+  viewerDirty: false,
   homeTick: 0,
   agentTargets: {},
   qualitySetting: loadQualitySetting(),
@@ -286,7 +290,11 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   setLayout: (layout) => set({ layout }),
   setTimeCut: (timeCut) => set({ timeCut }),
   openViewer: (viewerItemId) => set({ viewerItemId, selectedItemId: viewerItemId, dashboardProjectId: null }),
-  closeViewer: () => set({ viewerItemId: null, dashboardProjectId: null }),
+  closeViewer: () => {
+    if (get().viewerDirty && !window.confirm('Discard the changes to this note?')) return;
+    set({ viewerItemId: null, dashboardProjectId: null, viewerDirty: false });
+  },
+  setViewerDirty: (viewerDirty) => set({ viewerDirty }),
   openDashboard: (dashboardProjectId) =>
     set({ dashboardProjectId, selectedProjectId: dashboardProjectId, viewerItemId: null }),
   flyHome: () => set((s) => ({ homeTick: s.homeTick + 1, selectedItemId: null, selectedProjectId: null })),
@@ -324,7 +332,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   },
   zoomOut: () => {
     const s = get();
-    if (s.viewerItemId || s.dashboardProjectId) set({ viewerItemId: null, dashboardProjectId: null });
+    if (s.viewerItemId || s.dashboardProjectId) s.closeViewer();
     else if (s.selectedItemId) set({ selectedItemId: null });
     else if (s.selectedProjectId) set({ selectedProjectId: null });
     else return false;

@@ -82,6 +82,14 @@ export function ItemViewer() {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
+        onKeyDown={(e) => {
+          // Esc closes the viewer from anywhere inside it, the editor included.
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+            close();
+          }
+        }}
         className="glass-strong hud-enter flex h-[min(46rem,calc(100vh-7rem))] w-[min(72rem,calc(100vw-3rem))] flex-col gap-4 p-5 outline-none"
         data-testid="item-viewer"
       >
@@ -113,7 +121,11 @@ export function ItemViewer() {
           </button>
         </header>
         <div className="min-h-0 flex-1">
-          {project ? <ProjectDashboard project={project} /> : itemId ? <Body id={itemId} /> : null}
+          {project ? (
+            <ProjectDashboard project={project} />
+          ) : itemId ? (
+            <Body key={itemId} id={itemId} />
+          ) : null}
         </div>
       </div>
     </div>
