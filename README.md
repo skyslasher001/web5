@@ -78,6 +78,7 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
 | [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md) | Proposal: the universe as a neural network (pathways that strengthen with use, signal pulses), and the voice receive chain |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | Working on UNIVERSE with any AI assistant (Claude Code, Codex, Copilot, Cursor, Windsurf, Cline, Gemini CLI, Aider): the start prompt, how to work and deliver a phase, environment notes, which instruction file each tool reads |
 | [docs/PHASE-5.md](docs/PHASE-5.md) | Phase 5 delivery: Forge (triage, test-first fixes in worktrees, verification, proposals), Sentinel, apply/watch/rollback, System Vitals; setup, demo script, known limitations |
 | [docs/PHASE-4.md](docs/PHASE-4.md) | Phase 4 delivery: 3D universe, layouts, viewers, dashboards, quality presets, Lite mode; setup, demo script, measured numbers, known limitations |
 | [docs/PHASE-3.md](docs/PHASE-3.md) | Phase 3 delivery: agent engine, approvals, memory, MCP, audit, budget, kill switch; setup, demo script, known limitations |

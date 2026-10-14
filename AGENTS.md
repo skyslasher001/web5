@@ -17,7 +17,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 - Verify current versions, models and licenses online before adding or upgrading anything. Don't rely on memory.
 - Record decisions as ADRs in `docs/adr/` (template in `docs/adr/README.md`). Flag in 1–2 lines anything that materially changes cost, privacy, security or architecture.
 - When something fails, show the real error and fix it. Never paper over failures with mocks. Test doubles are only for external services we can't run in CI (`tests/support/fake_ollama.py`).
-- Keep this file and `CLAUDE.md` current when commands, layout or rules change.
+- Keep this file and `CLAUDE.md` current when commands, layout or rules change. This file is the single source of truth for every AI assistant: the tool-specific files (`CLAUDE.md`, `.github/copilot-instructions.md`, `.gemini/settings.json`, `.aider.conf.yml`) only point here, and [`docs/HANDOFF.md`](docs/HANDOFF.md) explains how any assistant picks up the work (start prompt, how a phase is delivered, environment notes).
 
 ## Hard rules
 
