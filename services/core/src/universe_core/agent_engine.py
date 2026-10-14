@@ -26,6 +26,7 @@ from universe_core.errors import ErrorStore
 from universe_core.events import EventBus
 from universe_core.memory import MemoryStore, scopes_for
 from universe_core.protected.audit import AuditWriter
+from universe_vault import links
 
 log = get_logger(__name__)
 
@@ -156,6 +157,7 @@ class AgentEngine:
         self._running: dict[str, asyncio.Task[Any]] = {}
         self._waiting: dict[str, asyncio.Future[bool]] = {}
         self._step_n: dict[str, int] = {}
+        self._last_item: dict[str, str] = {}  # task id → the last item it worked on (pathway pulses)
         self.failure_codes: dict[str, str] = {}  # task id → why it failed ("provider", "policy"…), for callers
 
     @property
@@ -365,6 +367,7 @@ class AgentEngine:
         finally:
             self._running.pop(state.task_id, None)
             self._step_n.pop(state.task_id, None)
+            self._last_item.pop(state.task_id, None)
         task = self.task(state.task_id)
         assert task is not None
         return task, outcome
@@ -663,6 +666,19 @@ class _Hooks:
         if target is not None:
             payload["target"] = target
         self.emit(state, "agent.step", payload)
+        if target is not None and target["kind"] == "item":
+            self._pathway(state, target["id"])
+
+    def _pathway(self, state: TaskState, item_id: str) -> None:
+        """An agent moving from one item to the next in a task fires the pathway between them (SPEC §10)."""
+        engine = self._engine
+        before = engine._last_item.get(state.task_id)
+        engine._last_item[state.task_id] = item_id
+        if before is None or before == item_id:
+            return
+        fired = links.record_activity(engine._conn, before, item_id, source="agent", actor=f"agent:{state.agent_id}")
+        if fired:
+            self.emit(state, "link.fired", fired)
 
     def update(self, state: TaskState, **fields: Any) -> None:
         sets = ["steps_used = ?", "tokens_in = ?", "tokens_out = ?", "cost_usd = ?", "tainted = ?"]

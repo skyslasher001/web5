@@ -183,7 +183,8 @@ The main view is a living universe of my own data: sleek, futuristic, and neat. 
 | Code repo | Space station | Shows build/test health as a status light |
 | Link / bookmark | Satellite | |
 | Connection | Light filament | Brightness = strength; dashed = suggested, unconfirmed |
-| Agent | Luminous probe | Own color and trail; flies to whatever it is working on |
+| Agent | Luminous probe | Own color and trail; flies to whatever it is working on, along the links between items |
+| Signal | Light pulse along a filament | Travels a link when I or an agent move between linked items (added 2026-10-14) |
 | Inbox capture | Comet | Arrives from the edge, waits for triage |
 | Forgotten item | Dim star | Flares briefly when resurfaced |
 
@@ -352,6 +353,13 @@ The brain layer turns storage into memory: it remembers, connects, forgets grace
 - Detect contradictions ("you said X in March, Y today") and ask me which is right.
 
 **Auto-linking:** suggest connections across projects, shown as dashed filaments until I confirm.
+
+**Neural pathways** (added 2026-10-14, owner-approved; see docs/VISION-neural-universe.md): links are synapses.
+
+- A link fires when I move from one item to a linked one, open one right after the other, or an agent uses both in one task. Firings are recorded from Phase 4 on, so there is history to learn from.
+- Each firing strengthens the link; strength decays with a half-life (about 30 days). Filament width and brightness show it, so the paths I actually think along get brighter.
+- Items that keep firing together without a link get a dashed suggested filament.
+- Weak links fade but are never deleted.
 
 **Resurfacing:** periodically bring back forgotten ideas and notes that relate to what I'm doing now.
 
@@ -619,7 +627,7 @@ Thirteen phases. Finish and verify each before starting the next. Logging, tests
    - Done when: I can run the app for 10 minutes by voice alone.
 8. **Vision** — consented capture (screen, window, region), VLM + OCR, "look at this", watch mode, save capture, exclusions, camera toggle.
    - Done when: "look at this error" returns a correct explanation and a handoff to Forge or Builder.
-9. **Brain layer** — memory UI, nightly consolidation, auto-linking, resurfacing, morning brief, time travel, idea incubator, project dashboards, optional screen recall.
+9. **Brain layer** — memory UI, nightly consolidation, auto-linking, neural pathways (links that strengthen with use), resurfacing, morning brief, time travel, idea incubator, project dashboards, optional screen recall.
    - Done when: the morning brief is generated from my real data and the time slider replays history.
 10. **Creative studios** — Composer audio tools, lyrics editor, hum-to-MIDI, Curator photo tools, map view, dedupe.
     - Done when: a hummed voice memo becomes a tagged song idea with MIDI attached.

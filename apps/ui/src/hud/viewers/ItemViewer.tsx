@@ -58,6 +58,12 @@ export function ItemViewer() {
   useEffect(() => {
     if (open) card.current?.focus();
   }, [open, itemId, projectId]);
+  // Viewing an item counts as opening it: it brightens (SPEC §7), and viewing one right after another fires
+  // the pathway between them (SPEC §10). A failure here only costs that signal, so it's logged, not shown.
+  useEffect(() => {
+    if (!itemId) return;
+    api.openItem(itemId).catch((err: unknown) => console.warn('Could not record the view', err));
+  }, [api, itemId]);
   if (!open) return null;
 
   const type = item.data?.type as ItemType | undefined;

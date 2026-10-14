@@ -10,6 +10,7 @@ Plain functions over a connection; callers own transactions.
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from universe_common.ids import uuid7
 from universe_common.timeutil import utcnow
@@ -110,6 +111,45 @@ def unresolve(conn: sqlite3.Connection, item_id: str) -> int:
         else:
             conn.execute("UPDATE links SET to_id = ?, to_title = ? WHERE id = ?", (other, row["target"], row["id"]))
     return len(rows)
+
+
+SEQUENCE_WINDOW_S = 120  # opening B within two minutes of A counts as moving from A to B
+
+
+def record_activity(
+    conn: sqlite3.Connection, from_id: str, to_id: str, *, source: str, actor: str
+) -> dict[str, str | None] | None:
+    """Two live items fired together (SPEC §10, neural pathways): record it for the brain layer. Returns the
+    `link.fired` payload (with the link between them, if there is one), or None if nothing was recorded."""
+    if from_id == to_id:
+        return None
+    live = conn.execute(
+        "SELECT COUNT(*) FROM items WHERE id IN (?, ?) AND trashed_at IS NULL", (from_id, to_id)
+    ).fetchone()[0]
+    if live != 2:
+        return None
+    a, b = sorted((from_id, to_id))
+    conn.execute(
+        "INSERT INTO link_activity (id, a_id, b_id, source, actor, at) VALUES (?, ?, ?, ?, ?, ?)",
+        (uuid7(), a, b, source, actor, utcnow()),
+    )
+    link = conn.execute(
+        "SELECT id FROM links WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)"
+        " ORDER BY kind = 'wikilink' DESC LIMIT 1",
+        (from_id, to_id, to_id, from_id),
+    ).fetchone()
+    return {"from_id": from_id, "to_id": to_id, "source": source, "link_id": link["id"] if link else None}
+
+
+def previous_open(conn: sqlite3.Connection, item_id: str, now: str) -> str | None:
+    """The item opened just before this one (within SEQUENCE_WINDOW_S), if any."""
+    since = (datetime.fromisoformat(now) - timedelta(seconds=SEQUENCE_WINDOW_S)).isoformat(timespec="milliseconds")
+    row = conn.execute(
+        "SELECT id FROM items WHERE id != ? AND trashed_at IS NULL AND last_opened_at > ?"
+        " ORDER BY last_opened_at DESC LIMIT 1",
+        (item_id, since.replace("+00:00", "Z")),
+    ).fetchone()
+    return row["id"] if row else None
 
 
 def add(conn: sqlite3.Connection, from_id: str, to_id: str, *, kind: str = "manual", actor: str = "user") -> str:

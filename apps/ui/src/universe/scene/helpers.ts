@@ -163,3 +163,56 @@ export function texturesToEvict(order: string[], onScreen: Set<string>, max = MA
   }
   return out;
 }
+
+const adjacency = new WeakMap<SceneData, Map<number, number[]>>();
+
+/**
+ * The shortest chain of links from item `from` to item `to` (item indices, both ends included), at most
+ * `maxHops` links long; null when they aren't connected that closely. Signal pulses and agent probes travel
+ * it, so you see a thought move along the pathways (SPEC §7, §10). Breadth-first over the scene's links.
+ */
+export function linkPath(scene: SceneData, from: number, to: number, maxHops = 4): number[] | null {
+  if (from === to) return [from];
+  let adj = adjacency.get(scene);
+  if (!adj) {
+    adj = new Map();
+    for (let k = 0; k < scene.linksA.length; k++) {
+      const a = scene.linksA[k]!;
+      const b = scene.linksB[k]!;
+      (adj.get(a) ?? adj.set(a, []).get(a)!).push(b);
+      (adj.get(b) ?? adj.set(b, []).get(b)!).push(a);
+    }
+    adjacency.set(scene, adj);
+  }
+  const parent = new Map<number, number>([[from, -1]]);
+  let frontier = [from];
+  for (let hop = 0; hop < maxHops && frontier.length; hop++) {
+    const next: number[] = [];
+    for (const node of frontier) {
+      for (const n of adj.get(node) ?? []) {
+        if (parent.has(n)) continue;
+        parent.set(n, node);
+        if (n === to) {
+          const path = [to];
+          for (let p = node; p !== -1; p = parent.get(p)!) path.unshift(p);
+          return path;
+        }
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/** One link of a signal pulse's route (Pulses.tsx). */
+export const HOP_MS = 380;
+
+/** Where a pulse is `ms` after it started: along its route, one hop per HOP_MS. Null once it has arrived. */
+export function pulseAt(route: Vector3[], ms: number, out: Vector3): Vector3 | null {
+  if (ms < 0 || route.length < 2) return null;
+  const hop = Math.floor(ms / HOP_MS);
+  if (hop >= route.length - 1) return null;
+  const t = (ms - hop * HOP_MS) / HOP_MS;
+  return out.lerpVectors(route[hop]!, route[hop + 1]!, t);
+}

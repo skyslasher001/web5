@@ -30,6 +30,9 @@ export function enterTarget(s: { results: number[]; resultsFor: string }, typed:
   return s.resultsFor === typed.trim() && s.results.length ? s.results[0]! : null;
 }
 
+/** Signal pulses launched since start (Pulses.tsx), for the end-to-end tests. */
+export const pulseStats = { launched: 0 };
+
 /** Set by ItemPoints once the GPU picking pass is ready: item index at a canvas pixel, or -1. */
 export const picker: { pick: (x: number, y: number) => number } = { pick: () => -1 };
 

@@ -32,3 +32,4 @@ Template:
 | [0011](0011-phase-3-agent-engine.md) | Phase 3 agent engine: loop, approvals, protected policy, minimal MCP client | Accepted |
 | [0012](0012-phase-4-universe-renderer.md) | Phase 4 universe: scene data, layouts, renderer, Lite mode and viewers | Accepted |
 | [0013](0013-agents-you-add.md) | Agents you add: the roster, custom agents and turning agents off | Accepted |
+| [0014](0014-phase-5-forge-sentinel.md) | Phase 5: Forge and Sentinel v1 (what's protected, verification, apply and rollback) | Accepted |

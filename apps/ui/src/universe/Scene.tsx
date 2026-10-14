@@ -11,7 +11,7 @@ import { CoreStar, Starfield } from './scene/Backdrop';
 import { Bloom } from './scene/Bloom';
 import { CameraRig } from './scene/CameraRig';
 import { rig } from './scene/helpers';
-import { tuning, useInteraction } from './scene/interaction';
+import { pulseStats, tuning, useInteraction } from './scene/interaction';
 import { Comets } from './scene/Comets';
 import { Filaments } from './scene/Filaments';
 import { Galaxies, GalaxyLabels } from './scene/Galaxies';
@@ -21,6 +21,7 @@ import { LayoutController, useLayout } from './scene/layoutController';
 import { OverlayContext } from './scene/overlay';
 import { PhotoPlanets } from './scene/PhotoPlanets';
 import { Probes } from './scene/Probes';
+import { Pulses } from './scene/Pulses';
 import { SceneLoader, useScene } from './scene/sceneData';
 import { SelectionRing } from './scene/Selection';
 import { useConstellation } from './scene/useConstellation';
@@ -91,6 +92,7 @@ function useUniverseData() {
       items: () => useScene.getState().scene.n,
       layout: () => useLayout.getState().current?.kind ?? null,
       results: () => useInteraction.getState().results.length,
+      pulses: () => pulseStats.launched,
     };
   }, []);
 }
@@ -159,6 +161,7 @@ function WebGLScene() {
         <SelectionRing />
         <group name="probes">
           <Probes />
+          <Pulses />
         </group>
         <ItemLabels count={preset.labels} />
         <CameraRig />

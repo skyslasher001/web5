@@ -25,7 +25,7 @@ from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_core.context import CoreContext
 from universe_core.events import CATALOG
-from universe_vault import governor, ingest, jobs, purge, search, store
+from universe_vault import governor, ingest, jobs, links, purge, search, store
 from universe_vault.filetypes import ItemType
 from universe_vault.layout import slugify
 from universe_vault.pipeline import initial_stages
@@ -351,16 +351,23 @@ async def restore_item(ctx: Ctx, item_id: str) -> Item:
     return await get_item(ctx, item_id)
 
 
-def _record_open(conn: sqlite3.Connection, item_id: str) -> sqlite3.Row:
+def _record_open(conn: sqlite3.Connection, item_id: str) -> tuple[sqlite3.Row, dict[str, str | None] | None]:
     _require_item(conn, item_id)
-    conn.execute("UPDATE items SET open_count = open_count + 1, last_opened_at = ? WHERE id = ?", (utcnow(), item_id))
-    return _require_item(conn, item_id)
+    now = utcnow()
+    with transaction(conn):
+        # Opening B right after A fires the pathway between them (SPEC §10, neural pathways).
+        before = links.previous_open(conn, item_id, now)
+        fired = links.record_activity(conn, before, item_id, source="sequence", actor="user") if before else None
+        conn.execute("UPDATE items SET open_count = open_count + 1, last_opened_at = ? WHERE id = ?", (now, item_id))
+    return _require_item(conn, item_id), fired
 
 
 @router.post("/items/{item_id}/open", response_model=OpenResult)
 async def open_item(ctx: Ctx, item_id: str) -> OpenResult:
-    row = await ctx.vdb.run(_record_open, item_id)
+    row, fired = await ctx.vdb.run(_record_open, item_id)
     _item_event(ctx, "item.opened", item_id, type=row["type"])
+    if fired:
+        ctx.bus.publish("link.fired", fired, actor="user")
     return OpenResult(
         item_id=item_id, path=row["path"], abs_path=str(ctx.vault.abs(row["path"])), open_count=row["open_count"]
     )

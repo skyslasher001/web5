@@ -1,7 +1,6 @@
 # The neural universe: a proposal
 
-Status: **proposal for the owner, 2026-10-14.** Nothing here changes SPEC.md until you approve it. Each item
-says which SPEC phase it belongs to and whether SPEC already asks for it.
+Status: **decided 2026-10-14.** Item 1 (pathways that strengthen with use) is in SPEC §10 and Phase 9, with firings recorded from Phase 4 on; items 2 and 3 (signal pulses, agents flying the pathways) shipped with Phase 4. Items 4–8 stay parked for their phases.
 
 You asked for the universe to work like a brain, a neural network in the shape of a universe: agents act as
 neurons, subjects (galaxies) act as synapses, zoom is smooth and scalable, and voice is ready to receive

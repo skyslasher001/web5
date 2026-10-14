@@ -65,6 +65,7 @@ CATALOG: dict[str, EventType] = {
     "layout.updated": _p("A cached universe layout was recomputed"),
     "link.created": _p("Two items were linked"),
     "link.deleted": _p("A link was removed"),
+    "link.fired": _live("Two items fired together: you or an agent moved from one to the other (a signal pulse)"),
     "navigator.action": _live("Navigator executed a command"),
     # Chat
     "chat.message": _p("A chat message was stored"),

@@ -1,6 +1,7 @@
 // Agents as luminous probes (SPEC §7): each has its colour, its own shape and a trail, and flies to
-// whatever it's working on (`agent.step` targets). Idle probes orbit the Core; with the kill switch engaged
-// they all park there (ARCHITECTURE.md §6.6).
+// whatever it's working on (`agent.step` targets), along the links between items when they connect (a thought
+// travelling the pathways, SPEC §10). Idle probes orbit the Core; with the kill switch engaged they all park
+// there (ARCHITECTURE.md §6.6).
 import type { AgentInfo } from '@universe/shared-types';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
@@ -24,7 +25,7 @@ import {
 import { hueHex } from '../../lib/colors';
 import { useProjects } from '../../lib/queries';
 import { useUniverse, type ProbeTarget } from '../../state/store';
-import { itemPosition } from './helpers';
+import { itemPosition, linkPath } from './helpers';
 import { STILL } from './interaction';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
@@ -90,6 +91,8 @@ function Probe({ agent, slot, total }: { agent: AgentInfo; slot: number; total: 
   useEffect(() => () => geometry.dispose(), [geometry]);
   const position = useRef(new Vector3(8, 0, 0));
   const history = useRef<Vector3[]>([]);
+  const lastItem = useRef<string | null>(null);
+  const route = useRef<Vector3[]>([]); // the items in between, when the next target is a few links away
 
   useFrame(({ clock }, delta) => {
     const m = mesh.current;
@@ -98,7 +101,21 @@ function Probe({ agent, slot, total }: { agent: AgentInfo; slot: number; total: 
     const killed = s.killSwitch.engaged;
     const busy =
       !killed && (s.agentActivity[agent.id] === 'thinking' || s.agentActivity[agent.id] === 'replying');
-    const goal = killed ? null : targetPosition(s.agentTargets[agent.id], projects.data ?? []);
+    const target = s.agentTargets[agent.id];
+    if (target?.kind === 'item' && target.id !== lastItem.current) {
+      const scene = useScene.getState().scene;
+      const from = lastItem.current ? scene.index.get(lastItem.current) : undefined;
+      const to = scene.index.get(target.id);
+      const path = from !== undefined && to !== undefined ? linkPath(scene, from, to) : null;
+      route.current = (path ?? [])
+        .slice(1, -1)
+        .map(itemPosition)
+        .filter((v): v is Vector3 => v !== null);
+      lastItem.current = target.id;
+    }
+    if (route.current.length && position.current.distanceTo(route.current[0]!) < 2) route.current.shift();
+    const waypoint = !killed && route.current.length ? route.current[0]! : null;
+    const goal = killed ? null : (waypoint ?? targetPosition(target, projects.data ?? []));
     const t = clock.elapsedTime * (STILL ? 0 : 0.25) + (slot / Math.max(total, 1)) * Math.PI * 2;
     const parked = killed
       ? new Vector3(Math.cos(slot) * 3, 0, Math.sin(slot) * 3)

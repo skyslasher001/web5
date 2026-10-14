@@ -1,6 +1,6 @@
 # Phase 4: Universe interface
 
-Status: **delivered 2026-10-14; review fixes, smooth zoom and the agent roster added the same day. Waiting for your review.**
+Status: **approved 2026-10-14** (delivered the same day, with the review fixes, smooth zoom, the agent roster and signal pulses).
 
 Phase 4 turns the Phase 1 starfield into the universe of your own data. Every item is drawn as what it is (a note is a star, a photo a planet, a song a pulsar, a repository a space station), in your galaxies, by meaning, along time, or as a graph of links. You fly around it, open anything in a viewer that unfolds over it, and search lights up the answers and flies you there. Design decisions are in [ADR-0012](adr/0012-phase-4-universe-renderer.md).
 
@@ -59,7 +59,8 @@ Phase 4 turns the Phase 1 starfield into the universe of your own data. Every it
   - Zooming into a galaxy is enough to be "in" it: the breadcrumb follows.
   - `+` and `−` keys and a zoom slider in the navigator.
   - Lite mode zooms the same way.
-- **Agents fly**: each agent is a probe with its own shape, colour and trail, flying to the item or galaxy its current tool works on. With the kill switch engaged, they all park at the Core.
+- **Agents fly**: each agent is a probe with its own shape, colour and trail, flying to the item or galaxy its current tool works on, along the links between items when they connect. With the kill switch engaged, they all park at the Core.
+- **Signal pulses** (added after your approval of the neural pathways): moving from one item to another, yourself or by an agent, sends a pulse of light along the pathway between them, link by link. Unlinked pairs get a fainter, direct pulse. Every firing is recorded, so the brain layer (Phase 9) can strengthen the paths you use.
 - **Links**: notes link with `[[Title]]` (Obsidian style). A link to a note that doesn't exist yet connects once it does. You can link any two items by hand. Suggested links show dashed (auto-suggestions arrive in Phase 9).
 
 **Find things**
@@ -205,7 +206,7 @@ Your idea of the universe as a brain is thought through in [VISION-neural-univer
 - what to add, phase by phase;
 - the full voice receive chain for Phase 7.
 
-It ends with three decisions for you.
+Your decisions (2026-10-14): neural pathways go into SPEC (§10, Phase 9) with firings recorded from now on; signal pulses and pathway-flying probes ship now; Phase 5 is next.
 
 ## What's next: Phase 5 (Forge + Sentinel v1)
 

@@ -45,6 +45,7 @@ interface Debug {
   items(): number;
   layout(): string | null;
   results(): number;
+  pulses(): number;
   camera(): {
     position: number[];
     target: number[];
@@ -328,6 +329,8 @@ test('the note viewer edits Markdown safely and follows links', async () => {
   // Follow the wikilink to the other note's viewer.
   await preview.getByText('Parcel map').click();
   await expect(page.getByTestId('viewer-title')).toHaveText('Parcel map');
+  // Moving from one note to the linked one fires the pathway: a signal pulse travels the link (SPEC §10).
+  await expect.poll(() => debug((d) => d.pulses()), { timeout: 15_000 }).toBeGreaterThan(0);
   // A fresh editor for the linked note (regression: the previous note's draft used to carry over).
   await expect(page.getByTestId('note-editor')).toHaveValue(/The parcel map for the lake lot/);
   await expect(page.getByTestId('backlinks')).toContainText('Viewer check');
