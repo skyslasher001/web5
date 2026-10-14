@@ -29,7 +29,7 @@ def test_protected_paths_follow_the_manifest() -> None:
         "services/supervisor",
     ):
         assert paths.matches(protected), protected
-    for free in ("services/core/src/universe_core/forge.py", "agents/librarian.yaml", "apps/ui/src/App.tsx"):
+    for free in ("services/core/src/universe_core/universe_api.py", "agents/librarian.yaml", "apps/ui/src/App.tsx"):
         assert not paths.matches(free), free
 
 
