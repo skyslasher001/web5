@@ -6,6 +6,8 @@ A local-first Windows desktop app that works as a digital brain. Every project, 
 
 **Phase 5 (Forge + Sentinel v1) is delivered and waiting for review**, together with a protected-core patch for you to apply ([docs/proposals/phase-5-protected-core.md](docs/proposals/phase-5-protected-core.md)). Phases 1 (Foundation), 1.5 (fixes), 2 (Vault + Recall), 3 (Agent engine) and 4 (Universe interface) are delivered and approved. Phase 0 (Blueprint) was approved on 2026-10-12 with the default answers.
 
+**Handing the project to another AI:** everything so far is in [docs/handoff/PROJECT-BRIEF.md](docs/handoff/PROJECT-BRIEF.md), and every decision you made is in [docs/handoff/DECISIONS.md](docs/handoff/DECISIONS.md). `pnpm handoff` builds a download package (start-here guide, text packs, source zip, git history) for any AI, and [docs/HANDOFF.md](docs/HANDOFF.md#getting-the-project-to-another-ai) says which file goes to which AI. All work is on the branch `claude/phase-0-delivery-zuqlfx`.
+
 What works now: the Electron shell and HUD on the design tokens, streaming chat with the Core agent on a local Ollama model, the event bus and the three SQLite databases, structured logging and error capture, a watchdog supervisor that restarts Core and falls back to safe mode, hardware detection with model recommendations, the test suites, pre-commit hooks, CI on Windows and Linux, and `pnpm dev` as the one-command start. Details and the demo script are in [docs/PHASE-1.md](docs/PHASE-1.md). What Phase 1.5 fixed is in [docs/PHASE-1.5.md](docs/PHASE-1.5.md).
 
 New in Phase 2: a vault you can drop files and folders into, quick capture and search from any app (`Ctrl+Space`), hybrid keyword + meaning search, grid and list views, watched folders, and encrypted restic backups. The 500-file "done when" passes with the slowest search at 309 ms. Details, setup and the demo are in [docs/PHASE-2.md](docs/PHASE-2.md).
@@ -78,6 +80,8 @@ tests/            unit, integration, protected-core guards, Electron e2e
 | [SPEC.md](SPEC.md) | Requirements: the master build prompt |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture, tech decisions, data model, API/events, UI concept, Forge safety design |
 | [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md) | Proposal: the universe as a neural network (pathways that strengthen with use, signal pulses), and the voice receive chain |
+| [docs/handoff/PROJECT-BRIEF.md](docs/handoff/PROJECT-BRIEF.md) | Everything about the project so far in one document: vision, status, features, architecture, decisions, rules, open items, roadmap |
+| [docs/handoff/DECISIONS.md](docs/handoff/DECISIONS.md) | Every owner message and decision, verbatim, with what was done |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | Working on UNIVERSE with any AI assistant (Claude Code, Codex, Copilot, Cursor, Windsurf, Cline, Gemini CLI, Aider): the start prompt, how to work and deliver a phase, environment notes, which instruction file each tool reads |
 | [docs/PHASE-5.md](docs/PHASE-5.md) | Phase 5 delivery: Forge (triage, test-first fixes in worktrees, verification, proposals), Sentinel, apply/watch/rollback, System Vitals; setup, demo script, known limitations |
 | [docs/PHASE-4.md](docs/PHASE-4.md) | Phase 4 delivery: 3D universe, layouts, viewers, dashboards, quality presets, Lite mode; setup, demo script, measured numbers, known limitations |

@@ -1,6 +1,6 @@
 # Phase 3: Agent engine
 
-Status: **delivered 2026-10-13, approved 2026-10-13.** Phase 4 (Universe interface) is in progress. The protected-core part (policy engine, permission rules, budget caps, kill switch) was approved and applied on 2026-10-13: [proposals/phase-3-protected-core.md](proposals/phase-3-protected-core.md).
+Status: **delivered 2026-10-13, approved 2026-10-13.** Phase 4 (Universe interface) followed and was approved on 2026-10-14: [PHASE-4.md](PHASE-4.md). The protected-core part (policy engine, permission rules, budget caps, kill switch) was approved and applied on 2026-10-13: [proposals/phase-3-protected-core.md](proposals/phase-3-protected-core.md).
 
 Phase 3 turns Core from a chat partner into an orchestrator. It can hand work to specialists, use tools on your vault, ask you before it does anything that matters, remember what you let it remember, and leave a tamper-evident record of everything. Design decisions are in [ADR-0011](adr/0011-phase-3-agent-engine.md).
 

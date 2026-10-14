@@ -22,6 +22,54 @@ To deliver a phase: *"Deliver Phase N"* means build exactly that phase's scope f
 setup steps, tests, a demo script, known limitations and what's next in `docs/PHASE-N.md` (see
 [How a phase is delivered](#how-a-phase-is-delivered)).
 
+## Getting the project to another AI
+
+Everything about the project is in the repository. [`docs/handoff/PROJECT-BRIEF.md`](handoff/PROJECT-BRIEF.md)
+gathers it into one document, and [`docs/handoff/DECISIONS.md`](handoff/DECISIONS.md) has every owner message
+and decision word for word. There are three ways to hand it over, depending on what the AI can reach.
+
+**1. Give it the GitHub repository** (coding agents that connect to GitHub). Grant the AI access to
+`skyslasher001/web5` (it's **private**, so the AI needs the owner's permission). Tell it to work on the branch
+**`claude/phase-0-delivery-zuqlfx`**: `main` still holds the old, unrelated landing page.
+
+**2. Give it the download package** (any AI, including ones with no GitHub access). Run:
+
+```sh
+pnpm handoff        # or: uv run python scripts/export_handoff.py [--out folder] [--no-history]
+```
+
+This writes `dist/handoff/universe-handoff-<date>-<commit>.zip`, built from the committed HEAD
+(uncommitted changes are left out, with a warning). Inside:
+
+| File | What it is | Give it to |
+| --- | --- | --- |
+| `00-START-HERE.md` | What the project is, the current phase, the start prompt, which file goes to which AI | Every AI, first |
+| `universe-brief.md` | `AGENTS.md`, the project brief, the decisions and this guide in one file | Any chat AI: enough to understand and plan |
+| `universe-docs.md` | The brief plus SPEC, architecture, every phase record, ADR, proposal and agent definition | AIs with a large context, or as a project/knowledge file |
+| `universe-code.md` | Every source file as text, one section per file | AIs that should read the code but can't open a zip |
+| `universe-source.zip` | The repository at that commit | Coding tools: unzip and open the folder |
+| `universe-history.bundle` | The full git history | `git clone universe-history.bundle universe` |
+| `SHA256SUMS.txt` | Checksums | Checking the files arrived intact |
+
+**3. Paste or upload into a chat.** For a chat assistant without files, paste the [start prompt](#start-prompt)
+with `universe-brief.md`. Many chat assistants keep project or knowledge files that every chat can see; put
+`00-START-HERE.md`, `universe-brief.md` and `universe-docs.md` there.
+
+**By kind of AI**
+
+| Kind | Examples | How |
+| --- | --- | --- |
+| Coding agents with GitHub access | Copilot coding agent, Codex, Jules, Devin, Claude Code on the web | Way 1, then the start prompt |
+| Coding tools on a local folder | Cursor, Windsurf, Cline, VS Code + Copilot, Claude Code, Gemini CLI, Aider, Codex CLI | Clone the branch (way 1) or unzip `universe-source.zip` (way 2). They pick up `AGENTS.md` themselves ([table](#which-file-each-tool-reads)) |
+| Chat assistants | ChatGPT, Claude, Gemini, Copilot Chat, others | Way 2 or 3: `00-START-HERE.md` and `universe-brief.md` first, then `universe-docs.md` or `universe-code.md` as the task needs |
+
+**Keep it current:** run `pnpm handoff` again after every phase or approval. The file name carries the
+commit's date and hash, so it's clear which state an AI was given.
+
+**Flag (privacy):** the package holds the full source of a private repository, though no secrets: only files
+tracked in git, and the repo holds none by rule. Uploading it to a cloud AI sends the code to that provider.
+Share it only with services the owner trusts.
+
 ## Where things stand
 
 The **Current phase** line in [`AGENTS.md`](../AGENTS.md#read-first) is kept up to date. The newest
@@ -33,6 +81,7 @@ Read in this order:
 | # | File | Why |
 | --- | --- | --- |
 | 1 | [`AGENTS.md`](../AGENTS.md) | Rules, commands, layout, current phase |
+| 1b | [`docs/handoff/PROJECT-BRIEF.md`](handoff/PROJECT-BRIEF.md) and [`DECISIONS.md`](handoff/DECISIONS.md) | Everything so far in one document; every owner decision verbatim |
 | 2 | [`SPEC.md`](../SPEC.md) | The requirements: every line is one. §25 lists the phases and their "done when" |
 | 3 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | The design, with "as built" notes where the build differs |
 | 4 | Newest [`docs/PHASE-*.md`](.) | What exists now and what's open |

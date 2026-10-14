@@ -21,7 +21,8 @@
     "gen:types": "node scripts/gen-types.mjs",
     "tokens": "node packages/design-tokens/build.mjs",
     "check": "pnpm lint && pnpm typecheck && uv run ruff check && uv run ruff format --check && uv run pyright && pnpm test",
-    "bench:universe": "node scripts/universe_bench.mjs"
+    "bench:universe": "node scripts/universe_bench.mjs",
+    "handoff": "uv run python scripts/export_handoff.py"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
