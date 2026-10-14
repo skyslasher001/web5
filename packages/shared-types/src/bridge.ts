@@ -103,6 +103,36 @@ export interface UniverseBridge {
   /** Engaging is instant. Releasing shows a native dialog you must confirm. */
   setKillSwitch(engaged: boolean): Promise<KillSwitchState>;
   onKillSwitch(callback: (state: KillSwitchState) => void): () => void;
+
+  // ---------- Forge releases (Phase 5; owned by protected Electron main code and the supervisor) ----------
+  /** Approve a Forge proposal: a native dialog shows it, and only then does the supervisor apply it. */
+  forgeApprove(proposalId: string): Promise<ForgeDecision>;
+  /** Roll back to a release (a native dialog asks first). */
+  forgeRollback(release: string): Promise<ForgeDecision>;
+  getReleases(): Promise<ReleasesState>;
+}
+
+export interface ForgeDecision {
+  ok: boolean;
+  message: string;
+  release?: string;
+}
+
+export interface ReleaseInfo {
+  tag: string;
+  commit: string;
+  created_at: string;
+  proposal_id: string | null;
+  title: string;
+  status: 'watching' | 'good' | 'rolled_back';
+  current: boolean;
+}
+
+export interface ReleasesState {
+  /** False until the Phase 5 protected-core patch is applied. */
+  available: boolean;
+  reason?: string;
+  releases: ReleaseInfo[];
 }
 
 export interface KillSwitchState {

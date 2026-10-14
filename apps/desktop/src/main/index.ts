@@ -275,6 +275,13 @@ function registerIpc(): void {
   ipcMain.handle(CH.captureClipboard, saveClipboard);
 
   // ---------- kill switch (protected control) ----------
+  // ---------- Forge releases ----------
+  // Approval and apply live in protected code (Phase 5 protected-core patch); until it's applied, there is none.
+  const NO_RELEASES = 'Applying Forge changes needs the Phase 5 protected-core patch (docs/proposals).';
+  ipcMain.handle(CH.forgeApprove, () => ({ ok: false, message: NO_RELEASES }));
+  ipcMain.handle(CH.forgeRollback, () => ({ ok: false, message: NO_RELEASES }));
+  ipcMain.handle(CH.getReleases, () => ({ available: false, reason: NO_RELEASES, releases: [] }));
+
   ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
   ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
     if (typeof engaged !== 'boolean') return { available: true, engaged: killSwitch.engaged };

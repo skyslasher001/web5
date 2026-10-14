@@ -37,6 +37,9 @@ const bridge: UniverseBridge = {
   getKillSwitch: () => ipcRenderer.invoke(CH.getKillSwitch),
   setKillSwitch: (engaged) => ipcRenderer.invoke(CH.setKillSwitch, engaged),
   onKillSwitch: (callback) => subscribe<KillSwitchState>(CH.killSwitchEvent, callback),
+  forgeApprove: (proposalId) => ipcRenderer.invoke(CH.forgeApprove, proposalId),
+  forgeRollback: (release) => ipcRenderer.invoke(CH.forgeRollback, release),
+  getReleases: () => ipcRenderer.invoke(CH.getReleases),
 };
 
 contextBridge.exposeInMainWorld('universe', bridge);
