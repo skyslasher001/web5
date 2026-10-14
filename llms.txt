@@ -1,0 +1,35 @@
+# UNIVERSE
+
+> A local-first Windows desktop "digital brain": everything the owner has lives in one navigable 3D universe, run by a team of local AI agents. Electron + React UI, Python/FastAPI services, SQLite + LanceDB, local models via Ollama. Phases 0–4 are approved; Phase 5 (Forge + Sentinel, self-repair) is delivered and waiting for review; Phase 6 (research) is next.
+
+Work on the branch `claude/phase-0-delivery-zuqlfx` (`main` holds an old, unrelated landing page). Read `AGENTS.md` first: it holds the binding rules (never edit the protected core, never weaken a test, never touch vault data, no secrets, network only through the egress gate) and is the single source of truth for every AI assistant.
+
+## Start here
+
+- [AGENTS.md](AGENTS.md): rules, commands, repository layout, current phase
+- [docs/handoff/PROJECT-BRIEF.md](docs/handoff/PROJECT-BRIEF.md): everything about the project so far, in one document
+- [docs/handoff/DECISIONS.md](docs/handoff/DECISIONS.md): every owner message and decision, verbatim
+- [docs/HANDOFF.md](docs/HANDOFF.md): how any AI picks up the work, the start prompt, how to deliver a phase, getting the project to an AI
+
+## Requirements and design
+
+- [SPEC.md](SPEC.md): the owner's requirements; every line is one; §25 lists the phases and their "done when"
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): the design, with "as built" notes
+- [docs/VISION-neural-universe.md](docs/VISION-neural-universe.md): the neural-universe vision and the voice receive chain
+- [docs/adr/](docs/adr/): architecture decision records 0001–0014
+
+## Phase records
+
+- [docs/PHASE-5.md](docs/PHASE-5.md): Forge + Sentinel v1 (delivered, waiting for review)
+- [docs/PHASE-4.md](docs/PHASE-4.md): Universe interface
+- [docs/PHASE-3.md](docs/PHASE-3.md): Agent engine
+- [docs/PHASE-2.md](docs/PHASE-2.md): Vault + Recall
+- [docs/PHASE-1.5.md](docs/PHASE-1.5.md): fixes after Phase 1
+- [docs/PHASE-1.md](docs/PHASE-1.md): Foundation
+- [docs/PHASE-0.md](docs/PHASE-0.md): Blueprint and the owner's Phase 0 answers
+
+## Optional
+
+- [docs/proposals/](docs/proposals/): protected-core patches (Phase 1.5 and 3 applied, Phase 5 waiting)
+- [README.md](README.md): overview and Windows setup
+- [protected-core.txt](protected-core.txt): paths no AI may edit

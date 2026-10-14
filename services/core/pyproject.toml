@@ -1,0 +1,30 @@
+[project]
+name = "universe-core"
+version = "0.1.0"
+description = "Core service: API, WebSocket hub, event bus, chat, storage"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "universe-common",
+    "universe-agents",
+    "universe-models",
+    "universe-vault",
+    "python-multipart>=0.0.20",
+    "fastapi>=0.143",
+    "uvicorn>=0.54",
+    "websockets>=17.2",
+    "pydantic>=2.14",
+    "psutil>=7.2",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/universe_core"]
+
+[tool.uv.sources]
+universe-common = { workspace = true }
+universe-agents = { workspace = true }
+universe-models = { workspace = true }
+universe-vault = { workspace = true }

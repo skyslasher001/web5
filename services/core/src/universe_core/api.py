@@ -1,0 +1,405 @@
+"""REST API v1 (ARCHITECTURE.md §5.1, Phase 1 subset)."""
+
+import contextlib
+import json
+import os
+import platform
+import sqlite3
+from typing import Annotated, Any, Literal
+
+import httpx
+import psutil
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+
+from universe_common.errors import MAX_MESSAGE, MAX_STACK, fingerprint_from_text
+from universe_common.schema import ApiModel
+from universe_common.timeutil import utcnow
+from universe_core import __version__
+from universe_core.chat import Conversation, Message
+from universe_core.context import CoreContext
+from universe_core.errors import ErrorRecord
+from universe_core.events import Event
+from universe_core.protected.audit import AuditEntry, AuditVerification
+from universe_models.hardware import HardwareInfo
+from universe_models.ollama import InstalledModel, LoadedModel, OllamaStatus
+from universe_models.recommend import Recommendation
+
+_process = psutil.Process(os.getpid())
+_process.cpu_percent(interval=None)  # prime: the first reading is always 0.0
+
+# Every handler is `async def`: Core state (event-bus queues, asyncio tasks, the shared SQLite
+# connections) may only be touched on the event-loop thread. FastAPI runs plain `def` handlers in a
+# thread pool. tests/integration/test_core_threading.py enforces this.
+
+
+def get_ctx(request: Request) -> CoreContext:
+    return request.app.state.ctx
+
+
+Ctx = Annotated[CoreContext, Depends(get_ctx)]
+
+
+# ---------- schemas ----------
+
+
+class Health(ApiModel):
+    status: Literal["ok"] = "ok"
+    service: Literal["core"] = "core"
+    version: str
+    safe_mode: bool
+    pid: int
+
+
+class WsTicket(ApiModel):
+    ticket: str
+    expires_in_s: float
+
+
+class Vitals(ApiModel):
+    version: str
+    pid: int
+    uptime_s: float
+    rss_bytes: int
+    cpu_percent: float
+    python: str
+    safe_mode: bool
+    ws_clients: int
+    event_seq: int
+    db_bytes: dict[str, int]
+    active_chats: int
+    ollama: OllamaStatus
+
+
+class ProjectGoal(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+    done: bool = False
+
+
+class Project(ApiModel):
+    id: str
+    name: str
+    slug: str
+    description: str
+    status: str
+    color_token: str
+    layout_seed: int
+    created_at: str
+    goals: list[ProjectGoal] = Field(default_factory=list)  # the dashboard's checklist of goals and tasks
+    item_count: int = 0
+
+
+class ProjectPatch(BaseModel):
+    description: str | None = Field(default=None, max_length=2000)
+    status: Literal["active", "paused", "done", "archived"] | None = None
+    goals: list[ProjectGoal] | None = Field(default=None, max_length=100)
+
+
+def _goals(raw: str | None) -> list[ProjectGoal]:
+    try:
+        data = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    out = []
+    for g in data if isinstance(data, list) else []:
+        if isinstance(g, str) and g.strip():
+            out.append(ProjectGoal(text=g.strip()[:300]))
+        elif isinstance(g, dict) and str(g.get("text", "")).strip():
+            out.append(ProjectGoal(text=str(g["text"]).strip()[:300], done=bool(g.get("done"))))
+    return out
+
+
+def _project(row: sqlite3.Row) -> Project:
+    data = {k: row[k] for k in Project.model_fields if k != "goals"}
+    return Project(**data, goals=_goals(row["goals"]))
+
+
+class AgentInfo(ApiModel):
+    id: str
+    name: str
+    purpose: str
+    color: str
+    icon: str | None
+    model: str
+    permission_tier: str
+    status: Literal["idle", "working", "disabled"]
+
+
+class ModelsInfo(ApiModel):
+    ollama: OllamaStatus
+    installed: list[InstalledModel]
+    loaded: list[LoadedModel] = Field(default_factory=list)  # in memory right now
+    assignments: dict[str, str]
+    chat_model: str | None
+    chat_model_error: str | None = None
+    chat_model_hint: str | None = None
+
+
+class AssignmentRequest(BaseModel):
+    tier: Literal["local-fast", "local-large", "embed_text", "vision"]
+    model: str = Field(min_length=1, max_length=200)
+
+
+class ChatSendRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
+    conversation_id: str | None = None
+    agent_id: str = "core"
+
+
+class ChatSendResponse(ApiModel):
+    conversation_id: str
+    user_message_id: str
+    assistant_message_id: str
+
+
+class CancelResponse(ApiModel):
+    cancelled: bool
+
+
+class EventPage(ApiModel):
+    events: list[Event]
+    last_seq: int
+
+
+class ErrorReport(BaseModel):
+    service: Literal["renderer", "desktop"]
+    kind: str = Field(min_length=1, max_length=200)
+    message: str = Field(max_length=MAX_MESSAGE)
+    stack: str = Field(default="", max_length=MAX_STACK)
+    context: dict[str, Any] = Field(default_factory=dict)
+    severity: Literal["warning", "error", "critical"] = "error"
+
+
+TIER_CAPABILITY = {
+    "local-fast": ("completion", "chat"),
+    "local-large": ("completion", "chat"),
+    "embed_text": ("embedding", "embedding"),
+    "vision": ("vision", "vision"),
+}
+
+
+# ---------- routers ----------
+
+public = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1")
+
+
+@public.get("/health", response_model=Health)
+async def health(ctx: Ctx) -> Health:
+    return Health(version=__version__, safe_mode=ctx.settings.safe_mode, pid=ctx.pid)
+
+
+@router.post("/session/ws-ticket", response_model=WsTicket)
+async def ws_ticket(ctx: Ctx) -> WsTicket:
+    return WsTicket(ticket=ctx.tickets.issue(), expires_in_s=ctx.tickets.ttl_s)
+
+
+@router.get("/system/vitals", response_model=Vitals)
+async def vitals(ctx: Ctx) -> Vitals:
+    import time
+
+    return Vitals(
+        version=__version__,
+        pid=ctx.pid,
+        uptime_s=round(time.monotonic() - ctx.started, 1),
+        rss_bytes=_process.memory_info().rss,
+        cpu_percent=_process.cpu_percent(interval=None),
+        python=platform.python_version(),
+        safe_mode=ctx.settings.safe_mode,
+        ws_clients=ctx.bus.subscriber_count,
+        event_seq=ctx.bus.last_seq(),
+        db_bytes=ctx.dbs.sizes(),
+        active_chats=len(ctx.chat.active_conversations),
+        ollama=await ctx.ollama.status(),
+    )
+
+
+@router.get("/system/hardware", response_model=HardwareInfo)
+async def hardware(ctx: Ctx, refresh: bool = False) -> HardwareInfo:
+    return await ctx.hardware(refresh=refresh)
+
+
+@router.get("/models/recommendation", response_model=Recommendation)
+async def model_recommendation(ctx: Ctx) -> Recommendation:
+    return await ctx.recommendation()
+
+
+@router.get("/models", response_model=ModelsInfo)
+async def models(ctx: Ctx) -> ModelsInfo:
+    from universe_agents.router import NoModelAvailable
+
+    status_ = await ctx.ollama.status()
+    installed: list[InstalledModel] = []
+    if status_.reachable:
+        try:
+            installed = await ctx.ollama.list_models(refresh=True)
+        except httpx.HTTPError as exc:
+            status_ = OllamaStatus(reachable=False, url=status_.url, error=str(exc) or type(exc).__name__)
+    loaded: list[LoadedModel] = []
+    if status_.reachable:
+        with contextlib.suppress(httpx.HTTPError, ValueError):  # an Ollama without /api/ps: nothing to show
+            loaded = await ctx.ollama.loaded()
+    info = ModelsInfo(
+        ollama=status_, installed=installed, loaded=loaded, assignments=ctx.assignments(), chat_model=None
+    )
+    if not status_.reachable:
+        # Don't name a model from a stale cache when Ollama can't list its models right now.
+        info.chat_model_error = f"Ollama is not reachable at {status_.url}"
+        info.chat_model_hint = "Start Ollama, or let UNIVERSE start it (System → Services)."
+        return info
+    try:
+        info.chat_model = await ctx.router.resolve("local-fast")
+    except NoModelAvailable as exc:
+        info.chat_model_error, info.chat_model_hint = str(exc), exc.hint
+    return info
+
+
+@router.put("/models/assignments", response_model=ModelsInfo)
+async def set_assignment(ctx: Ctx, body: AssignmentRequest) -> ModelsInfo:
+    try:
+        installed = await ctx.ollama.list_models(refresh=True)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Ollama is not reachable") from exc
+    needed, label = TIER_CAPABILITY[body.tier]
+    names = {m.name for m in installed if needed in m.capabilities}
+    if body.model not in names:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"'{body.model}' is not an installed {label} model")
+    ctx.set_assignment(body.tier, body.model, actor="user")
+    if body.tier == "embed_text" and ctx.governor is not None:
+        await ctx.governor.check_embedder()  # re-embeds in the background with the new model
+    return await models(ctx)
+
+
+@router.delete("/models/assignments/{tier}", response_model=ModelsInfo)
+async def clear_assignment(ctx: Ctx, tier: Literal["local-fast", "local-large", "embed_text", "vision"]) -> ModelsInfo:
+    if ctx.clear_assignment(tier, actor="user") and tier == "embed_text" and ctx.governor is not None:
+        await ctx.governor.check_embedder()
+    return await models(ctx)
+
+
+@router.get("/agents", response_model=list[AgentInfo])
+async def agents(ctx: Ctx) -> list[AgentInfo]:
+    out = []
+    for agent in ctx.agents.values():
+        if ctx.settings.safe_mode:
+            state: Literal["idle", "working", "disabled"] = "disabled"
+        else:
+            busy = ctx.chat.is_agent_busy(agent.id) or (ctx.engine is not None and ctx.engine.busy(agent.id))
+            state = "working" if busy else "idle"
+        out.append(
+            AgentInfo(
+                id=agent.id,
+                name=agent.name,
+                purpose=agent.purpose,
+                color=agent.color,
+                icon=agent.icon,
+                model=agent.model,
+                permission_tier=agent.permission_tier,
+                status=state,
+            )
+        )
+    return out
+
+
+@router.get("/projects", response_model=list[Project])
+async def projects(ctx: Ctx) -> list[Project]:
+    rows = ctx.dbs.universe.execute(
+        "SELECT p.*, (SELECT COUNT(*) FROM item_projects ip JOIN items i ON i.id = ip.item_id"
+        " WHERE ip.project_id = p.id AND i.trashed_at IS NULL) AS item_count"
+        " FROM projects p ORDER BY p.layout_seed, p.created_at"
+    )
+    return [_project(r) for r in rows]
+
+
+@router.patch("/projects/{project_id}", response_model=Project)
+async def patch_project(ctx: Ctx, project_id: str, body: ProjectPatch) -> Project:
+    conn = ctx.dbs.universe
+    if conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such galaxy")
+    updates: dict[str, Any] = {}
+    if body.description is not None:
+        updates["description"] = body.description
+    if body.status is not None:
+        updates["status"] = body.status
+    if body.goals is not None:
+        updates["goals"] = json.dumps([g.model_dump() for g in body.goals])
+    if updates:
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(
+            f"UPDATE projects SET {assignments}, updated_at = ? WHERE id = ?",  # noqa: S608 (fixed names)
+            (*updates.values(), utcnow(), project_id),
+        )
+        ctx.bus.publish(
+            "project.updated",
+            {"project_id": project_id, "changed": sorted(updates)},
+            actor="user",
+            subject_type="project",
+            subject_id=project_id,
+        )
+    row = conn.execute(
+        "SELECT p.*, (SELECT COUNT(*) FROM item_projects ip JOIN items i ON i.id = ip.item_id"
+        " WHERE ip.project_id = p.id AND i.trashed_at IS NULL) AS item_count FROM projects p WHERE p.id = ?",
+        (project_id,),
+    ).fetchone()
+    return _project(row)
+
+
+@router.post("/chat", response_model=ChatSendResponse, status_code=status.HTTP_202_ACCEPTED)
+async def chat_send(ctx: Ctx, body: ChatSendRequest) -> ChatSendResponse:
+    result = await ctx.chat.send(text=body.text, conversation_id=body.conversation_id, agent_id=body.agent_id)
+    return ChatSendResponse(**result.__dict__)
+
+
+@router.get("/conversations", response_model=list[Conversation])
+async def conversations(ctx: Ctx, limit: int = Query(50, ge=1, le=500)) -> list[Conversation]:
+    return ctx.chat.conversations(limit)
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=list[Message])
+async def conversation_messages(ctx: Ctx, conversation_id: str) -> list[Message]:
+    return ctx.chat.messages(conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/cancel", response_model=CancelResponse)
+async def cancel(ctx: Ctx, conversation_id: str) -> CancelResponse:
+    return CancelResponse(cancelled=ctx.chat.cancel(conversation_id))
+
+
+@router.get("/events", response_model=EventPage)
+async def events(
+    ctx: Ctx,
+    since_seq: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=5000),
+    type: Annotated[list[str] | None, Query()] = None,
+    tail: int | None = Query(None, ge=1, le=500, description="Return the newest N events instead"),
+) -> EventPage:
+    events = ctx.bus.tail(tail) if tail else ctx.bus.replay(since_seq, limit=limit, types=type)
+    return EventPage(events=events, last_seq=ctx.bus.last_seq())
+
+
+@router.post("/errors", response_model=ErrorRecord | None, status_code=status.HTTP_201_CREATED)
+async def report_error(ctx: Ctx, body: ErrorReport) -> ErrorRecord | None:
+    return ctx.errors.record(
+        service=body.service,
+        kind=body.kind,
+        message=body.message,
+        stack=body.stack,
+        fingerprint=fingerprint_from_text(body.kind, body.message, body.stack),
+        context=body.context,
+        severity=body.severity,
+    )
+
+
+@router.get("/errors", response_model=list[ErrorRecord])
+async def list_errors(ctx: Ctx, limit: int = Query(100, ge=1, le=1000)) -> list[ErrorRecord]:
+    return ctx.errors.list(limit=limit)
+
+
+@router.get("/audit", response_model=list[AuditEntry])
+async def audit(ctx: Ctx, limit: int = Query(100, ge=1, le=1000), action: str | None = None) -> list[AuditEntry]:
+    return ctx.audit.list(limit=limit, action=action)
+
+
+@router.get("/audit/verify", response_model=AuditVerification)
+async def audit_verify(ctx: Ctx) -> AuditVerification:
+    return ctx.audit.verify()

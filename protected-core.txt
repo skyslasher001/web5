@@ -1,0 +1,15 @@
+# Paths Forge may never modify (SPEC §9 "Protected core", ARCHITECTURE.md §7.2).
+# One glob per line, relative to the repo root. Lines starting with # are comments.
+# This file is itself protected. Changes are applied by the owner only.
+
+protected-core.txt
+services/supervisor/**
+services/core/src/universe_core/protected/**
+services/sentinel/**
+apps/desktop/src/main/protected/**
+apps/desktop/src/safe-mode/**
+agents/forge.yaml
+agents/sentinel.yaml
+tests/protected/**
+.github/workflows/**
+.pre-commit-config.yaml

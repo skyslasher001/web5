@@ -1,0 +1,32 @@
+// IPC channel names shared by main and preload.
+export const CH = {
+  getConfig: 'universe:get-config',
+  getDesktopState: 'universe:get-desktop-state',
+  desktopState: 'universe:desktop-state',
+  restartService: 'universe:restart-service',
+  killService: 'universe:kill-service',
+  exitSafeMode: 'universe:exit-safe-mode',
+  getLogs: 'universe:get-logs',
+  openLogsFolder: 'universe:open-logs-folder',
+  reportError: 'universe:report-error',
+  reload: 'universe:reload',
+  // vault (Phase 2)
+  openPath: 'universe:open-path',
+  revealPath: 'universe:reveal-path',
+  pickFolder: 'universe:pick-folder',
+  captureClipboard: 'universe:capture-clipboard',
+  // command bar
+  getHotkey: 'universe:get-hotkey',
+  setHotkey: 'universe:set-hotkey',
+  showCommandBar: 'universe:show-command-bar',
+  hideCommandBar: 'universe:hide-command-bar',
+  commandBarShow: 'universe:command-bar-show',
+  focus: 'universe:focus',
+  getKillSwitch: 'universe:get-kill-switch',
+  forgeApprove: 'universe:forge-approve',
+  forgeRollback: 'universe:forge-rollback',
+  getReleases: 'universe:get-releases',
+  setKillSwitch: 'universe:set-kill-switch',
+  killSwitchEvent: 'universe:kill-switch-event',
+  focusEvent: 'universe:focus-event',
+} as const;

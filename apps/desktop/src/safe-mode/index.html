@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- PROTECTED CORE. Static on purpose: it must render even when the React UI or Core is broken.
+     It deliberately inlines its few colors instead of importing the design-token build. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UNIVERSE · Safe mode</title>
+    <link rel="stylesheet" href="safe-mode.css" />
+  </head>
+  <body>
+    <main class="card" aria-labelledby="title">
+      <p class="eyebrow">Safe mode</p>
+      <h1 id="title">UNIVERSE couldn't start normally</h1>
+      <p id="summary" class="summary">Agents are disabled. Your data is untouched.</p>
+      <dl class="facts">
+        <dt>What happened</dt>
+        <dd id="reason">Checking…</dd>
+        <dt>Core</dt>
+        <dd id="core-state">…</dd>
+        <dt>Running from</dt>
+        <dd id="running-from">…</dd>
+      </dl>
+      <div class="actions">
+        <button id="retry" class="primary" type="button">Try a normal start</button>
+        <button id="restart" type="button">Restart Core</button>
+        <button id="back" type="button">Back to UNIVERSE</button>
+        <button id="open-logs" type="button">Open logs folder</button>
+      </div>
+      <section aria-labelledby="log-title">
+        <h2 id="log-title">Last log lines</h2>
+        <pre id="log" tabindex="0">Loading…</pre>
+      </section>
+    </main>
+    <script src="safe-mode.js"></script>
+  </body>
+</html>

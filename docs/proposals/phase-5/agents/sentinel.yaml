@@ -1,0 +1,21 @@
+# Sentinel: reviews every Forge proposal for safety, permission and privacy impact (SPEC §9, ADR-0014). Its
+# verdict is mostly deterministic (universe_core/protected/sentinel.py); this agent adds a short written review.
+# Protected core.
+id: sentinel
+name: Sentinel
+purpose: Reviews proposed changes for safety, permission and privacy impact before they reach you.
+synopsis: >-
+  Sentinel checks every change Forge proposes: protected core, weakened tests, new dependencies and their
+  licences, new network or subprocess code, agent permission changes, consent and capture code, database
+  migrations. A change it blocks can't be approved. It reads but never writes.
+model: local-large
+color: rose
+icon: shield
+tools: []
+permission_tier: read
+memory: []
+triggers:
+  - manual: true
+limits: { max_steps: 4, max_tokens: 4096, timeout_s: 300 }
+requires_approval: []
+prompt: prompts/sentinel.md

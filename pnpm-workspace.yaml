@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Dependencies allowed to run install scripts: Electron downloads its binary, esbuild its native binary.
+allowBuilds:
+  electron: true
+  esbuild: true
+
+# pnpm 12 refuses packages published less than its minimum release age; these exact pins were
+# checked by hand on 2026-10-12 (newer than the window at the time).
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.104.2'
+  - '@tanstack/react-query@5.104.2'
+  - '@vitest/mocker@5.0.4'
+  - '@vitest/spy@5.0.4'
+  - vitest@5.0.4

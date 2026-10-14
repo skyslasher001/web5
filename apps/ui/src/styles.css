@@ -1,0 +1,247 @@
+@import 'tailwindcss';
+@import '@universe/design-tokens/tokens.css';
+
+@utility glass {
+  background: var(--color-glass-1);
+  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  border: 1px solid var(--color-hairline-1);
+  border-radius: var(--radius-lg);
+}
+
+@utility glass-strong {
+  background: var(--color-glass-2);
+  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  border: 1px solid var(--color-hairline-2);
+  border-radius: var(--radius-lg);
+}
+
+/* For large surfaces whose content scrolls (the grid and list): a backdrop blur is recomputed on every scroll
+   frame (measured: 60 → 20 fps under software rendering), and the universe behind them is still anyway. */
+@utility glass-solid {
+  background: color-mix(in srgb, var(--color-space-1) 97%, transparent);
+  border: 1px solid var(--color-hairline-1);
+  border-radius: var(--radius-lg);
+}
+
+/* Smooth mode (lib/frameBudget.ts): drop the blur everywhere when frames run long. */
+:root[data-smooth='true'] .glass,
+:root[data-smooth='true'] .glass-strong {
+  backdrop-filter: none;
+  background: color-mix(in srgb, var(--color-space-1) 92%, transparent);
+}
+
+@utility drag {
+  -webkit-app-region: drag;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    background: var(--color-space-0);
+    color: var(--color-ink-1);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-hairline-2);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Deep-space backdrop under the WebGL canvas (also the fallback when WebGL is unavailable). */
+.space-backdrop {
+  background:
+    radial-gradient(
+      ellipse 60% 50% at 25% 30%,
+      color-mix(in srgb, var(--color-nebula-violet) 70%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 80% 75%,
+      color-mix(in srgb, var(--color-nebula-teal) 80%, transparent),
+      transparent 70%
+    ),
+    var(--color-space-0);
+}
+
+/* WebGL-less fallback: a few layers of tiny repeating stars. */
+.static-stars {
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, var(--color-ink-1), transparent 60%),
+    radial-gradient(1px 1px at 120px 80px, var(--color-ink-2), transparent 60%),
+    radial-gradient(1.5px 1.5px at 210px 160px, var(--color-cyan), transparent 60%),
+    radial-gradient(1px 1px at 60px 190px, var(--color-ink-2), transparent 60%),
+    radial-gradient(1px 1px at 260px 40px, var(--color-ink-1), transparent 60%),
+    radial-gradient(1.5px 1.5px at 160px 230px, var(--color-violet), transparent 60%);
+  background-size: 290px 270px;
+  opacity: 0.7;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.orb-breathe {
+  animation: breathe 4s var(--ease-hud) infinite;
+}
+.orb-spin {
+  animation: spin 1.2s linear infinite;
+}
+.caret {
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-breathe,
+  .orb-spin,
+  .caret {
+    animation: none;
+  }
+}
+
+/* Short enter transitions so views, panels and results settle in instead of popping. */
+@keyframes hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.hud-enter {
+  animation: hud-in 180ms var(--ease-hud) both;
+}
+.fade-enter {
+  animation: fade-in 140ms ease-out both;
+}
+/* Thumbnails fade in once decoded (ItemVisual toggles data-loaded). */
+.thumb {
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+.thumb[data-loaded='true'] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-enter,
+  .fade-enter,
+  .orb-breathe {
+    animation: none; /* loading spinners keep turning: they carry meaning */
+  }
+  .thumb {
+    transition: none;
+  }
+}
+
+/* High contrast (System → Display): brighter secondary text and nearly opaque panels (≥ 7:1 on glass). */
+:root[data-contrast='high'] {
+  --color-ink-2: #e2e8fa;
+  --color-ink-3: #c3cce4;
+  --color-glass-1: rgba(8, 12, 22, 0.94);
+  --color-glass-2: rgba(8, 12, 22, 0.97);
+  --color-hairline-1: rgba(200, 220, 255, 0.35);
+  --color-hairline-2: rgba(200, 220, 255, 0.55);
+}
+
+/* Note previews (Markdown rendered by marked, sanitized by DOMPurify). */
+.markdown h1 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+.markdown h2 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  margin: 1rem 0 0.4rem;
+}
+.markdown h3 {
+  font-weight: 600;
+  margin: 0.8rem 0 0.3rem;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote {
+  margin: 0 0 0.6rem;
+}
+.markdown ul {
+  list-style: disc;
+  padding-left: 1.2rem;
+}
+.markdown ol {
+  list-style: decimal;
+  padding-left: 1.2rem;
+}
+.markdown a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-space-2);
+  padding: 0 0.25rem;
+  border-radius: 4px;
+}
+.markdown pre {
+  background: var(--color-space-2);
+  padding: 0.6rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.markdown blockquote {
+  border-left: 2px solid var(--color-hairline-2);
+  padding-left: 0.6rem;
+  color: var(--color-ink-2);
+}
