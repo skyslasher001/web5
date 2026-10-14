@@ -31,7 +31,8 @@ export function staleQueriesFor(eventType: string): string[] {
   if (eventType.startsWith('budget.')) return ['budget'];
   if (eventType.startsWith('permission.')) return ['rules'];
   if (eventType.startsWith('mcp.')) return ['mcp', 'engine'];
-  if (eventType.startsWith('forge.') || eventType === 'error.raised') return ['forge'];
+  if (eventType === 'error.raised') return ['forge', 'errors'];
+  if (eventType.startsWith('forge.')) return ['forge'];
   return [];
 }
 

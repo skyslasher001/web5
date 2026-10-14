@@ -3437,6 +3437,44 @@
         "title": "LinkRequest",
         "type": "object"
       },
+      "LoadedModel": {
+        "description": "A model Ollama holds in memory right now (/api/ps).",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "size_bytes": {
+            "default": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "vram_bytes": {
+            "default": 0,
+            "title": "Vram Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "size_bytes",
+          "vram_bytes",
+          "expires_at"
+        ],
+        "title": "LoadedModel",
+        "type": "object"
+      },
       "MCPServerInfo": {
         "properties": {
           "args": {
@@ -3856,6 +3894,13 @@
             "title": "Installed",
             "type": "array"
           },
+          "loaded": {
+            "items": {
+              "$ref": "#/components/schemas/LoadedModel"
+            },
+            "title": "Loaded",
+            "type": "array"
+          },
           "ollama": {
             "$ref": "#/components/schemas/OllamaStatus"
           }
@@ -3863,6 +3908,7 @@
         "required": [
           "ollama",
           "installed",
+          "loaded",
           "assignments",
           "chat_model",
           "chat_model_error",

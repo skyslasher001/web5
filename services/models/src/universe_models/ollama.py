@@ -19,6 +19,15 @@ class InstalledModel(ApiModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
+class LoadedModel(ApiModel):
+    """A model Ollama holds in memory right now (/api/ps)."""
+
+    name: str
+    size_bytes: int = 0
+    vram_bytes: int = 0
+    expires_at: str | None = None
+
+
 class OllamaStatus(ApiModel):
     reachable: bool
     version: str | None = None
@@ -88,6 +97,19 @@ class OllamaClient:
             )
         self._models = (now, models)
         return models
+
+    async def loaded(self) -> list[LoadedModel]:
+        response = await self._http.get("/api/ps")
+        response.raise_for_status()
+        return [
+            LoadedModel(
+                name=str(raw.get("name") or raw.get("model") or "?"),
+                size_bytes=int(raw.get("size") or 0),
+                vram_bytes=int(raw.get("size_vram") or 0),
+                expires_at=raw.get("expires_at"),
+            )
+            for raw in response.json().get("models", [])
+        ]
 
     async def embed(self, model: str, texts: list[str], *, request_timeout_s: float = 10.0) -> list[list[float]]:
         """Text embeddings via /api/embed (used for search queries; workers embed documents)."""

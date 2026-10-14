@@ -1,6 +1,6 @@
 """A protocol-faithful stand-in for Ollama, used by tests and the Electron E2E run.
 
-Speaks the parts of Ollama's API that UNIVERSE uses: /api/version, /api/tags, /api/show, /api/embed,
+Speaks the parts of Ollama's API that UNIVERSE uses: /api/version, /api/tags, /api/ps, /api/show, /api/embed,
 /api/chat (non-streaming, for image captions) and the OpenAI-compatible streaming /v1/chat/completions.
 Replies echo the last user message word by word.
 Special inputs: "[[fail]]" → HTTP 500, "[[slow]]" → 200 tokens at 50 ms each (for cancel tests).
@@ -68,6 +68,7 @@ class FakeOllama(ThreadingHTTPServer):
         self.capabilities_in_tags = False  # Ollama >= 0.12 lists capabilities in /api/tags
         self.tags_status = 200  # set to 500 to make /api/tags fail while /api/version still answers
         self.chat_tools = True  # the chat model can call tools (False: a model whose card doesn't list 'tools')
+        self.loaded: dict[str, int] = {}  # models "in memory" (/api/ps): name -> bytes, once something used them
 
     @property
     def url(self) -> str:
@@ -105,6 +106,10 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/api/version":
             self._json(200, {"version": "0.0.0-fake"})
+        elif self.path == "/api/ps":
+            models = [{"name": n, "model": n, "size": b, "size_vram": b, "expires_at": "2099-01-01T00:00:00Z"}
+                      for n, b in self.srv.loaded.items()]  # fmt: skip
+            self._json(200, {"models": models})
         elif self.path == "/api/tags" and self.srv.tags_status != 200:
             self._json(self.srv.tags_status, {"error": "simulated failure"})
         elif self.path == "/api/tags":
@@ -151,6 +156,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             inputs = body.get("input")
             texts = [inputs] if isinstance(inputs, str) else list(inputs or [])
+            self.srv.loaded[str(body["model"])] = 300_000_000
             self._json(200, {"model": body["model"], "embeddings": [fake_embedding(t) for t in texts]})
             return
         if self.path == "/api/chat":
@@ -169,6 +175,7 @@ class _Handler(BaseHTTPRequestHandler):
         if body.get("model") not in (CHAT_MODEL, "fake-chat"):
             self._json(404, {"error": {"message": f"model '{body.get('model')}' not found"}})
             return
+        self.srv.loaded[str(body["model"])] = 2_000_000_000
         last_user = next((m["content"] for m in reversed(body["messages"]) if m["role"] == "user"), "")
         if "[[fail]]" in last_user:
             self._json(500, {"error": {"message": "simulated failure"}})

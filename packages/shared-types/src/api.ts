@@ -2683,6 +2683,26 @@ export interface components {
             /** To Id */
             to_id: string;
         };
+        /**
+         * LoadedModel
+         * @description A model Ollama holds in memory right now (/api/ps).
+         */
+        LoadedModel: {
+            /** Expires At */
+            expires_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Size Bytes
+             * @default 0
+             */
+            size_bytes: number;
+            /**
+             * Vram Bytes
+             * @default 0
+             */
+            vram_bytes: number;
+        };
         /** MCPServerInfo */
         MCPServerInfo: {
             /** Args */
@@ -2824,6 +2844,8 @@ export interface components {
             chat_model_hint: string | null;
             /** Installed */
             installed: components["schemas"]["InstalledModel"][];
+            /** Loaded */
+            loaded: components["schemas"]["LoadedModel"][];
             ollama: components["schemas"]["OllamaStatus"];
         };
         /** NoteContent */

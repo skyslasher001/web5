@@ -1,5 +1,6 @@
 """REST API v1 (ARCHITECTURE.md §5.1, Phase 1 subset)."""
 
+import contextlib
 import json
 import os
 import platform
@@ -21,7 +22,7 @@ from universe_core.errors import ErrorRecord
 from universe_core.events import Event
 from universe_core.protected.audit import AuditEntry, AuditVerification
 from universe_models.hardware import HardwareInfo
-from universe_models.ollama import InstalledModel, OllamaStatus
+from universe_models.ollama import InstalledModel, LoadedModel, OllamaStatus
 from universe_models.recommend import Recommendation
 
 _process = psutil.Process(os.getpid())
@@ -127,6 +128,7 @@ class AgentInfo(ApiModel):
 class ModelsInfo(ApiModel):
     ollama: OllamaStatus
     installed: list[InstalledModel]
+    loaded: list[LoadedModel] = Field(default_factory=list)  # in memory right now
     assignments: dict[str, str]
     chat_model: str | None
     chat_model_error: str | None = None
@@ -233,7 +235,13 @@ async def models(ctx: Ctx) -> ModelsInfo:
             installed = await ctx.ollama.list_models(refresh=True)
         except httpx.HTTPError as exc:
             status_ = OllamaStatus(reachable=False, url=status_.url, error=str(exc) or type(exc).__name__)
-    info = ModelsInfo(ollama=status_, installed=installed, assignments=ctx.assignments(), chat_model=None)
+    loaded: list[LoadedModel] = []
+    if status_.reachable:
+        with contextlib.suppress(httpx.HTTPError, ValueError):  # an Ollama without /api/ps: nothing to show
+            loaded = await ctx.ollama.loaded()
+    info = ModelsInfo(
+        ollama=status_, installed=installed, loaded=loaded, assignments=ctx.assignments(), chat_model=None
+    )
     if not status_.reachable:
         # Don't name a model from a stale cache when Ollama can't list its models right now.
         info.chat_model_error = f"Ollama is not reachable at {status_.url}"

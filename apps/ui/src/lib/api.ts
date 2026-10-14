@@ -23,6 +23,7 @@ import type {
   BackupConfigRequest,
   BackupRecord,
   BackupStatus,
+  ErrorRecord,
   CaptureRequest,
   CaptureResult,
   ChatSendResponse,
@@ -217,6 +218,7 @@ export class CoreApi {
   scanWatchedFolder = (id: string) => this.call<WatchedFolder>('POST', `/watched-folders/${id}/scan`);
 
   backupStatus = () => this.call<BackupStatus>('GET', '/backups/status');
+  errors = () => this.call<ErrorRecord[]>('GET', '/errors?limit=50');
   configureBackups = (body: BackupConfigRequest) => this.call<BackupStatus>('PUT', '/backups/config', body);
   runBackup = () => this.call<{ started: boolean }>('POST', '/backups/run');
   verifyBackup = () => this.call<{ started: boolean }>('POST', '/backups/verify');

@@ -191,6 +191,29 @@ export function useForgeProposals() {
   return useQuery({ queryKey: ['forge', 'proposals'], queryFn: api.forgeProposals, enabled: online });
 }
 
+/** Grouped errors from every service (System → Vitals). New errors refresh it. */
+export function useErrors(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['errors'],
+    queryFn: api.errors,
+    enabled: enabled && online,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useBackupStatus(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['backups'],
+    queryFn: api.backupStatus,
+    enabled: enabled && online,
+    refetchInterval: 30_000,
+  });
+}
+
 /** Every agent with its synopsis and stats (the Agents panel's roster). Agent events refresh it. */
 export function useAgentRoster() {
   const api = useApi();

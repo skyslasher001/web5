@@ -12,6 +12,7 @@ import { useHardware, useModels, useRecommendation, useVaultInfo, useVitals } fr
 import { useUniverse } from '../state/store';
 import { QUALITY_LABEL, type QualitySetting } from '../universe/quality';
 import { CopyButton, Dot, SectionTitle } from './ui';
+import { VitalsOverview } from './VitalsOverview';
 
 type Candidate = components['schemas']['Candidate'];
 
@@ -474,6 +475,9 @@ export function SystemPanel() {
   const v = vitals.data;
   return (
     <div className="space-y-4">
+      <Section title="Vitals">
+        <VitalsOverview />
+      </Section>
       <Section title="Core">
         {v ? (
           <div data-testid="vitals">

@@ -185,6 +185,13 @@ test('killing Core triggers an automatic restart and the app recovers', async ()
 test('the system panel shows vitals, services and hardware', async () => {
   await page.getByRole('tab', { name: 'System' }).click();
   await expect(page.getByTestId('vitals')).toContainText('pid');
+  // System Vitals: Core's heartbeat in one place (SPEC §20).
+  const vitals = page.getByTestId('system-vitals');
+  await expect(vitals.getByTestId('vital-services')).toHaveAttribute('data-level', 'good');
+  await expect(vitals.getByTestId('vital-models')).toContainText(/in memory|fake-chat/);
+  await expect(vitals.getByTestId('vital-queue')).not.toHaveAttribute('data-level', 'off');
+  await expect(vitals.getByTestId('vital-backups')).toContainText('not set up');
+  await expect(vitals.getByTestId('vital-forge')).not.toContainText('…');
   await expect(page.getByTestId('services')).toContainText(/core/i);
   await expect(page.getByTestId('hardware')).toContainText('RAM');
   await page.screenshot({ path: 'test-results/system.png' });
@@ -465,6 +472,9 @@ test('done when (Phase 5): Forge fixes an injected bug, you approve it, it appli
   await page.getByRole('tab', { name: 'System' }).click();
   await page.getByTestId('release-rollback').first().click();
   await expect.poll(() => readFileSync(calc, 'utf8'), { timeout: 60_000 }).toContain('return a - b');
+  // Core restarts after the rollback; once it's back, Electron main records the rollback and the issue reopens.
+  await page.getByRole('tab', { name: 'Forge' }).click();
+  await expect(card).toHaveAttribute('data-status', 'rolled_back', { timeout: 60_000 });
   await expect(page.getByTestId('core-status')).toHaveText(/Core online/, { timeout: 60_000 });
 });
 

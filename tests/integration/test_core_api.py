@@ -204,6 +204,13 @@ def test_models_reports_ollama_unreachable_when_listing_fails(client: TestClient
     assert body["chat_model"] is None and body["chat_model_error"]
 
 
+def test_models_lists_what_ollama_holds_in_memory(client: TestClient, fake_ollama: FakeOllama) -> None:
+    assert client.get("/api/v1/models", headers=AUTH).json()["loaded"] == []
+    fake_ollama.loaded["fake-chat:latest"] = 2_000_000_000
+    [loaded] = client.get("/api/v1/models", headers=AUTH).json()["loaded"]
+    assert loaded["name"] == "fake-chat:latest" and loaded["vram_bytes"] == 2_000_000_000 and loaded["expires_at"]
+
+
 def test_renderer_errors_are_grouped(client: TestClient) -> None:
     report = {
         "service": "renderer",
