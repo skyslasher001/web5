@@ -3,7 +3,7 @@
 // what changed.
 import { tokens } from '@universe/design-tokens';
 import type { ItemType } from '@universe/shared-types';
-import { Pause, Play } from 'lucide-react';
+import { Minus, Pause, Play, Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Vector3 } from 'three';
 import { hueHex } from '../lib/colors';
@@ -15,6 +15,7 @@ import { useInteraction } from '../universe/scene/interaction';
 import { useLayout } from '../universe/scene/layoutController';
 import { useScene } from '../universe/scene/sceneData';
 import { styleFor } from '../universe/scene/types';
+import { NOTCH } from '../universe/scene/zoom';
 import { Kbd } from './ui';
 
 const LAYOUT_LABEL: Record<Layout, string> = {
@@ -96,6 +97,55 @@ function Minimap() {
         rig.flyTo(new Vector3(x, 0, z), layout.extent * 0.4);
       }}
     />
+  );
+}
+
+/** Where the camera is on the log zoom scale and which galaxy it has zoomed into (polled, like the minimap). */
+function useZoom(): { fraction: number; galaxy: number } {
+  const [zoom, setZoom] = useState(() => rig.zoom());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const next = rig.zoom();
+      setZoom((z) => (Math.abs(z.fraction - next.fraction) < 0.005 && z.galaxy === next.galaxy ? z : next));
+    }, 150);
+    return () => clearInterval(timer);
+  }, []);
+  return zoom;
+}
+
+/** − slider + : the same smooth zoom as the mouse wheel, for keyboards and screen readers. */
+function ZoomControl({ fraction }: { fraction: number }) {
+  const step = 1 / (NOTCH * NOTCH);
+  return (
+    <div className="flex items-center gap-1.5" data-testid="zoom-control">
+      <button
+        type="button"
+        onClick={() => rig.zoomBy(step)}
+        aria-label="Zoom in (+)"
+        className="text-ink-3 hover:text-accent"
+      >
+        <Plus className="size-3.5" aria-hidden />
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1000}
+        value={Math.round((1 - fraction) * 1000)}
+        onChange={(e) => rig.zoomTo(1 - Number(e.target.value) / 1000)}
+        aria-label="Zoom"
+        aria-valuetext={`${Math.round((1 - fraction) * 100)} % zoomed in`}
+        className="flex-1 accent-[var(--color-accent)]"
+        data-testid="zoom-slider"
+      />
+      <button
+        type="button"
+        onClick={() => rig.zoomBy(1 / step)}
+        aria-label="Zoom out (−)"
+        className="text-ink-3 hover:text-accent"
+      >
+        <Minus className="size-3.5" aria-hidden />
+      </button>
+    </div>
   );
 }
 
@@ -190,10 +240,15 @@ export function NavigatorCard() {
   const computing = useLayout((l) => l.computing);
   const quality = useUniverse((st) => st.quality);
   const scene = useScene((st) => st.scene);
-  const level = zoomLevel(s);
+  const zoom = useZoom();
+  // Zooming into a galaxy (without selecting it) puts you at Galaxy level too.
+  const zoomedInto = s.view === 'universe' ? scene.galaxyIds[zoom.galaxy] : undefined;
+  const level = zoomLevel(s, zoomedInto !== undefined);
   const itemIndex = s.selectedItemId ? scene.index.get(s.selectedItemId) : undefined;
   const galaxyId =
-    s.selectedProjectId ?? (itemIndex !== undefined ? scene.galaxyIds[scene.galaxy[itemIndex]!] : undefined);
+    s.selectedProjectId ??
+    (itemIndex !== undefined ? scene.galaxyIds[scene.galaxy[itemIndex]!] : undefined) ??
+    zoomedInto;
   const galaxy = projects.data?.find((p) => p.id === galaxyId);
   const crumb = (label: string, onClick?: () => void) =>
     onClick ? (
@@ -260,9 +315,11 @@ export function NavigatorCard() {
           {notice ?? `Arranging the ${LAYOUT_LABEL[computing!]} layout…`}
         </p>
       )}
+      <ZoomControl fraction={zoom.fraction} />
       {s.layout === 'time' && <TimeSlider />}
       <p className="text-[11px] text-ink-3">
-        <Kbd>H</Kbd> home · <Kbd>Esc</Kbd> back · <Kbd>1</Kbd>–<Kbd>4</Kbd> layouts
+        <Kbd>H</Kbd> home · <Kbd>Esc</Kbd> back · <Kbd>+</Kbd>
+        <Kbd>−</Kbd> zoom · <Kbd>1</Kbd>–<Kbd>4</Kbd> layouts
       </p>
       <Announcer />
     </section>

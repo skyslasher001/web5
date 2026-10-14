@@ -100,21 +100,22 @@ export function PhotoViewer({ item }: { item: Item }) {
 
 /** A waveform drawn from the decoded audio (Web Audio), with the playhead. */
 function Waveform({
-  url,
+  blob,
   audio,
   onSeek,
 }: {
-  url: string;
+  blob: Blob;
   audio: RefObject<HTMLAudioElement | null>;
   onSeek: (fraction: number) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [peaks, setPeaks] = useState<Float32Array | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     const ctx = new AudioContext();
-    fetch(url)
-      .then((r) => r.arrayBuffer())
+    blob
+      .arrayBuffer()
       .then((buf) => ctx.decodeAudioData(buf))
       .then((decoded) => {
         const data = decoded.getChannelData(0);
@@ -129,12 +130,14 @@ function Waveform({
         }
         if (!cancelled) setPeaks(out);
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (!cancelled) setFailed(`No waveform: ${err instanceof Error ? err.message : String(err)}`);
+      })
       .finally(() => void ctx.close());
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [blob]);
   useEffect(() => {
     let raf = 0;
     const draw = () => {
@@ -156,6 +159,7 @@ function Waveform({
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, [peaks, audio]);
+  if (failed) return <p className="text-xs text-ink-3">{failed}</p>;
   return (
     <canvas
       ref={canvas}
@@ -163,6 +167,8 @@ function Waveform({
       height={120}
       className="h-24 w-full cursor-pointer"
       aria-label="Waveform: click to seek"
+      data-testid="waveform"
+      data-ready={peaks ? 'true' : 'false'}
       onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
         onSeek((e.clientX - rect.left) / rect.width);
@@ -172,20 +178,20 @@ function Waveform({
 }
 
 export function MediaViewer({ item }: { item: Item }) {
-  const { url, error } = useFileUrl(item.id);
+  const { url, blob, error } = useFileUrl(item.id);
   const audio = useRef<HTMLAudioElement>(null);
   const meta = item.metadata as Record<string, unknown>;
   const isVideo = item.type === 'video';
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {!url ? (
+      {!url || !blob ? (
         <p className="text-xs text-ink-3">{error ?? 'Loading…'}</p>
       ) : isVideo ? (
         <video src={url} controls className="min-h-0 flex-1 rounded-md bg-black" data-testid="video" />
       ) : (
         <>
           <Waveform
-            url={url}
+            blob={blob}
             audio={audio}
             onSeek={(fraction) => {
               const a = audio.current;
@@ -210,7 +216,7 @@ export function MediaViewer({ item }: { item: Item }) {
 }
 
 export function PdfViewer({ item }: { item: Item }) {
-  const { url, error } = useFileUrl(item.id);
+  const { blob, error } = useFileUrl(item.id);
   const holder = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
@@ -218,24 +224,34 @@ export function PdfViewer({ item }: { item: Item }) {
   const doc = useRef<{ getPage(n: number): Promise<unknown>; numPages: number } | null>(null);
 
   useEffect(() => {
-    if (!url) return;
+    if (!blob) return;
     let cancelled = false;
+    // Destroying the loading task frees the document and its worker thread when the viewer closes.
+    let task: { destroy(): Promise<void> } | null = null;
     (async () => {
       const pdfjs = await import('pdfjs-dist');
       pdfjs.GlobalWorkerOptions.workerSrc = new URL(
         'pdfjs-dist/build/pdf.worker.min.mjs',
         import.meta.url,
       ).toString();
-      const loaded = await pdfjs.getDocument({ url }).promise;
+      const data = new Uint8Array(await blob.arrayBuffer()); // bytes, not a blob: URL (CSP connect-src)
+      if (cancelled) return;
+      const loading = pdfjs.getDocument({ data });
+      task = loading;
+      const loaded = await loading.promise;
       if (cancelled) return;
       doc.current = loaded as unknown as typeof doc.current;
       setPages(loaded.numPages);
       setPage(1);
-    })().catch((err: unknown) => setFailed(err instanceof Error ? err.message : String(err)));
+    })().catch((err: unknown) => {
+      if (!cancelled) setFailed(err instanceof Error ? err.message : String(err));
+    });
     return () => {
       cancelled = true;
+      doc.current = null;
+      void task?.destroy();
     };
-  }, [url]);
+  }, [blob]);
 
   useEffect(() => {
     const d = doc.current;
@@ -265,12 +281,14 @@ export function PdfViewer({ item }: { item: Item }) {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[1fr_14rem] gap-4">
-      <div
-        ref={holder}
-        className="min-h-0 overflow-y-auto rounded-md bg-space-0/70 p-2"
-        data-testid="pdf-pages"
-      >
-        <p className="text-xs text-ink-3">{failed ?? error ?? 'Loading…'}</p>
+      <div className="min-h-0 overflow-y-auto rounded-md bg-space-0/70 p-2">
+        {(failed || error || !pages) && (
+          <p className="text-xs text-ink-3" data-testid="pdf-status">
+            {failed ?? error ?? 'Loading…'}
+          </p>
+        )}
+        {/* pdf.js pages go here; React renders nothing inside, so replacing them can't remove a message */}
+        <div ref={holder} data-testid="pdf-pages" />
       </div>
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-ink-2">

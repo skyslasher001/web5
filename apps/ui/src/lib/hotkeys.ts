@@ -1,9 +1,19 @@
 import { useEffect } from 'react';
 import { LAYOUTS, useUniverse } from '../state/store';
+import { rig } from '../universe/scene/helpers';
+import { NOTCH } from '../universe/scene/zoom';
 
-function typing(target: EventTarget | null): boolean {
+/** Keys typed into a field (including a dropdown, where letters pick an option) are never shortcuts. */
+export function typing(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+  return (
+    !!el &&
+    (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+  );
+}
+
+export function modalOpen(s: { viewerItemId: string | null; dashboardProjectId: string | null }): boolean {
+  return s.viewerItemId !== null || s.dashboardProjectId !== null;
 }
 
 export function useHotkeys(): void {
@@ -36,6 +46,8 @@ export function useHotkeys(): void {
         return;
       }
       if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey || s.paletteOpen) return;
+      // A viewer or dashboard is modal: single-key shortcuts would act behind it (Z would even close it).
+      if (modalOpen(s)) return;
       const key = e.key.toLowerCase();
       if (key === '/') {
         e.preventDefault();
@@ -51,6 +63,9 @@ export function useHotkeys(): void {
       else if (key === 'h') {
         s.setView('universe');
         s.flyHome();
+      } else if ((key === '+' || key === '=' || key === '-') && s.view === 'universe') {
+        e.preventDefault();
+        rig.zoomBy(key === '-' ? NOTCH * NOTCH : 1 / (NOTCH * NOTCH)); // two wheel notches per key press
       } else if (key >= '1' && key <= '4') {
         s.setLayout(LAYOUTS[Number(key) - 1]!);
         s.setView('universe');

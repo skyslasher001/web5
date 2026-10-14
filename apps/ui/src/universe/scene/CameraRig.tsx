@@ -1,14 +1,26 @@
 // Orbit controls plus eased camera flights (SPEC §7: 600–1200 ms, distance-scaled; instant with reduced
 // motion). Selecting a galaxy, an item or search results flies there; H flies home to the Core.
+// Zoom is our own (zoom.ts): log-scale, eased, toward the point under the pointer, with clip planes that
+// follow the distance, so it stays smooth from the whole universe down to a single item.
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Vector3 } from 'three';
+import { Plane, Raycaster, Vector2, Vector3, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useUniverse } from '../../state/store';
 import { flightDuration, itemPosition, rig } from './helpers';
 import { easeInOutCubic, STILL, useInteraction } from './interaction';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
+import {
+  clipPlanes,
+  distanceAt,
+  easeToward,
+  focusGalaxy,
+  wheelFactor,
+  zoomAnchor,
+  zoomFraction,
+  zoomLimits,
+} from './zoom';
 
 interface Flight {
   fromPos: Vector3;
@@ -17,6 +29,15 @@ interface Flight {
   toTarget: Vector3;
   start: number;
   duration: number;
+}
+
+interface Zoom {
+  goal: number;
+  anchor: Vector3;
+}
+
+function limits() {
+  return zoomLimits(useLayout.getState().current?.extent ?? 300);
 }
 
 function homePose() {
@@ -28,6 +49,7 @@ export function CameraRig() {
   const { camera, gl } = useThree();
   const controls = useRef<OrbitControls | null>(null);
   const flight = useRef<Flight | null>(null);
+  const zoom = useRef<Zoom | null>(null);
   const lastFlight = useRef<{ planned: number; actual: number } | null>(null);
   const placedOnce = useRef(false);
   const layout = useLayout((s) => s.current);
@@ -41,13 +63,68 @@ export function CameraRig() {
     const c = new OrbitControls(camera, gl.domElement);
     c.enableDamping = !STILL;
     c.dampingFactor = 0.08;
-    c.zoomSpeed = 0.9;
-    c.minDistance = 2;
-    c.maxDistance = 6000;
+    c.enableZoom = false; // zoom is ours, below
+    c.minDistance = 0.5;
+    c.maxDistance = 80000;
     c.screenSpacePanning = true;
     controls.current = c;
 
+    // Start (or retarget) a zoom: scale the goal distance and keep `anchor` fixed on screen.
+    const zoomBy = (factor: number, anchor: Vector3) => {
+      flight.current = null; // zooming takes over from a flight
+      const { min, max } = limits();
+      const from = zoom.current?.goal ?? camera.position.distanceTo(c.target);
+      zoom.current = { goal: Math.min(max, Math.max(min, from * factor)), anchor };
+    };
+    // The point under the pointer: the item it's on, else where the pointer ray meets the plane through the
+    // orbit target, facing the camera.
+    const raycaster = new Raycaster();
+    const plane = new Plane();
+    const ndc = new Vector2();
+    const forward = new Vector3();
+    const pointUnder = (e: WheelEvent): Vector3 => {
+      const hovered = useInteraction.getState().hovered;
+      const item = hovered >= 0 ? itemPosition(hovered) : null;
+      if (item) return item;
+      const rect = gl.domElement.getBoundingClientRect();
+      ndc.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(ndc, camera);
+      plane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(forward), c.target);
+      return raycaster.ray.intersectPlane(plane, new Vector3()) ?? c.target.clone();
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomBy(wheelFactor(e.deltaY, e.deltaMode, e.ctrlKey), pointUnder(e));
+    };
+    gl.domElement.addEventListener('wheel', onWheel, { passive: false });
+    rig.zoomBy = (factor) => zoomBy(factor, c.target.clone());
+    rig.zoomTo = (fraction) => {
+      const { min, max } = limits();
+      zoomBy(distanceAt(fraction, min, max) / camera.position.distanceTo(c.target), c.target.clone());
+    };
+    rig.zoom = () => {
+      const { min, max } = limits();
+      const distance = zoom.current?.goal ?? camera.position.distanceTo(c.target);
+      const layout = useLayout.getState().current;
+      return {
+        fraction: zoomFraction(distance, min, max),
+        galaxy:
+          layout?.kind === 'project'
+            ? focusGalaxy(
+                c.target,
+                camera.position.distanceTo(c.target),
+                layout.galaxyCentres,
+                layout.galaxyRadii,
+              )
+            : -1,
+      };
+    };
+
     const flyToPose = (toPos: Vector3, toTarget: Vector3) => {
+      zoom.current = null; // a flight takes over from a zoom
       if (STILL) {
         camera.position.copy(toPos);
         c.target.copy(toTarget);
@@ -82,10 +159,14 @@ export function CameraRig() {
       lastFlight: lastFlight.current,
     });
     return () => {
+      gl.domElement.removeEventListener('wheel', onWheel);
       c.dispose();
       controls.current = null;
       rig.flyTo = () => {};
       rig.home = () => {};
+      rig.zoomBy = () => {};
+      rig.zoomTo = () => {};
+      rig.zoom = () => ({ fraction: 1, galaxy: -1 });
     };
   }, [camera, gl]);
 
@@ -149,9 +230,27 @@ export function CameraRig() {
     rig.flyTo(centre, Math.max(18, radius * 2.4));
   }, [results, view]);
 
-  useFrame(() => {
+  useFrame((state, delta) => {
     const c = controls.current;
     if (!c) return;
+    const z = zoom.current;
+    if (z) {
+      const distance = camera.position.distanceTo(c.target);
+      const next = easeToward(distance, z.goal, delta, STILL ? Infinity : undefined);
+      const t = zoomAnchor(c.target, z.anchor, next / distance);
+      const dir = camera.position.clone().sub(c.target).normalize();
+      c.target.set(t.x, t.y, t.z);
+      camera.position.copy(c.target).addScaledVector(dir, next);
+      if (next === z.goal) zoom.current = null;
+    }
+    // Clip planes follow the distance (depth precision up close, the whole universe from afar).
+    const cam = state.camera as PerspectiveCamera;
+    const planes = clipPlanes(camera.position.distanceTo(c.target));
+    if (Math.abs(cam.near / planes.near - 1) > 0.15 || Math.abs(cam.far / planes.far - 1) > 0.15) {
+      cam.near = planes.near;
+      cam.far = planes.far;
+      cam.updateProjectionMatrix();
+    }
     const f = flight.current;
     if (f) {
       const t = Math.min(1, (performance.now() - f.start) / f.duration);

@@ -1,5 +1,6 @@
 // Lite mode (SPEC §7): the same universe as a 2D WebGL graph (sigma), for machines without a capable GPU.
 // Same positions (seen from above), same colours, same HUD; search, selection and "home" move the camera.
+// Zoom uses the same log scale as the 3D view (zoom.ts) instead of sigma's fixed ×1.7 per wheel event.
 import { tokens } from '@universe/design-tokens';
 import type { ItemType } from '@universe/shared-types';
 import Graph from 'graphology';
@@ -14,6 +15,7 @@ import { useInteraction } from './scene/interaction';
 import { useLayout } from './scene/layoutController';
 import { useScene } from './scene/sceneData';
 import { styleFor, TYPE_ORDER } from './scene/types';
+import { distanceAt, wheelFactor, zoomFraction } from './scene/zoom';
 
 interface NodeAttrs {
   x: number;
@@ -27,6 +29,8 @@ interface NodeAttrs {
 }
 
 const DIMMED = tokens.color.space['3'];
+const MIN_RATIO = 0.002;
+const MAX_RATIO = 4;
 
 /** A node's position in the camera's coordinate system (sigma's "framed graph", 0–1). */
 function framed(renderer: Sigma<NodeAttrs>, node: string): { x: number; y: number } | null {
@@ -59,8 +63,8 @@ export default function LiteScene() {
       labelSize: 11,
       defaultEdgeColor: '#1f3a4f',
       zIndex: false, // sorting 50k nodes by z-index cost ~2 s a frame in software rendering (measured)
-      minCameraRatio: 0.002,
-      maxCameraRatio: 4,
+      minCameraRatio: MIN_RATIO,
+      maxCameraRatio: MAX_RATIO,
       hideEdgesOnMove: true,
       hideLabelsOnMove: true, // labels for 50k nodes are the slowest part of a frame
     });
@@ -78,6 +82,32 @@ export default function LiteScene() {
     renderer.on('clickStage', () => useUniverse.getState().zoomOut());
     sigma.current = renderer;
     const camera = renderer.getCamera();
+    // Smooth zoom: each wheel event moves a goal ratio on the log scale and the camera eases there,
+    // keeping the point under the pointer in place. Later events retarget the same glide.
+    let goal: number | null = null;
+    const zoomTo = (ratio: number, at: { x: number; y: number }) => {
+      goal = Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio));
+      void camera
+        .animate(renderer.getViewportZoomedState(at, goal), { easing: 'quadraticOut', duration: 180 })
+        .then(() => {
+          if (!camera.isAnimated()) goal = null;
+        });
+    };
+    const centre = () => {
+      const { width, height } = renderer.getDimensions();
+      return { x: width / 2, y: height / 2 };
+    };
+    renderer.getMouseCaptor().on('wheel', (e) => {
+      e.preventSigmaDefault();
+      const w = e.original as WheelEvent;
+      zoomTo((goal ?? camera.getState().ratio) * wheelFactor(w.deltaY, w.deltaMode, w.ctrlKey), e);
+    });
+    rig.zoomBy = (factor) => zoomTo((goal ?? camera.getState().ratio) * factor, centre());
+    rig.zoomTo = (fraction) => zoomTo(distanceAt(fraction, MIN_RATIO, MAX_RATIO), centre());
+    rig.zoom = () => ({
+      fraction: zoomFraction(goal ?? camera.getState().ratio, MIN_RATIO, MAX_RATIO),
+      galaxy: -1,
+    });
     rig.state = () => {
       const c = camera.getState();
       return {
@@ -90,6 +120,9 @@ export default function LiteScene() {
     return () => {
       renderer.kill();
       sigma.current = null;
+      rig.zoomBy = () => {};
+      rig.zoomTo = () => {};
+      rig.zoom = () => ({ fraction: 1, galaxy: -1 });
     };
   }, []);
 

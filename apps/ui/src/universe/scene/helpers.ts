@@ -114,6 +114,12 @@ export function itemPosition(index: number): Vector3 | null {
 export const rig = {
   flyTo: (_target: Vector3, _distance: number): void => {},
   home: (): void => {},
+  /** Smooth zoom by a distance factor (> 1 out, < 1 in), toward the centre of the view. */
+  zoomBy: (_factor: number): void => {},
+  /** Smooth zoom to a point on the 0–1 log scale (0 = closest). */
+  zoomTo: (_fraction: number): void => {},
+  /** Where the zoom is on the 0–1 log scale, and the galaxy zoomed into (its index, -1 none). */
+  zoom: (): { fraction: number; galaxy: number } => ({ fraction: 1, galaxy: -1 }),
   state: () => ({
     position: [0, 0, 0] as number[],
     target: [0, 0, 0] as number[],
@@ -126,13 +132,17 @@ export const rig = {
 /** Universe → Galaxy → System (an item and its neighbours) → Item (its viewer is open) (SPEC §7). */
 export type ZoomLevel = 'Universe' | 'Galaxy' | 'System' | 'Item';
 
-export function zoomLevel(s: {
-  viewerItemId: string | null;
-  selectedItemId: string | null;
-  selectedProjectId: string | null;
-}): ZoomLevel {
+/** The selection decides the level; without one, zooming into a galaxy is enough to be at Galaxy level. */
+export function zoomLevel(
+  s: {
+    viewerItemId: string | null;
+    selectedItemId: string | null;
+    selectedProjectId: string | null;
+  },
+  zoomedIntoGalaxy = false,
+): ZoomLevel {
   if (s.viewerItemId) return 'Item';
   if (s.selectedItemId) return 'System';
-  if (s.selectedProjectId) return 'Galaxy';
+  if (s.selectedProjectId || zoomedIntoGalaxy) return 'Galaxy';
   return 'Universe';
 }

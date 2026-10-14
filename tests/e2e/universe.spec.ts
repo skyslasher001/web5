@@ -330,10 +330,76 @@ test('the note viewer edits Markdown safely and follows links', async () => {
   await expect(page.getByTestId('note-editor')).toHaveValue(/The parcel map for the lake lot/);
   await expect(page.getByTestId('backlinks')).toContainText('Viewer check');
   expect(target.item_id).toBeTruthy();
+  // Single-key shortcuts don't act behind the viewer (regression: Z used to close it, losing a draft).
+  await page.getByTestId('viewer-title').click();
+  await page.keyboard.press('z');
+  await page.keyboard.press('g');
+  await expect(page.getByTestId('item-viewer')).toBeVisible();
   // Esc closes the viewer even from inside the editor.
   await page.getByTestId('note-editor').click();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('item-viewer')).toHaveCount(0);
+
+  // Changed elsewhere (an agent, another editor) while closed: reopening shows the new text, not a cached
+  // copy (regression: a reopened note showed stale content, and saving it then conflicted).
+  const current = await core<{ version: number }>('GET', `/items/${target.item_id}/content`);
+  await core('PUT', `/items/${target.item_id}/content`, {
+    body: 'Rewritten by an agent.',
+    base_version: current.version,
+  });
+  await page.getByTestId('search-input').fill('Parcel map');
+  await expect.poll(() => debug((d) => d.results()), { timeout: 30_000 }).toBeGreaterThan(0);
+  await page.getByTestId('search-input').press('Enter');
+  await page.getByTestId('view-item').click();
+  await expect(page.getByTestId('viewer-title')).toHaveText('Parcel map');
+  await expect(page.getByTestId('note-editor')).toHaveValue('Rewritten by an agent.');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('item-viewer')).toHaveCount(0);
+});
+
+test('PDFs and songs open in their viewers under the security policy', async () => {
+  // Regression: pdf.js and the waveform read the file through a blob: URL, which the CSP's connect-src
+  // blocks in the packaged app (served over app://), so PDFs failed and songs had no waveform.
+  await reset();
+  const dir = join(tmp, 'media');
+  execFileSync(
+    'uv',
+    [
+      'run', '--quiet', 'python', '-c',
+      'import sys; from pathlib import Path; from tests.support.files import write_pdf, write_wav; ' +
+        'd = Path(sys.argv[1]); d.mkdir(); ' +
+        'write_pdf(d / "zephyr-survey.pdf", ["Zephyr survey page one", "Zephyr survey page two"]); ' +
+        'write_wav(d / "zephyr-song.wav", title="Zephyr Song", artist="Tester", seconds=1.0)',
+      dir,
+    ],
+    { cwd: root },
+  ); // prettier-ignore
+  await core('POST', '/ingest/paths', { paths: [dir] });
+  for (const [query, check] of [
+    ['zephyr-survey', 'pdf'],
+    ['Zephyr Song', 'song'],
+  ] as const) {
+    await expect
+      .poll(
+        async () =>
+          (await core<{ hits: unknown[] }>('GET', `/search?q=${encodeURIComponent(query)}`)).hits.length,
+        { timeout: 60_000 },
+      )
+      .toBeGreaterThan(0);
+    await page.getByTestId('search-input').fill(query);
+    await expect.poll(() => debug((d) => d.results()), { timeout: 30_000 }).toBeGreaterThan(0);
+    await page.getByTestId('search-input').press('Enter');
+    await page.getByTestId('view-item').click();
+    if (check === 'pdf') {
+      await expect(page.getByTestId('pdf-page')).toHaveText('Page 1 of 2', { timeout: 30_000 });
+      await expect(page.getByTestId('pdf-pages').locator('canvas')).toHaveCount(1);
+    } else {
+      await expect(page.getByTestId('waveform')).toHaveAttribute('data-ready', 'true', { timeout: 30_000 });
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('item-viewer')).toHaveCount(0);
+    await page.getByTestId('search-input').fill('');
+  }
 });
 
 test('a galaxy dashboard keeps goals', async () => {

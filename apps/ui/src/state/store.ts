@@ -169,6 +169,11 @@ function activityFrom(events: CoreEvent[]): ActivityItem[] {
   return list;
 }
 
+/** True when nothing unsaved would be lost, or the owner agrees to discard it. */
+export function discardOk(s: { viewerDirty: boolean }): boolean {
+  return !s.viewerDirty || window.confirm('Discard the changes to this note?');
+}
+
 export const useUniverse = create<UniverseState>()((set, get) => ({
   config: null,
   desktop: null,
@@ -287,16 +292,28 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   openAgent: (runAgentId) => set({ runAgentId, panel: 'agents' }),
   selectTask: (selectedTaskId) => set({ selectedTaskId, panel: 'agents' }),
   setKillSwitch: (killSwitch) => set({ killSwitch }),
-  setLayout: (layout) => set({ layout }),
+  // The time-travel slider only exists in the Time layout, so leaving it shows the universe as it is now.
+  setLayout: (layout) => set((s) => ({ layout, timeCut: layout === 'time' ? s.timeCut : null })),
   setTimeCut: (timeCut) => set({ timeCut }),
-  openViewer: (viewerItemId) => set({ viewerItemId, selectedItemId: viewerItemId, dashboardProjectId: null }),
+  // Anything that replaces or closes the viewer asks first when a note has unsaved changes.
+  openViewer: (viewerItemId) => {
+    if (viewerItemId !== get().viewerItemId && !discardOk(get())) return;
+    set({ viewerItemId, selectedItemId: viewerItemId, dashboardProjectId: null, viewerDirty: false });
+  },
   closeViewer: () => {
-    if (get().viewerDirty && !window.confirm('Discard the changes to this note?')) return;
+    if (!discardOk(get())) return;
     set({ viewerItemId: null, dashboardProjectId: null, viewerDirty: false });
   },
   setViewerDirty: (viewerDirty) => set({ viewerDirty }),
-  openDashboard: (dashboardProjectId) =>
-    set({ dashboardProjectId, selectedProjectId: dashboardProjectId, viewerItemId: null }),
+  openDashboard: (dashboardProjectId) => {
+    if (!discardOk(get())) return;
+    set({
+      dashboardProjectId,
+      selectedProjectId: dashboardProjectId,
+      viewerItemId: null,
+      viewerDirty: false,
+    });
+  },
   flyHome: () => set((s) => ({ homeTick: s.homeTick + 1, selectedItemId: null, selectedProjectId: null })),
   initQuality: (webgl) => {
     const s = get();

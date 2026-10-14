@@ -13,14 +13,23 @@ const SHARED_VERTEX = /* glsl */ `
   uniform float uTimeCut;
   uniform float uMinPx;
 
-  // Level of detail: an item smaller than uMinPx on screen isn't drawn (its galaxy's sprite stands in for
-  // it from afar). Search results are always drawn.
-  float pointSize(vec4 mv) {
+  // Level of detail: an item smaller than uMinPx on screen fades out over a short band, then isn't drawn
+  // (its galaxy's sprite stands in for it from afar), so zooming never makes stars pop. Search results are
+  // always drawn.
+  const float FADE_FROM = 0.7;                         // fully gone at 70 % of uMinPx
+
+  float rawSize(vec4 mv) {
+    return aSize * uSizeMul * (1.0 + step(0.5, aState) * 0.8) * uScale / -mv.z;
+  }
+
+  float lodFade(float raw) {
+    return step(0.5, aState) > 0.5 ? 1.0 : smoothstep(uMinPx * FADE_FROM, uMinPx, raw);
+  }
+
+  float pointSize(float raw) {
     float hidden = step(uTimeCut, aCreated);           // created after the time slider: not born yet
-    float highlighted = step(0.5, aState);
-    float size = aSize * uSizeMul * (1.0 + highlighted * 0.8) * uScale / -mv.z;
-    if (hidden > 0.5 || aHidden > 0.5 || (size < uMinPx && highlighted < 0.5)) return 0.0;
-    return clamp(size, 1.5, 44.0);
+    if (hidden > 0.5 || aHidden > 0.5 || lodFade(raw) <= 0.0) return 0.0;
+    return clamp(raw, 1.5, 44.0);
   }
 
   // Culled points go outside the clip volume, so the rasterizer never sees them.
@@ -45,14 +54,15 @@ export const POINT_VERTEX = /* glsl */ `
 
   void main() {
     vec4 mv = modelViewMatrix * vec4(placed(), 1.0);
-    gl_PointSize = pointSize(mv);
+    float raw = rawSize(mv);
+    gl_PointSize = pointSize(raw);
     gl_Position = clipped(mv, gl_PointSize);
     float highlighted = step(0.5, aState);
     vColor = aColor;
     vShape = aShape;
     vSeed = aSeed;
-    // A search dims everything that isn't a result.
-    vGlow = aGlow * mix(1.0 - uDim * 0.88, 1.0, highlighted);
+    // A search dims everything that isn't a result; distance fades what's about to drop out of detail.
+    vGlow = aGlow * mix(1.0 - uDim * 0.88, 1.0, highlighted) * lodFade(raw);
   }
 `;
 
@@ -126,7 +136,8 @@ export const PICK_VERTEX = /* glsl */ `
   varying vec3 vPick;
   void main() {
     vec4 mv = modelViewMatrix * vec4(placed(), 1.0);
-    float size = pointSize(mv);
+    float raw = rawSize(mv);
+    float size = lodFade(raw) >= 1.0 ? pointSize(raw) : 0.0; // half-faded items aren't clickable yet
     gl_PointSize = max(size, 6.0);                      // small items you can see stay easy to click
     gl_Position = clipped(mv, size);
     vPick = aPick;

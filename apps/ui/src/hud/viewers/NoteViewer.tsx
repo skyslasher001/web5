@@ -12,7 +12,7 @@ import { refreshItemQueries } from '../../lib/queryClient';
 import { useUniverse } from '../../state/store';
 import { useScene } from '../../universe/scene/sceneData';
 import { Button, inputClass } from '../ui';
-import { renderMarkdown } from './viewerUtils';
+import { draftAfterSave, renderMarkdown } from './viewerUtils';
 
 function Backlinks({ id }: { id: string }) {
   const api = useApi();
@@ -117,7 +117,14 @@ function Backlinks({ id }: { id: string }) {
 
 export function NoteViewer({ id }: { id: string }) {
   const api = useApi();
-  const note = useQuery({ queryKey: ['note', id], queryFn: () => api.noteContent(id), staleTime: Infinity });
+  const client = useQueryClient();
+  // Fresh from disk every time the viewer opens (gcTime 0): an agent or another editor may have changed it.
+  const note = useQuery({
+    queryKey: ['note', id],
+    queryFn: () => api.noteContent(id),
+    staleTime: Infinity,
+    gcTime: 0,
+  });
   const [draft, setDraft] = useState<string | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -134,11 +141,14 @@ export function NoteViewer({ id }: { id: string }) {
     const base = note.data;
     if (!base || !dirty || saving) return;
     setSaving(true);
+    const sent = draft ?? '';
     api
-      .saveNote(id, draft ?? '', base.version)
+      .saveNote(id, sent, base.version)
       .then((saved: NoteContent) => {
-        note.refetch();
-        setDraft(saved.body);
+        // The saved version becomes the base at once (a second Ctrl+S builds on it), and anything typed
+        // while the save was in flight stays in the editor.
+        client.setQueryData(['note', id], saved);
+        setDraft((current) => draftAfterSave(current, sent));
         setConflict(null);
         void refreshItemQueries();
         useUniverse.getState().addNotice('good', `Saved version ${saved.version}`);
