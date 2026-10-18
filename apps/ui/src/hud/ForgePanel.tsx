@@ -253,6 +253,13 @@ export function ForgePanel() {
   const proposals = useForgeProposals();
   const focus = useUniverse((s) => s.forgeFocus);
   const [open, setOpen] = useState<string | null>(focus);
+  // Follow a deep-link (openForge(id)) even when the Forge tab is already mounted: adjust state during render
+  // when forgeFocus changes (React's recommended alternative to a setState-in-effect sync).
+  const [seenFocus, setSeenFocus] = useState(focus);
+  if (focus !== seenFocus) {
+    setSeenFocus(focus);
+    if (focus) setOpen(focus);
+  }
   const [report, setReport] = useState('');
   const s = status.data;
   const canFix = !!s?.available && !!s.agent;

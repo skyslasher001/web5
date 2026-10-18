@@ -129,6 +129,19 @@ def test_migrations_up_to_date(tmp_path: Path) -> None:
     assert applied == []  # opening the databases applied everything, including 0007_forge
 
 
+def test_forge_has_no_tool_that_applies_merges_or_approves() -> None:
+    # The core Phase 5 safety invariant: Forge can propose, nothing more. Applying lives only in the supervisor,
+    # behind a native dialog. Guard it structurally so a future tool can't quietly add an apply path.
+    from types import SimpleNamespace
+
+    from universe_core.forge_tools import forge_tools
+
+    names = [t.name for t in forge_tools(SimpleNamespace(forge=None, engine=None, audit=None))]  # type: ignore[arg-type]
+    assert names, "Forge should expose tools"
+    banned = ("apply", "merge", "approve", "release", "rollback", "commit", "push")
+    assert not [n for n in names if any(b in n.lower() for b in banned)], names
+
+
 def test_the_protected_matcher_is_case_insensitive() -> None:
     # The owner's target is Windows (case-insensitive filesystem): the guard must not depend on path case.
     paths = ProtectedPaths(["services/supervisor/**", "agents/forge.yaml"])

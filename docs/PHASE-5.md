@@ -105,8 +105,8 @@ From [PHASE-4.md](PHASE-4.md#setup), then:
 
 | Suite | Count | New in Phase 5 |
 | --- | --- | --- |
-| pytest, main (`uv run pytest`) | 243: 242 passed, 1 Windows-only skip | Forge core: protected paths (case-insensitive), worktrees, writes outside the worktree, verification (fails on base, passes on head), per-proposal base checkouts, triage and dedup, the daily cap and no orphan worktree on refusal, the API, Core checking "applied" against git and refusing a stale source state idempotently; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
-| pytest, with the patch | 263: 262 passed, 1 Windows-only skip | + 10 Sentinel tests and 10 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy — including a rename to an unprotected path, network/approval block rules, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
+| pytest, main (`uv run pytest`) | 253 collected (1 Windows-only skip) | Forge core: protected paths (case-insensitive), worktrees, writes outside the worktree, no apply/merge/approve tool exists, verification (fails on base, passes on head), per-proposal base checkouts, triage and dedup, the daily cap and no orphan worktree on refusal, the API, Core checking "applied" against git and refusing a stale source state idempotently; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
+| pytest, with the patch | 273 collected (1 Windows-only skip) | + 10 Sentinel tests and 10 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy — including a rename to an unprotected path, network/approval block rules, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
 | Vitest | 121 (129 with the patch: + 8 approval-dialog tests) | System Vitals, the approval dialog: refuses what isn't ready, applies only after the dialog, reports refusals, rollback, and Core catching up after a restart |
 | Playwright Electron | 23 without the patch: 22 passed, the Phase 5 done-when stops after checking the missing-patch path · with the patch, `app.spec.ts` + `safe-mode.spec.ts`: 15 of 15 passed | the Phase 5 done-when (with the patch: the full loop; without: the missing-patch path), System Vitals |
 
@@ -153,6 +153,10 @@ for a rare, owner-initiated apply; restructuring the lock was judged riskier tha
 
 ## Known limitations
 
+- **Sentinel's written (model) review is deferred.** Sentinel's verdict is the deterministic code review, which
+  is what gates a proposal and what the UI shows. The `sentinel.yaml` agent's short *prose* review (ADR-0014)
+  isn't wired into `propose()` yet — only Critic's prose is. The deterministic review is the substantive part;
+  the agent note is a later nicety.
 - **Verification isn't isolated (flag, security).** It runs Forge's code as a normal process with a scrubbed
   environment. That limits accidents, not a determined attacker. Containers are the fix (ARCHITECTURE §2.2,
   still your decision). Sentinel's review and your approval stand in front of it either way.
