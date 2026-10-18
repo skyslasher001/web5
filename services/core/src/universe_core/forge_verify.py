@@ -145,7 +145,12 @@ class Verifier:
         js = [f for f in changed if f.endswith((".ts", ".tsx", ".js", ".mjs")) and (head / f).is_file()]
         venv = self.repo / ".venv"
         if venv.is_dir() and not (head / ".venv").exists():
-            (head / ".venv").symlink_to(venv, target_is_directory=True)  # pyright finds the packages there
+            try:
+                (head / ".venv").symlink_to(venv, target_is_directory=True)  # pyright finds the packages there
+            except OSError:  # Windows without symlink rights: a junction needs no admin (as in link_node_modules)
+                subprocess.run(
+                    ["cmd", "/c", "mklink", "/J", str(head / ".venv"), str(venv)], capture_output=True, check=False
+                )
         with tempfile.TemporaryDirectory(prefix="forge-home-") as home:
             env = scrubbed_env(head, Path(home))
             if py and _has_module(self.python, "ruff"):

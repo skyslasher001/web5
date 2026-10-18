@@ -171,7 +171,9 @@ def forge_tools(ctx: "CoreContext") -> list[Tool]:
             head = tree.commit(f"Forge: {proposal.title}")
             verifier = Verifier(f.require_repo())
             report = Report()
-            report.repro = verifier.repro(f.base_checkout(proposal.base_commit), tree.path, args.repro_test)
+            report.repro = verifier.repro(
+                f.base_checkout(proposal.id, proposal.base_commit), tree.path, args.repro_test
+            )
             changed = [c.path for c in tree.changes()]
             if report.repro.get("fails_on_base") and report.repro.get("passes_on_head"):
                 report.checks = verifier.checks(tree.path, changed)

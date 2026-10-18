@@ -186,6 +186,10 @@ async def record_release(ctx: Ctx, proposal_id: str, body: ReleaseEvent) -> Forg
     except ForgeError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     if body.event == "applied":
+        if p.status == "applied" and p.release == body.release:
+            return p  # idempotent: Electron main re-syncs the same applied release after a Core restart
+        if p.status in ("rejected", "failed", "rolled_back"):
+            raise HTTPException(status.HTTP_409_CONFLICT, f"A {p.status.replace('_', ' ')} proposal can't be applied")
         if not p.head_commit:
             raise HTTPException(status.HTTP_409_CONFLICT, "The proposal has no verified commit")
         try:

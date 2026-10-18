@@ -61,7 +61,7 @@ def test_the_repro_test_must_fail_on_the_old_code_and_pass_on_the_new(forge: For
     tree.write("tests/test_add.py", REPRO_TEST)
     tree.commit("test first")
     verifier = Verifier(forge.require_repo())
-    base = forge.base_checkout(proposal.base_commit)
+    base = forge.base_checkout(proposal.id, proposal.base_commit)
     # The test alone, without the fix: it fails on base and still fails here, so this isn't verified.
     only_test = verifier.repro(base, tree.path, "tests/test_add.py::test_add_adds")
     assert only_test["fails_on_base"] and not only_test["passes_on_head"]
@@ -80,7 +80,7 @@ def test_a_test_that_passes_on_the_old_code_proves_nothing(forge: Forge) -> None
     tree.write("tests/test_trivial.py", "def test_ok() -> None:\n    assert True\n")
     tree.commit("a test that never failed")
     verifier = Verifier(forge.require_repo())
-    repro = verifier.repro(forge.base_checkout(proposal.base_commit), tree.path, "tests/test_trivial.py")
+    repro = verifier.repro(forge.base_checkout(proposal.id, proposal.base_commit), tree.path, "tests/test_trivial.py")
     assert not repro["fails_on_base"]
     assert not Report(repro=repro).passed
 
@@ -127,3 +127,31 @@ def test_migrations_up_to_date(tmp_path: Path) -> None:
     conn = Databases.open(tmp_path / "x").universe
     applied = migrate_up(conn, Path(universe_core.__file__).parent / "migrations" / "universe")
     assert applied == []  # opening the databases applied everything, including 0007_forge
+
+
+def test_the_protected_matcher_is_case_insensitive() -> None:
+    # The owner's target is Windows (case-insensitive filesystem): the guard must not depend on path case.
+    paths = ProtectedPaths(["services/supervisor/**", "agents/forge.yaml"])
+    assert paths.matches("services/supervisor/run.py")
+    assert paths.matches("Services/Supervisor/Run.py")
+    assert paths.matches("AGENTS/FORGE.YAML")
+    assert not paths.matches("services/core/app.py")
+
+
+def test_base_checkouts_are_isolated_per_proposal(forge: Forge) -> None:
+    # Two proposals off the same base commit must get separate base checkouts, or concurrent repro runs race.
+    a, _ = forge.start_proposal(title="A", issue_id=None, task_id="iso_a")
+    b, _ = forge.start_proposal(title="B", issue_id=None, task_id="iso_b")
+    assert a.base_commit == b.base_commit
+    pa = forge.base_checkout(a.id, a.base_commit)
+    pb = forge.base_checkout(b.id, b.base_commit)
+    assert pa != pb and pa.name == a.id and pb.name == b.id and pa.is_dir() and pb.is_dir()
+
+
+def test_a_refused_over_cap_begin_leaves_no_orphan_worktree(forge: Forge) -> None:
+    for n in range(DAILY_CAP):
+        forge.start_proposal(title=f"p{n}", issue_id=None, task_id=f"orphan{n}")
+    with pytest.raises(ForgeError, match="rate limit"):
+        forge.start_proposal(title="over", issue_id=None, task_id="orphan_over")
+    worktrees = forge.root / "worktrees"
+    assert len(list(worktrees.iterdir())) == DAILY_CAP  # the refused begin cleaned up its own worktree

@@ -108,6 +108,9 @@ def test_a_bug_report_becomes_a_verified_proposal_and_nothing_is_applied(forge_a
     subprocess.run(["git", "-C", str(repo), "merge", "-q", "--ff-only", proposal["branch"]], check=True)
     applied = api.post(f"/forge/proposals/{proposal['id']}/release", {"event": "applied", "release": "r1"})
     assert applied["status"] == "applied" and applied["release"] == "r1"
+    # Idempotent: Electron main re-syncs the same applied release after a Core restart (regression).
+    resynced = api.post(f"/forge/proposals/{proposal['id']}/release", {"event": "applied", "release": "r1"})
+    assert resynced["status"] == "applied" and resynced["release"] == "r1"
     assert api.get("/forge/issues", params={"status_filter": "fixed"})[0]["id"] == issue["id"]
     rolled = api.post(f"/forge/proposals/{proposal['id']}/release", {"event": "rolled_back", "release": "r1"})
     assert rolled["status"] == "rolled_back"
@@ -126,6 +129,11 @@ def test_rejecting_a_proposal_discards_its_worktree_and_reopens_the_issue(forge_
     worktree = api.client.app.state.ctx.forge.root / "worktrees" / proposal["id"]  # type: ignore[attr-defined]
     assert not worktree.exists()
     assert api.client.post(f"/api/v1/forge/proposals/{proposal['id']}/reject", headers=AUTH).status_code == 409
+    # A rejected proposal can't be recorded as applied (regression: the guard blocks rejected -> applied).
+    stolen = api.client.post(
+        f"/api/v1/forge/proposals/{proposal['id']}/release", json={"event": "applied", "release": "r9"}, headers=AUTH
+    )
+    assert stolen.status_code == 409
 
 
 def test_a_report_forge_cant_reproduce_changes_nothing(forge_api: tuple[Api, Path]) -> None:

@@ -9,6 +9,7 @@
   the supervisor applies (both protected core).
 """
 
+import contextlib
 import hashlib
 import json
 import math
@@ -100,8 +101,11 @@ class ProtectedPaths:
         return cls([ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")])
 
     def matches(self, rel: str) -> bool:
-        rel = PurePosixPath(rel.replace("\\", "/")).as_posix().lstrip("/")
-        for pattern in self.patterns:
+        # Case-fold both sides: the owner's target is Windows (a case-insensitive filesystem), so the guard
+        # must not depend on path case — "Services/Core/..." is the same protected file as "services/core/...".
+        rel = PurePosixPath(rel.replace("\\", "/")).as_posix().lstrip("/").casefold()
+        for raw in self.patterns:
+            pattern = raw.casefold()
             if pattern.endswith("/**") and (rel == pattern[:-3] or rel.startswith(pattern[:-2])):
                 return True
             if fnmatchcase(rel, pattern.replace("**", "*")):
@@ -374,8 +378,6 @@ class Forge:
     ) -> tuple[ForgeProposal, Worktree]:
         """A draft proposal and its worktree on `forge/<id>`, branched from the repository's HEAD."""
         repo = self.require_repo()
-        if self.proposals_today() >= DAILY_CAP:
-            raise ForgeError(f"Forge already made {DAILY_CAP} proposals today (SPEC §9 rate limit). Try tomorrow.")
         proposal_id = uuid7()
         branch = f"forge/{proposal_id}"
         base = git(repo, "rev-parse", "HEAD").strip()
@@ -383,12 +385,23 @@ class Forge:
         path.parent.mkdir(parents=True, exist_ok=True)
         git(repo, "worktree", "add", "-q", "-b", branch, str(path), base)
         now = utcnow()
-        with transaction(self._conn):
-            self._conn.execute(
-                "INSERT INTO forge_proposals (id, issue_id, task_id, title, branch, base_commit, created_at,"
-                " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (proposal_id, issue_id, task_id, title.strip()[:200], branch, base, now, now),
-            )
+        # Count and insert in one write transaction (BEGIN IMMEDIATE) so the daily cap holds under concurrent
+        # begins — a read-then-insert outside the transaction could let two tasks both pass the cap.
+        try:
+            with transaction(self._conn):
+                if self.proposals_today() >= DAILY_CAP:
+                    raise ForgeError(
+                        f"Forge already made {DAILY_CAP} proposals today (SPEC §9 rate limit). Try tomorrow."
+                    )
+                self._conn.execute(
+                    "INSERT INTO forge_proposals (id, issue_id, task_id, title, branch, base_commit, created_at,"
+                    " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (proposal_id, issue_id, task_id, title.strip()[:200], branch, base, now, now),
+                )
+        except ForgeError:
+            with contextlib.suppress(ForgeError):  # don't leave an orphan worktree behind a refused begin
+                git(repo, "worktree", "remove", "--force", str(path))
+            raise
         if issue_id:
             self.set_issue_status(issue_id, "working", proposal_id)
         return self.proposal(proposal_id), Worktree(path, branch, base, self.protected())
@@ -400,10 +413,16 @@ class Forge:
             raise ForgeError(f"The worktree for proposal {proposal_id} is gone")
         return Worktree(path, p.branch, p.base_commit, self.protected())
 
-    def base_checkout(self, commit: str) -> Path:
-        """A pristine, detached checkout of `commit` (where the repro test must fail)."""
+    def base_checkout(self, proposal_id: str, commit: str) -> Path:
+        """A pristine, detached checkout of `commit` for one proposal (where the repro test must fail).
+
+        Keyed by proposal id, never shared between proposals: two proposals verifying off the same base
+        commit at once would otherwise race on `git clean`/`checkout --force`, and a spurious non-zero base
+        run (a wiped repro file) would falsely record fails_on_base=True — passing verification with no real
+        failing-test repro.
+        """
         repo = self.require_repo()
-        path = self.root / "base" / commit[:12]
+        path = self.root / "base" / proposal_id
         if not (path / ".git").exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             git(repo, "worktree", "add", "-q", "--detach", str(path), commit)
@@ -483,8 +502,9 @@ class Forge:
         )
 
     def discard_worktree(self, proposal_id: str) -> None:
-        """Remove a rejected or failed proposal's worktree (its branch, diff and record stay)."""
+        """Remove a rejected or failed proposal's worktree and its base checkout (branch, diff, record stay)."""
         repo = self.require_repo()
-        path = self.root / "worktrees" / proposal_id
-        if path.exists():
-            git(repo, "worktree", "remove", "--force", str(path))
+        for sub in ("worktrees", "base"):
+            path = self.root / sub / proposal_id
+            if path.exists():
+                git(repo, "worktree", "remove", "--force", str(path))
