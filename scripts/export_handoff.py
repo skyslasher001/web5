@@ -157,7 +157,12 @@ def docs_paths(snap: Snapshot) -> list[str]:
     phases = sorted(under("docs/PHASE-"), key=lambda p: [int(n) for n in re.findall(r"\d+", p)], reverse=True)
     agents = under("agents/", ".yaml") + under("agents/prompts/")
     proposals = [p for p in under("docs/proposals/") if p.count("/") == 2]
-    ordered = [*BRIEF, *DOCS_HEAD, *phases, *under("docs/adr/"), *proposals, *agents, *DOCS_TAIL]
+    ordered = [*BRIEF, *DOCS_HEAD, *phases, *under("docs/adr/"), *proposals, *agents]
+    # Any other document under docs/ (a loose top-level note, say) still ships, after the structured ones, so a
+    # doc added later can't be silently left out of the pack. The nested phase-5 proposal prompts live under
+    # docs/proposals/phase-5/… and reach handoff recipients through the source zip, not this text pack.
+    loose = [p for p in under("docs/") if p not in ordered and "/phase-5/" not in p]
+    ordered = [*ordered, *loose, *DOCS_TAIL]
     return [p for p in dict.fromkeys(ordered) if p in snap.files]
 
 
