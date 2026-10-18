@@ -401,6 +401,8 @@ function Display() {
   const setTextScale = useUniverse((s) => s.setTextScale);
   const highContrast = useUniverse((s) => s.highContrast);
   const setHighContrast = useUniverse((s) => s.setHighContrast);
+  const perfHud = useUniverse((s) => s.perfHud);
+  const setPerfHud = useUniverse((s) => s.setPerfHud);
   return (
     <div className="space-y-3">
       <label className="flex items-center justify-between gap-3 text-xs text-ink-2">
@@ -463,6 +465,22 @@ function Display() {
           <span className="block text-[11px] leading-relaxed text-ink-3">
             Turns off the glass blur and renders the universe at 1× for steadier frames. It switches on by
             itself when this display drops frames.
+          </span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-xs text-ink-2">
+        <input
+          type="checkbox"
+          checked={perfHud}
+          onChange={(e) => setPerfHud(e.target.checked)}
+          className="mt-0.5 accent-[var(--color-accent)]"
+          data-testid="perf-hud-toggle"
+        />
+        <span>
+          Performance overlay
+          <span className="block text-[11px] leading-relaxed text-ink-3">
+            A small readout of frame rate, frame time and draw calls, pinned to the corner. Useful when tuning
+            quality for this machine.
           </span>
         </span>
       </label>

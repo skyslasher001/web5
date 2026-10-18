@@ -235,6 +235,40 @@ test('the FPS budget at 50k items', async () => {
   if (!software) expect(threeD.median).toBeLessThan(17.5); // 60 FPS on a real GPU (SPEC §24)
 });
 
+test('the performance overlay reports live frame stats (IDEAS S5)', async () => {
+  await reset();
+  await useQuality('high');
+  await expect.poll(() => debug((d) => d.layout()), { timeout: 60_000 }).not.toBeNull();
+  // Off by default: nothing pinned to the corner.
+  await expect(page.getByTestId('perf-hud')).toHaveCount(0);
+  // Turn it on in System → Display.
+  await page.getByRole('tab', { name: 'System' }).click();
+  await page.getByTestId('perf-hud-toggle').check();
+  await page.getByRole('tab', { name: 'Context' }).click();
+  const hud = page.getByTestId('perf-hud');
+  await expect(hud).toBeVisible();
+  // It carries the frame-rate / frame-time / draw-call readout and the current quality preset. (A headless,
+  // offscreen window throttles rAF below a measurable rate, so the e2e checks the overlay is wired to live
+  // render data — draw calls climb above zero — not a specific frame rate; that's what pnpm bench:universe is.)
+  await expect(hud).toContainText('fps');
+  await expect(hud).toContainText('draw calls');
+  await expect(hud).toContainText('High');
+  await expect
+    .poll(
+      async () => {
+        const text = (await hud.textContent()) ?? '';
+        return Number(text.match(/(\d+) draw calls/)?.[1] ?? 0);
+      },
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThan(0);
+  // And it disappears when turned off, leaving the view uncluttered.
+  await page.getByRole('tab', { name: 'System' }).click();
+  await page.getByTestId('perf-hud-toggle').uncheck();
+  await page.getByRole('tab', { name: 'Context' }).click();
+  await expect(page.getByTestId('perf-hud')).toHaveCount(0);
+});
+
 test('search flies the camera to the results', async () => {
   await reset();
   await useQuality('high');

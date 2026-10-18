@@ -1,9 +1,10 @@
 // The universe (Phase 4, ADR-0012): every item drawn by type in one of four layouts, galaxies, filaments,
 // comets, agent probes and search constellations, with GPU picking and camera flights. Lite mode (a 2D
 // WebGL graph) takes over when WebGL is missing or the Lite quality preset is chosen.
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../lib/api-context';
+import { perfActive, reportRender } from '../lib/perf';
 import { useProjects } from '../lib/queries';
 import { onCoreEvent, useUniverse } from '../state/store';
 import { PRESETS } from './quality';
@@ -97,6 +98,15 @@ function useUniverseData() {
   }, []);
 }
 
+/** Feeds the Perf HUD the GPU's draw-call counts, but only while the overlay is on (free otherwise). */
+function PerfProbe() {
+  const { gl } = useThree();
+  useFrame(() => {
+    if (perfActive()) reportRender(gl.info.render.calls, gl.info.render.points);
+  });
+  return null;
+}
+
 /** Read-only view of the renderer for the end-to-end tests: draw calls, and named objects to time. */
 function DebugBridge() {
   const { gl, scene } = useThree();
@@ -165,6 +175,7 @@ function WebGLScene() {
         </group>
         <ItemLabels count={preset.labels} />
         <CameraRig />
+        <PerfProbe />
         <DebugBridge />
         {preset.bloom && !smooth && <Bloom />}
       </Canvas>

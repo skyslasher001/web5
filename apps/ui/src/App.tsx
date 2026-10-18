@@ -19,6 +19,7 @@ import { TopBar } from './hud/TopBar';
 import { ErrorBoundary } from './hud/ErrorBoundary';
 import { DropZone } from './hud/DropZone';
 import { KillSwitchBanner } from './hud/KillSwitch';
+import { PerfHud } from './hud/PerfHud';
 import { ItemsView } from './views2d/ItemsView';
 
 // three.js is most of the bundle: load it after the HUD so the shell is usable first (SPEC §24).
@@ -93,6 +94,8 @@ function Hud() {
         )}
         {/* Shown even in zen mode: you should always know that agents are stopped. */}
         <KillSwitchBanner />
+        {/* A debug overlay the owner turns on; shown in every view, zen included. */}
+        <PerfHud />
       </div>
       <ConsentIndicators />
       <DropZone />

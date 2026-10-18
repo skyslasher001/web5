@@ -109,6 +109,8 @@ interface UniverseState {
   resultsFocusTick: number;
   /** Smooth mode: no backdrop blur and a 1× pixel ratio, on a machine that was dropping frames. */
   smooth: boolean;
+  /** Performance overlay (System → Display): live FPS, frame time and draw calls. Off by default. */
+  perfHud: boolean;
 
   setConfig(config: BridgeConfig): void;
   setDesktop(desktop: DesktopState): void;
@@ -134,6 +136,7 @@ interface UniverseState {
   focusSearch(): void;
   focusResults(): void;
   setSmooth(smooth: boolean): void;
+  setPerfHud(on: boolean): void;
   openAgent(id: string): void;
   selectTask(id: string | null): void;
   openForge(proposalId: string | null): void;
@@ -219,6 +222,7 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
   searchFocusTick: 0,
   resultsFocusTick: 0,
   smooth: false,
+  perfHud: loadNumber('universe.perfHud', 0) === 1,
 
   setConfig: (config) => set({ config }),
   setDesktop: (desktop) => set({ desktop }),
@@ -290,6 +294,10 @@ export const useUniverse = create<UniverseState>()((set, get) => ({
     set({ smooth });
     if (smooth)
       get().addNotice('info', 'Smooth mode on: this display was dropping frames, so the glass blur is off');
+  },
+  setPerfHud: (perfHud) => {
+    saveNumber('universe.perfHud', perfHud ? 1 : 0);
+    set({ perfHud });
   },
   focusResults: () =>
     set((s) => ({ resultsFocusTick: s.resultsFocusTick + 1, view: s.view === 'universe' ? 'list' : s.view })),
