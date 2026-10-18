@@ -11,8 +11,8 @@ verification, review, approval cards, apply and rollback, post-apply health watc
 ARCHITECTURE §7 holds the safety design. Done when: *"I inject a deliberate bug, Forge finds it and proposes a
 tested fix, I approve, it applies, and one-click rollback works."*
 
-Much of this is protected core (`protected-core.txt`): Sentinel (`services/sentinel/**`,
-`services/core/src/universe_core/protected/`, `agents/sentinel.yaml`), Forge's own definition (`agents/forge.yaml`), the supervisor (apply, rollback, watch),
+Much of this is protected core (`protected-core.txt`): Sentinel
+(`services/core/src/universe_core/protected/sentinel.py`, `agents/sentinel.yaml`), Forge's own definition (`agents/forge.yaml`), the supervisor (apply, rollback, watch),
 and Electron main's protected code (the native approval dialog). As in Phase 3, those parts ship as a patch
 the owner applies (`docs/proposals/phase-5-protected-core.md`), tested in a scratch worktree.
 

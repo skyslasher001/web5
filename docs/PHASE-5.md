@@ -105,8 +105,8 @@ From [PHASE-4.md](PHASE-4.md#setup), then:
 
 | Suite | Count | New in Phase 5 |
 | --- | --- | --- |
-| pytest, main (`uv run pytest`) | 240: 239 passed, 1 Windows-only skip | Forge core: protected paths, worktrees, writes outside the worktree, verification (fails on base, passes on head), triage and dedup, the daily cap, the API, Core checking "applied" against git; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
-| pytest, with the patch | 257: 256 passed, 1 Windows-only skip | + 8 Sentinel tests and 9 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
+| pytest, main (`uv run pytest`) | 243: 242 passed, 1 Windows-only skip | Forge core: protected paths (case-insensitive), worktrees, writes outside the worktree, verification (fails on base, passes on head), per-proposal base checkouts, triage and dedup, the daily cap and no orphan worktree on refusal, the API, Core checking "applied" against git and refusing a stale source state idempotently; the Forge loop end to end on a scratch repo with the scripted model; loaded models |
+| pytest, with the patch | 263: 262 passed, 1 Windows-only skip | + 10 Sentinel tests and 10 release tests (apply checks, dirty checkout, moved branch, wrong hash, protected paths judged by the supervisor's own manifest copy — including a rename to an unprotected path, network/approval block rules, rollback keeping later commits, a release that makes Core crash and rolls itself back) |
 | Vitest | 121 (129 with the patch: + 8 approval-dialog tests) | System Vitals, the approval dialog: refuses what isn't ready, applies only after the dialog, reports refusals, rollback, and Core catching up after a restart |
 | Playwright Electron | 23 without the patch: 22 passed, the Phase 5 done-when stops after checking the missing-patch path · with the patch, `app.spec.ts` + `safe-mode.spec.ts`: 15 of 15 passed | the Phase 5 done-when (with the patch: the full loop; without: the missing-patch path), System Vitals |
 
@@ -128,6 +128,28 @@ now says not to run heavy jobs alongside it.
   requires *applied* and *rolled back* on the card.
 - **The next test after a rollback could hit a restarting Core.** The done-when test ended on a stale "Core
   online"; it now waits for the card to say *rolled back*, which needs the restarted Core.
+
+### Readiness-audit fixes (2026-10-18)
+
+A multi-dimension audit of everything Phase 5 adds confirmed 13 issues (no blockers), all fixed with regression
+tests. The safety-relevant ones:
+
+- **Concurrent Forge verifications could falsely pass.** Two proposals off the same base commit shared one base
+  checkout dir, so one's `git clean`/`checkout` could wipe the other's repro file mid-run, recording a spurious
+  *fails-on-base* and passing verification with no real failing test. Base checkouts are now keyed per proposal.
+- **Sentinel's network block was narrower than the project's own egress rule** (it missed `http.client`). It now
+  matches `tests/protected/test_invariants` and adds the JS clients, and it flags an agent narrowing its
+  `requires_approval`.
+- **A rename could carry a protected file out.** The supervisor's protected-path gate used git with rename
+  detection on, which shows only the (unprotected) destination; it now uses `--no-renames` and refuses the
+  protected source. The pre-release tag is created only after the fast-forward merge succeeds.
+- **`record_release` hardening:** the "applied" record is idempotent (main re-syncs after a Core restart) and
+  refuses a rejected/rolled-back proposal; the Windows `.venv` symlink falls back to a junction; the protected
+  matcher is case-insensitive; the vacuous `services/sentinel/**` manifest glob became a comment pointing at the
+  real `protected/sentinel.py`.
+
+Deferred (documented, not a blocker): the supervisor holds its lock across the release's git subprocesses — fine
+for a rare, owner-initiated apply; restructuring the lock was judged riskier than the nit.
 
 ## Known limitations
 

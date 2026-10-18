@@ -370,10 +370,10 @@ index 0000000..d5dd764
 +});
 diff --git a/apps/desktop/src/main/protected/forge.ts b/apps/desktop/src/main/protected/forge.ts
 new file mode 100644
-index 0000000..ca57a16
+index 0000000..9fbc284
 --- /dev/null
 +++ b/apps/desktop/src/main/protected/forge.ts
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,209 @@
 +// Forge releases in Electron main (SPEC §9, ARCHITECTURE §7.2, ADR-0014). Protected core.
 +//
 +// The only way a Forge change gets applied: you click Approve on a card, this code fetches the proposal from
@@ -386,6 +386,7 @@ index 0000000..ca57a16
 +// Core), so Core is often down right when there's something to record. Each time Core comes back healthy, this
 +// brings Core's record in line with the supervisor's releases (`sync`).
 +import type { ForgeDecision, ReleaseInfo, ReleasesState } from '@universe/shared-types';
++import type { SupervisorRelease } from './supervisor';
 +
 +export interface ProposalForApproval {
 +  id: string;
@@ -401,16 +402,6 @@ index 0000000..ca57a16
 +  files: { path: string; status: string }[];
 +  verification: { passed?: boolean };
 +  reviews: { sentinel?: { available?: boolean; verdict?: string; findings?: { detail: string }[] } };
-+}
-+
-+interface SupervisorRelease {
-+  tag: string;
-+  commit: string;
-+  proposal_id: string | null;
-+  title: string;
-+  created_at: number;
-+  status: 'watching' | 'good' | 'rolled_back';
-+  current: boolean;
 +}
 +
 +export interface ForgeDeps {
@@ -593,10 +584,28 @@ index 0000000..ca57a16
 +  }
 +}
 diff --git a/apps/desktop/src/main/protected/supervisor.ts b/apps/desktop/src/main/protected/supervisor.ts
-index 8a1e600..7931818 100644
+index 8a1e600..8707da4 100644
 --- a/apps/desktop/src/main/protected/supervisor.ts
 +++ b/apps/desktop/src/main/protected/supervisor.ts
-@@ -104,7 +104,12 @@ export class SupervisorProcess extends EventEmitter {
+@@ -9,6 +9,17 @@ import type { Logger } from '../logger';
+ export type SupervisorLine =
+   { event: 'ready'; control_port: number; core_url: string } | { event: 'status'; status: SupervisorStatus };
+ 
++/** One release as the supervisor's /releases control endpoints report it (ForgeControl consumes this). */
++export interface SupervisorRelease {
++  tag: string;
++  commit: string;
++  proposal_id: string | null;
++  title: string;
++  created_at: number;
++  status: 'watching' | 'good' | 'rolled_back';
++  current: boolean;
++}
++
+ export function parseSupervisorLine(line: string): SupervisorLine | null {
+   let value: unknown;
+   try {
+@@ -104,7 +115,12 @@ export class SupervisorProcess extends EventEmitter {
      this.emit('state', this.state);
    }
  
@@ -610,7 +619,7 @@ index 8a1e600..7931818 100644
      if (this.controlPort === null) throw new Error('The supervisor is not running');
      const response = await fetch(`http://127.0.0.1:${this.controlPort}${path}`, {
        method,
-@@ -113,7 +118,7 @@ export class SupervisorProcess extends EventEmitter {
+@@ -113,7 +129,7 @@ export class SupervisorProcess extends EventEmitter {
          ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
        },
        body: payload === undefined ? undefined : JSON.stringify(payload),
@@ -619,21 +628,23 @@ index 8a1e600..7931818 100644
      });
      const body = (await response.json()) as T;
      if (!response.ok && response.status !== 409)
-@@ -133,6 +138,20 @@ export class SupervisorProcess extends EventEmitter {
+@@ -133,6 +149,22 @@ export class SupervisorProcess extends EventEmitter {
      return this.request('POST', '/killswitch', { engaged });
    }
  
 +  // ---------- releases (Phase 5): only ForgeControl calls these, after your native-dialog confirmation ----------
 +
-+  async applyRelease(body: Record<string, string>): Promise<{ ok: boolean; error?: string; release?: never }> {
++  async applyRelease(
++    body: Record<string, string>,
++  ): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }> {
 +    return this.request('POST', '/releases/apply', body, 60_000);
 +  }
 +
-+  async rollbackRelease(tag: string): Promise<{ ok: boolean; error?: string }> {
++  async rollbackRelease(tag: string): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }> {
 +    return this.request('POST', '/releases/rollback', { release: tag }, 60_000);
 +  }
 +
-+  async listReleases(): Promise<{ available: boolean; releases: never[] }> {
++  async listReleases(): Promise<{ available: boolean; releases: SupervisorRelease[] }> {
 +    return this.request('GET', '/releases');
 +  }
 +
@@ -641,10 +652,20 @@ index 8a1e600..7931818 100644
      return (await this.request<{ ok: boolean }>('POST', '/safe-mode/exit')).ok;
    }
 diff --git a/protected-core.txt b/protected-core.txt
-index 336b914..091e816 100644
+index 336b914..3112534 100644
 --- a/protected-core.txt
 +++ b/protected-core.txt
-@@ -13,3 +13,9 @@ agents/sentinel.yaml
+@@ -5,7 +5,8 @@
+ protected-core.txt
+ services/supervisor/**
+ services/core/src/universe_core/protected/**
+-services/sentinel/**
++# Sentinel is services/core/src/universe_core/protected/sentinel.py (ADR-0014) — covered by the glob above.
++# There is no separate services/sentinel/ service, so it needs no glob of its own.
+ apps/desktop/src/main/protected/**
+ apps/desktop/src/safe-mode/**
+ agents/forge.yaml
+@@ -13,3 +14,9 @@ agents/sentinel.yaml
  tests/protected/**
  .github/workflows/**
  .pre-commit-config.yaml
@@ -656,10 +677,10 @@ index 336b914..091e816 100644
 +services/core/src/universe_core/forge_verify.py
 diff --git a/services/core/src/universe_core/protected/sentinel.py b/services/core/src/universe_core/protected/sentinel.py
 new file mode 100644
-index 0000000..248f307
+index 0000000..a55d2e0
 --- /dev/null
 +++ b/services/core/src/universe_core/protected/sentinel.py
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,155 @@
 +"""Sentinel's deterministic review of a Forge proposal (SPEC §9, ARCHITECTURE §7.2, ADR-0014). Protected core.
 +
 +A proposal reaches the owner only if this passes. It reads the diff, not the model's description of it:
@@ -686,9 +707,15 @@ index 0000000..248f307
 +)
 +ASSERTS = re.compile(r"\bassert\b|\bexpect\(|\bpytest\.raises\(|\bself\.assert\w+\(")
 +TEST_DEF = re.compile(r"^\s*(async\s+)?def\s+test_\w+|^\s*(it|test)\(")
++# Aligned with (and wider than) tests/protected/test_invariants.HTTP_CLIENT_MODULES so Sentinel's block list is
++# never weaker than the project's own egress invariant: every stdlib/third-party client the project bans, plus
++# the JS clients, plus a raw non-loopback URL.
 +NETWORK = re.compile(
-+    r"\bimport\s+(httpx|requests|aiohttp|urllib3|socket)\b|\bfrom\s+(httpx|requests|aiohttp|urllib|socket)\b|"
-+    r"urllib\.request|\bfetch\(|XMLHttpRequest|new\s+WebSocket\(|\bnet\.request\(|https?://(?!127\.0\.0\.1|localhost)"
++    r"\b(?:import|from)\s+(?:httpx|requests|aiohttp|urllib3|socket|smtplib|ftplib|telnetlib|websockets?)\b|"
++    r"\burllib\.request\b|\bhttp\.client\b|\basyncio\.open_connection\b|"
++    r"\bfetch\(|XMLHttpRequest|new\s+WebSocket\(|\bEventSource\(|\baxios\b|"
++    r"\b(?:https?|net)\.(?:get|request)\(|navigator\.sendBeacon|"
++    r"https?://(?!127\.0\.0\.1|localhost)"
 +)
 +PROCESS = re.compile(r"\bsubprocess\b|\bos\.system\(|\bos\.popen\(|\beval\(|\bexec\(|child_process|\bspawn\(")
 +CAPTURE = re.compile(r"getUserMedia|desktopCapturer|microphone|\bconsent\b|screen.?capture|\bwebcam\b", re.I)
@@ -792,6 +819,12 @@ index 0000000..248f307
 +                findings.append(Finding("permission-raised", "block", path, f"raises a permission tier to {new}"))
 +            if any(a.lstrip().startswith("tools:") for a in added) or any("tools:" in r for r in removed):
 +                findings.append(Finding("agent-tools", "high", path, "changes an agent's tools"))
++            if any("requires_approval" in r for r in removed) or any(
++                re.search(r"requires_approval:\s*\[\s*\]", a) for a in added
++            ):
++                findings.append(
++                    Finding("agent-approvals", "high", path, "narrows or clears an agent's required approvals")
++                )
 +    if changed_lines > 200:
 +        findings.append(Finding("size", "medium", "", f"{changed_lines} changed lines"))
 +    severities = {f.severity for f in findings}
@@ -883,10 +916,10 @@ index 1f93a89..47181a5 100644
          elif parts == ["shutdown"]:
 diff --git a/services/supervisor/src/universe_supervisor/releases.py b/services/supervisor/src/universe_supervisor/releases.py
 new file mode 100644
-index 0000000..af76f88
+index 0000000..4635398
 --- /dev/null
 +++ b/services/supervisor/src/universe_supervisor/releases.py
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,194 @@
 +"""Releases: apply an approved Forge proposal, watch it, roll it back (SPEC §9, ARCHITECTURE §7, ADR-0014).
 +
 +Only Electron main can ask (it holds the control token, and only after you confirm in a native dialog). Before
@@ -1023,14 +1056,22 @@ index 0000000..af76f88
 +            diff = self._git("diff", "--no-color", f"{base_commit}..{head_commit}")
 +            if hashlib.sha256(diff.encode("utf-8")).hexdigest() != diff_sha:
 +                raise ReleaseError("The change isn't the one you approved (its hash differs)")
-+            paths = [p for p in self._git("diff", "--name-only", f"{base_commit}..{head_commit}").splitlines() if p]
++            # --no-renames: list both sides of a rename, so renaming a protected file to an unprotected path
++            # can't slip the protected source past this gate (git's rename detection would show only the dest).
++            paths = [
++                p
++                for p in self._git("diff", "--name-only", "--no-renames", f"{base_commit}..{head_commit}").splitlines()
++                if p
++            ]
 +            touched = [p for p in paths if protected(p, self.patterns)]
 +            if touched:
 +                raise ReleaseError(f"It changes protected core ({', '.join(touched)}): apply those by hand")
 +            n = len(self.data["releases"]) + 1
 +            tag = f"universe/release-{n}"
-+            self._git("tag", f"universe/pre-release-{n}", head)
 +            self._git("merge", "--ff-only", "-q", head_commit)
++            # Tag after the merge succeeds: a failed ff-merge then leaves no dangling pre-release-n tag that
++            # would block retrying release n. `head` (the prior HEAD) is still what rollback reverts to.
++            self._git("tag", f"universe/pre-release-{n}", head)
 +            self._git("tag", tag, head_commit)
 +            release = {
 +                "tag": tag,
@@ -1168,10 +1209,10 @@ index 2e17582..0f00a35 100644
          with self.lock:
 diff --git a/tests/protected/test_releases.py b/tests/protected/test_releases.py
 new file mode 100644
-index 0000000..11a390d
+index 0000000..3aad77a
 --- /dev/null
 +++ b/tests/protected/test_releases.py
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,181 @@
 +"""The supervisor's releases (Phase 5, ADR-0014): what it applies, what it refuses, and how it rolls back. Runs on
 +a scratch git repository with an injected bug, never on the real checkout."""
 +
@@ -1284,6 +1325,26 @@ index 0000000..11a390d
 +        releases.apply(**other)
 +
 +
++def test_renaming_a_protected_file_to_an_unprotected_path_is_refused(repo: Path, tmp_path: Path) -> None:
++    # git's rename detection would show only the (unprotected) destination; the gate uses --no-renames so the
++    # protected source is still seen and the apply is refused.
++    releases = Releases(repo, tmp_path / "releases.json")
++    base = head(repo)
++    sh(repo, "checkout", "-q", "-b", "forge/p1")
++    sh(repo, "mv", "services/supervisor/run.py", "calc/run_copy.py")  # git mv: a pure rename
++    sh(repo, "commit", "-q", "-m", "sneak a protected file out by renaming it")
++    tip = head(repo)
++    sh(repo, "checkout", "-q", "main")
++    diff = sh(repo, "diff", "--no-color", f"{base}..{tip}")
++    proposal = {
++        "proposal_id": "p1", "branch": "forge/p1", "base_commit": base, "head_commit": tip,
++        "diff_sha": hashlib.sha256(diff.encode()).hexdigest(), "title": "rename",
++    }  # fmt: skip
++    with pytest.raises(ReleaseError, match="protected core"):
++        releases.apply(**proposal)
++    assert head(repo) == base  # nothing applied
++
++
 +def test_rollback_reverts_without_losing_later_commits(repo: Path, tmp_path: Path) -> None:
 +    releases = Releases(repo, tmp_path / "releases.json")
 +    release = releases.apply(**forge_branch(repo))
@@ -1335,10 +1396,10 @@ index 0000000..11a390d
 +        h.sup.shutdown()
 diff --git a/tests/protected/test_sentinel.py b/tests/protected/test_sentinel.py
 new file mode 100644
-index 0000000..12d3514
+index 0000000..43833ea
 --- /dev/null
 +++ b/tests/protected/test_sentinel.py
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,100 @@
 +"""Sentinel's deterministic review (Phase 5, ADR-0014): what it blocks, what it flags, and what it lets through."""
 +
 +from pathlib import Path
@@ -1396,6 +1457,19 @@ index 0000000..12d3514
 +    assert check("services/core/src/universe_core/x.py", ["import httpx"])["verdict"] == "block"
 +    assert check("apps/ui/src/x.ts", ["await fetch('https://example.com/a')"])["verdict"] == "block"
 +    assert check("services/common/src/universe_common/egress.py", ["import httpx"])["verdict"] == "pass"
++
++
++def test_network_block_covers_every_client_the_project_bans() -> None:
++    # Sentinel's block list must be no weaker than tests/protected/test_invariants.HTTP_CLIENT_MODULES, plus JS.
++    for line in ("import http.client", "import smtplib", "reader = asyncio.open_connection(h, 80)"):
++        assert check("services/core/src/universe_core/x.py", [line])["verdict"] == "block", line
++    for line in ("const es = new EventSource(u)", "import axios from 'axios'", "https.get(u, cb)"):
++        assert check("apps/ui/src/x.ts", [line])["verdict"] == "block", line
++
++
++def test_narrowing_an_agents_required_approvals_is_flagged() -> None:
++    narrowed = check("agents/scribe.yaml", ["requires_approval: []"], ["requires_approval: [note.delete]"])
++    assert narrowed["verdict"] == "pass" and narrowed["risk"] == "high" and "agent-approvals" in rules(narrowed)
 +
 +
 +def test_raising_an_agents_tier_is_blocked_and_changing_tools_is_flagged() -> None:
