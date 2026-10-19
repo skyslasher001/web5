@@ -33,6 +33,7 @@ from universe_core.forge_tools import forge_tools
 from universe_core.mcp_client import MCPManager
 from universe_core.memory import MemoryStore
 from universe_core.protected.audit import AuditWriter
+from universe_core.research_tools import research_tools
 from universe_core.security import TicketStore
 from universe_core.seed import ensure_seed_galaxies
 from universe_core.settings import CoreSettings
@@ -178,6 +179,9 @@ class CoreContext:
         ensure_seed_galaxies(dbs.universe, bus)
         ctx.memory = MemoryStore(dbs.universe)
         for tool in builtin_tools(ctx):
+            ctx.tools.add(tool)
+        # Research (Phase 6, ADR-0015): the researcher agent's web.search / web.fetch / vault.save, all gated.
+        for tool in research_tools(ctx):
             ctx.tools.add(tool)
         # Forge (Phase 5, ADR-0014): issues, worktrees, verification, proposals. Its agent YAML is protected.
         ctx.forge = Forge(settings.index_dir / "universe.db", settings.repo_dir, settings.data_dir)

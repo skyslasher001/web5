@@ -39,6 +39,13 @@ class CoreSettings:
     restart_count: int = 0
     last_exit: str = ""
     workers: int = 1  # pipeline worker processes (0 = none; tests drain the queue in-process)
+    # Research (Phase 6, ADR-0015). The default search path is a gated httpx request to a keyless HTML endpoint;
+    # SearXNG is an opt-in loopback container (the supervisor manages it). All of it is gated by offline/kill.
+    research_search_endpoint: str = "https://lite.duckduckgo.com/lite/"
+    research_searxng_enabled: bool = False
+    research_searxng_url: str = "http://127.0.0.1:8888"  # loopback sidecar
+    research_cache_ttl_s: int = 24 * 60 * 60
+    research_playwright_enabled: bool = False  # render JS-heavy pages (optional, heavy); off by default
 
     @property
     def log_dir(self) -> Path:
@@ -73,6 +80,13 @@ class CoreSettings:
             raise SettingsError("UNIVERSE_WORKERS must be between 0 and 8")
         repo = find_repo_root()
         agents_default = repo / "agents" if repo else Path("agents")
+        searxng_url = env.get("UNIVERSE_RESEARCH_SEARXNG_URL", "http://127.0.0.1:8888").rstrip("/")
+        if not is_loopback(urlparse(searxng_url).hostname or ""):
+            raise SettingsError("UNIVERSE_RESEARCH_SEARXNG_URL must point at a loopback address")
+        try:
+            cache_ttl = int(env.get("UNIVERSE_RESEARCH_CACHE_TTL_S") or 24 * 60 * 60)
+        except ValueError as exc:
+            raise SettingsError("UNIVERSE_RESEARCH_CACHE_TTL_S must be an integer") from exc
         return cls(
             session_token=token,
             port=port,
@@ -90,4 +104,10 @@ class CoreSettings:
             restart_count=int(env.get("UNIVERSE_RESTART_COUNT") or 0),
             last_exit=env.get("UNIVERSE_LAST_EXIT") or "",
             workers=workers,
+            research_search_endpoint=env.get("UNIVERSE_RESEARCH_SEARCH_ENDPOINT")
+            or "https://lite.duckduckgo.com/lite/",
+            research_searxng_enabled=_flag(env.get("UNIVERSE_RESEARCH_SEARXNG")),
+            research_searxng_url=searxng_url,
+            research_cache_ttl_s=cache_ttl,
+            research_playwright_enabled=_flag(env.get("UNIVERSE_RESEARCH_PLAYWRIGHT")),
         )
