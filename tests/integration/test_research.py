@@ -34,9 +34,7 @@ def search() -> Iterator[FakeSearch]:
 
 
 @pytest.fixture
-def api(
-    make_settings: Callable[..., CoreSettings], fake_ollama: FakeOllama, search: FakeSearch
-) -> Iterator[Api]:
+def api(make_settings: Callable[..., CoreSettings], fake_ollama: FakeOllama, search: FakeSearch) -> Iterator[Api]:
     settings = make_settings(research_search_endpoint=f"{search.url}/lite/")
     with TestClient(create_app(settings), base_url=BASE) as client:
         a = Api(client, settings, fake_ollama.url)

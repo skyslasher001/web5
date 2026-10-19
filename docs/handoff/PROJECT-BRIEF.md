@@ -2,7 +2,7 @@
 
 Everything about the project so far, in one document, for any AI (or person) taking over. It's written to
 work on its own: an assistant that only gets this file can understand the project, its state and its rules.
-The details live in the files it links to. Written 2026-10-14, after Phase 5 was delivered.
+The details live in the files it links to. Written 2026-10-14; updated 2026-10-19 after Phase 6 was delivered.
 
 > **If you read nothing else**
 > - **What:** UNIVERSE, a local-first Windows desktop "digital brain". Everything the owner has (projects,
@@ -12,7 +12,9 @@ The details live in the files it links to. Written 2026-10-14, after Phase 5 was
 >   - Phases 0–4 are built and approved.
 >   - Phase 5 (Forge + Sentinel: self-repair) is built and waiting for the owner's review. Its protected-core
 >     patch is waiting for the owner to apply it.
->   - Next is Phase 6 (live web research).
+>   - Phase 6 (Research: live web, cited, injection-defended) is built and delivered. The default search is a
+>     gated httpx request; the SearXNG sidecar is an opt-in proposal gated on a container runtime.
+>   - Next is Phase 7 (voice).
 > - **Where the code is:** the private GitHub repo `skyslasher001/web5`, branch
 >   **`claude/phase-0-delivery-zuqlfx`**. Not `main`: that still holds an old unrelated landing page.
 > - **Rules that are never broken** (full list in `AGENTS.md`):
@@ -118,7 +120,8 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
 | 3 Agent engine | Approved 2026-10-13, protected patch applied | "Find my notes about X, summarize them, link them to project Y" with a full audit trail: **passed** | [PHASE-3](../PHASE-3.md) |
 | 4 Universe interface | Approved 2026-10-14 | 50k items, FPS budget, search flies the camera to results. **Search passed. FPS not yet proven:** there's no GPU here, so the owner must run `pnpm bench:universe` | [PHASE-4](../PHASE-4.md) |
 | 5 Forge + Sentinel v1 | **Delivered 2026-10-14, waiting for review** and for the protected patch | Inject a bug, Forge finds it and proposes a tested fix, approve, it applies, one-click rollback: **passes with the patch applied** (tested in a scratch worktree) | [PHASE-5](../PHASE-5.md), [proposal](../proposals/phase-5-protected-core.md) |
-| 6 Research | Next | A deep-research report with cited sources lands in the vault | SPEC §13, §25 |
+| 6 Research | **Delivered 2026-10-19** | A deep-research report with cited sources lands in the vault, offline/kill block it, an injection corpus can't make it act: **passed** (`tests/integration/test_research.py`). Default search is a gated httpx request; the SearXNG sidecar is an opt-in proposal | [PHASE-6](../PHASE-6.md), [ADR-0015](../adr/0015-phase-6-research.md) |
+| 7 Voice | Next | Voice transmission chain (SPEC §25, §7) | SPEC §25 |
 
 **Test suites at the end of Phase 5** (all green; Electron tests under `xvfb-run`):
 - **pytest:** 240 without the patch; 257 with it.

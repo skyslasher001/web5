@@ -25,6 +25,7 @@ export const EVENT_TYPES = {
   "idea.stage_changed": { persisted: true, description: "An idea matured" },
   "idea.promoted": { persisted: true, description: "An idea became a project" },
   "recall.performed": { persisted: true, description: "A recall query ran" },
+  "research.watchlist.changed": { persisted: true, description: "A watched topic or page changed" },
   "view.changed": { persisted: false, description: "Layout or zoom changed" },
   "layout.updated": { persisted: true, description: "A cached universe layout was recomputed" },
   "link.created": { persisted: true, description: "Two items were linked" },

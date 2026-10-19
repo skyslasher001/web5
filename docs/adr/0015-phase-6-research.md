@@ -1,7 +1,7 @@
 # 0015 — Phase 6: Research (live web, cited, injection-defended)
 
-- Status: Proposed
-- Date: 2026-10-14
+- Status: Accepted (built 2026-10-19)
+- Date: 2026-10-14 (accepted 2026-10-19)
 - Flags: privacy, security, architecture, cost
 
 ## Context
@@ -100,6 +100,24 @@ standing decision; the slot stays off).
   isolated as an unmodified separate service — no copyleft reaches our code (ADR-0008 policy satisfied).
 - **Deferred:** watchlist → morning-brief rendering (Phase 9); free-tier API fallbacks (optional); research-grade
   policy engines (CaMeL/FIDES-style) — we rely on taint + approval + spotlighting, which is the deployable backstop.
+
+## Build notes (2026-10-19)
+
+Two refinements decided while building, both to honour hard rules more faithfully:
+
+- **Gated httpx instead of the `ddgs` library for the default search.** `ddgs` makes its own HTTP requests
+  through a bundled Rust client (`primp`), which would bypass the egress gate — the project's hard rule is
+  "outbound network only through the egress gate." So the default `HttpSearchProvider` uses Core's gated httpx
+  client against a keyless HTML endpoint (DuckDuckGo Lite), parsed with the standard library: every byte is gated
+  and logged, and no `primp`/`fake-useragent` transitive binaries enter the tree. SearXNG (also via the gated
+  client, to a loopback container) stays the better opt-in path; `ddgs` remains a possible future provider.
+- **Only saving is approval-gated, via the taint model.** `web.fetch` sets `untrusted` (taints the task);
+  `web.search` does not (it only lists candidate sources). So a run searches and batch-fetches freely, the page
+  body then taints the task, and `vault.save` (side-effecting) asks the owner — which is exactly the done-when's
+  "a save needs approval" without an approval storm on every fetch, and needs no permission-rule seeding.
+
+The SearXNG sidecar is a separate proposal ([docs/proposals/phase-6-searxng.md](../proposals/phase-6-searxng.md)),
+gated on the owner's container-runtime decision; Research ships fully working on the gated-httpx default without it.
 
 ## Alternatives considered
 
