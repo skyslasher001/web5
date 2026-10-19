@@ -31,6 +31,10 @@ describe('parseVoiceCommand', () => {
     ['Zoom in', { kind: 'zoom', direction: 'in' }],
     ['Zoom out.', { kind: 'zoom', direction: 'out' }],
     ['Go back', { kind: 'back' }],
+    ['Approve.', { kind: 'approve', approve: true }],
+    ['Yes, go ahead.', { kind: 'approve', approve: true }],
+    ['Deny it.', { kind: 'approve', approve: false }],
+    ['Read it to me.', { kind: 'read' }],
     ['Open the agents panel.', { kind: 'panel', panel: 'agents' }],
     ['Show voice settings', { kind: 'panel', panel: 'voice' }],
   ])('%s', (text, expected) => {

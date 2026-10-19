@@ -558,6 +558,8 @@ test('Phase 7: voice turns on, routes what you say, and the mic opens only with 
     .poll(async () => (await voiceState()).selectedProjectId)
     .toBe(projects.find((p) => p.name === 'Ember Wolf Acquisitions')!.id);
   await expect(page.getByTestId('voice-bubble')).toContainText('Flying to Ember Wolf Acquisitions');
+  await heard('Approve.'); // answering approvals by voice (none waiting here)
+  await expect(page.getByTestId('voice-bubble')).toContainText('Nothing is waiting for you');
   await heard('What can you do?');
   await expect.poll(async () => (await voiceState()).reply ?? '', { timeout: 30_000 }).not.toBe('');
   await page.screenshot({ path: 'test-results/voice.png' });

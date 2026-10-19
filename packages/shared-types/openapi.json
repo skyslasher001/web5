@@ -1438,6 +1438,15 @@
             "default": false,
             "title": "Remember",
             "type": "boolean"
+          },
+          "via": {
+            "default": "ui",
+            "enum": [
+              "ui",
+              "voice"
+            ],
+            "title": "Via",
+            "type": "string"
           }
         },
         "required": [

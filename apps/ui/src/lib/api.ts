@@ -313,8 +313,8 @@ export class CoreApi {
   cancelTask = (id: string) => this.call<AgentTask>('POST', `/tasks/${id}/cancel`);
   /** Approvals waiting for you. */
   approvals = () => this.call<Approval[]>('GET', '/approvals');
-  decideApproval = (id: string, approve: boolean, remember = false) =>
-    this.call<Approval>('POST', `/approvals/${id}/decision`, { approve, remember });
+  decideApproval = (id: string, approve: boolean, remember = false, via: 'ui' | 'voice' = 'ui') =>
+    this.call<Approval>('POST', `/approvals/${id}/decision`, { approve, remember, via });
 
   memories = (status?: 'active' | 'proposed') =>
     this.call<Memory[]>('GET', `/memories${queryString({ status })}`);

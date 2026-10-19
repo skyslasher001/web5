@@ -18,6 +18,8 @@ export type VoiceCommand =
   | { kind: 'zoom'; direction: 'in' | 'out' }
   | { kind: 'back' }
   | { kind: 'kill' }
+  | { kind: 'approve'; approve: boolean }
+  | { kind: 'read' }
   | { kind: 'mic_off' }
   | { kind: 'recall'; text: string }
   | { kind: 'ask'; text: string };
@@ -55,6 +57,18 @@ const RULES: Array<[RegExp, (m: RegExpMatchArray) => VoiceCommand]> = [
   ],
   [/^(?:engage (?:the )?kill switch|kill switch|emergency stop)$/i, () => ({ kind: 'kill' })],
   [/^(?:turn off|mute|stop) (?:the )?(?:mic|microphone|listening)$/i, () => ({ kind: 'mic_off' })],
+  [
+    /^(?:approve|approve it|approved|yes,? (?:do it|go ahead)|go ahead|allow it)$/i,
+    () => ({ kind: 'approve', approve: true }),
+  ],
+  [
+    /^(?:deny|deny it|decline|decline it|reject|reject it|don't|no,? don't(?: do it)?)$/i,
+    () => ({ kind: 'approve', approve: false }),
+  ],
+  [
+    /^(?:read it|read (?:it|this|that) (?:to me|aloud|out loud)|what does it say)$/i,
+    () => ({ kind: 'read' }),
+  ],
   [
     /^(?:(?:switch to |use |start )?continuous(?: mode| listening)?|keep listening)$/i,
     () => ({ kind: 'mode', mode: 'continuous' }),

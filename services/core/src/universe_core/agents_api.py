@@ -60,6 +60,7 @@ class RunResponse(ApiModel):
 class DecisionRequest(BaseModel):
     approve: bool
     remember: bool = False  # approve: also allow this tool for this agent from now on (a permission rule)
+    via: Literal["ui", "voice"] = "ui"  # voice can't approve high-risk actions or set rules (Phase 7)
 
 
 class MemoryDecision(BaseModel):
@@ -320,10 +321,13 @@ async def list_approvals(
 async def decide_approval(ctx: Ctx, approval_id: str, body: DecisionRequest) -> Approval:
     engine = _engine(ctx)
     pending = next((a for a in engine.approvals("pending") if a.id == approval_id), None)
+    if body.via == "voice" and body.approve and (body.remember or (pending is not None and pending.risk == "high")):
+        # A voice in the room isn't proof it's you: high-risk actions and standing rules take a click.
+        raise HTTPException(status.HTTP_409_CONFLICT, "High-risk actions and standing rules need a click, not voice")
     if body.approve and body.remember and pending is not None and pending.tool:
         agent_id = pending.requester.removeprefix("agent:")
         _safety(ctx).permissions.add_from({"agent_id": agent_id, "tool": pending.tool, "decision": "allow"})
-    approval = engine.decide(approval_id, body.approve, via="ui")
+    approval = engine.decide(approval_id, body.approve, via=body.via)
     if approval is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such approval")
     return approval

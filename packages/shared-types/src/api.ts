@@ -2282,6 +2282,12 @@ export interface components {
              * @default false
              */
             remember: boolean;
+            /**
+             * Via
+             * @default ui
+             * @enum {string}
+             */
+            via: "ui" | "voice";
         };
         /** DeleteResult */
         DeleteResult: {

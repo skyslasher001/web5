@@ -5,7 +5,7 @@ import type { CoreEvent, RecallResult } from '@universe/shared-types';
 import { useUniverse } from '../state/store';
 import { rig } from '../universe/scene/helpers';
 import { NOTCH } from '../universe/scene/zoom';
-import type { CoreApi } from './api';
+import { ApiError, type CoreApi } from './api';
 import { bridge } from './bridge';
 import { VoiceClient, useVoice, type VoiceEvent } from './voiceClient';
 import { parseVoiceCommand, speakable, splitSentences, type VoiceMode } from './voiceCommands';
@@ -186,6 +186,12 @@ export class Voice {
       case 'mic_off':
         await this.micOff();
         return;
+      case 'approve':
+        await this.decide(cmd.approve);
+        return;
+      case 'read':
+        await this.read();
+        return;
       case 'mode':
         this.client.setMode(cmd.mode);
         void this.api.voiceSettings({ mode: cmd.mode }).catch(() => {});
@@ -232,6 +238,43 @@ export class Voice {
         await this.ask(cmd.text);
         return;
     }
+  }
+
+  /** "Approve" / "deny": the oldest waiting approval. Core refuses high-risk ones by voice (they take a click). */
+  private async decide(approve: boolean): Promise<void> {
+    const [first] = await this.api.approvals();
+    if (!first) {
+      this.say('Nothing is waiting for you.');
+      return;
+    }
+    try {
+      await this.api.decideApproval(first.id, approve, false, 'voice');
+      this.say(approve ? 'Approved.' : 'Declined.');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        useUniverse.getState().setPanel('agents');
+        this.say("That one is high risk: it needs a click. It's in the approvals tray.");
+      } else throw err;
+    }
+  }
+
+  /** "Read it": the open (or selected) item's text, the first few sentences. */
+  private async read(): Promise<void> {
+    const s = useUniverse.getState();
+    const id = s.viewerItemId ?? s.selectedItemId;
+    if (!id) {
+      this.say('Open something first.');
+      return;
+    }
+    const text = (await this.api.itemText(id, 1200)).text.trim();
+    this.say(
+      text
+        ? text
+            .split(/(?<=[.!?])\s+/)
+            .slice(0, 6)
+            .join(' ')
+        : 'It has no text to read.',
+    );
   }
 
   private async recall(text: string): Promise<void> {
@@ -281,8 +324,16 @@ export class Voice {
 
   /** Core's chat events: speak the answer as it streams (first sentence out as soon as it's complete). */
   onCoreEvent(event: CoreEvent): void {
-    const a = this.answer;
     const p = event.payload as Record<string, unknown>;
+    if (event.type === 'approval.requested') {
+      const who = String(p.agent_id ?? 'An agent');
+      const name = who.charAt(0).toUpperCase() + who.slice(1);
+      const how = p.risk === 'high' ? 'It is high risk: answer it on screen.' : 'Say approve or deny.';
+      const what = String(p.summary ?? p.tool ?? 'do something');
+      this.say(`${name} asks to ${what.charAt(0).toLowerCase()}${what.slice(1)}. ${how}`, who);
+      return;
+    }
+    const a = this.answer;
     if (!a || p.conversation_id !== a.conversationId) return;
     if (event.type === 'chat.started') {
       a.agentId = String(p.agent_id ?? 'core');

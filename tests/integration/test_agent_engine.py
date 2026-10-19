@@ -138,6 +138,49 @@ def test_declining_the_approval_changes_nothing(api: Api) -> None:
     assert any(e["details"]["decision"] == "denied_by_user" and e["outcome"] == "denied" for e in denied)
 
 
+def test_approving_by_voice_is_recorded_and_limited(api: Api) -> None:
+    """Phase 7: you can say "approve", but not for high-risk actions or to set a standing rule."""
+    seed_notes(api)
+    task_id = api.post(
+        "/agents/core/run",
+        {"instruction": "Find my notes about land deal, summarize them, and link them to project DevMind."},
+        202,
+    )["task_id"]
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    assert approval["risk"] == "medium"
+    rule = api.client.post(
+        f"/api/v1/approvals/{approval['id']}/decision",
+        json={"approve": True, "remember": True, "via": "voice"},
+        headers=AUTH,
+    )
+    assert rule.status_code == 409 and api.get("/permissions/rules") == []
+    decided = api.post(f"/approvals/{approval['id']}/decision", {"approve": True, "via": "voice"})
+    assert decided["status"] == "approved" and decided["decided_via"] == "voice"
+    assert wait_task(api, task_id, DONE)["status"] == "done"
+
+
+def test_high_risk_actions_cannot_be_approved_by_voice(api: Api) -> None:
+    conn = api.client.app.state.ctx.dbs.universe  # type: ignore[attr-defined]
+    seed_notes(api)
+    task_id = api.post(
+        "/agents/core/run",
+        {"instruction": "Find my notes about land deal, summarize them, and link them to project DevMind."},
+        202,
+    )["task_id"]
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    conn.execute("UPDATE approvals SET risk = 'high' WHERE id = ?", (approval["id"],))  # as a high-risk tool would
+    refused = api.client.post(
+        f"/api/v1/approvals/{approval['id']}/decision", json={"approve": True, "via": "voice"}, headers=AUTH
+    )
+    assert refused.status_code == 409 and "need a click" in refused.text
+    assert api.get("/approvals")[0]["status"] == "pending"
+    # Declining by voice is always fine: it can only stop something.
+    denied = api.post(f"/approvals/{approval['id']}/decision", {"approve": False, "via": "voice"})
+    assert denied["status"] == "denied" and denied["decided_via"] == "voice"
+
+
 def test_a_rule_you_set_skips_the_question_but_taint_still_asks(api: Api) -> None:
     seed_notes(api)
     rule = api.post("/permissions/rules", {"agent_id": "core", "tool": "project.add_items", "decision": "allow"}, 201)

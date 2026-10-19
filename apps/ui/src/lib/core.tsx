@@ -74,7 +74,9 @@ export function CoreProvider({
         },
         onEvent: (event) => {
           useUniverse.getState().applyEvent(event);
-          if (event.type.startsWith('chat.')) voice()?.onCoreEvent(event); // spoken answers
+          // Spoken answers, and approvals read out so you can answer by voice.
+          if (event.type.startsWith('chat.') || event.type === 'approval.requested')
+            voice()?.onCoreEvent(event);
           // The roster changed (Agents panel): the dock lists the agents that are on.
           if (/^agent\.(added|updated|removed)$/.test(event.type))
             client.agents().then(
