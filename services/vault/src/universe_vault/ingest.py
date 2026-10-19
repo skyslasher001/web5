@@ -157,8 +157,12 @@ def import_file(
     interactive: bool = True,
     api_key_id: str | None = None,
     content_hash: str | None = None,
+    item_type: ItemType | None = None,
 ) -> ImportResult:
-    """Copy `src` into the vault as a new item (or recognise it as a duplicate). The source is untouched."""
+    """Copy `src` into the vault as a new item (or recognise it as a duplicate). The source is untouched.
+
+    `item_type` overrides detection for types an extension can't tell apart (a recorded `voice_memo` is a WAV).
+    """
     src = src.resolve()
     if not src.is_file():
         return ImportResult("skipped", reason="not a file")
@@ -177,7 +181,7 @@ def import_file(
         return ImportResult("duplicate", existing["id"], existing["path"], project_ids_added=added)
 
     display_name = name or src.name
-    item_type = detect_type(display_name)
+    item_type = item_type or detect_type(display_name)
     when = captured_at(src, item_type)
     if vault.contains(src) and not staged:
         dest = src  # already in the vault (you put it there): adopt it in place

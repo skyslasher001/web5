@@ -25,6 +25,8 @@ from universe_core.vault_admin_api import router as vault_admin_router
 from universe_core.vault_api import internal as vault_internal
 from universe_core.vault_api import local_api as vault_local_api
 from universe_core.vault_api import router as vault_router
+from universe_core.voice_api import router as voice_router
+from universe_core.voice_api import ws_router as voice_ws_router
 from universe_core.ws import router as ws_router
 
 log = get_logger(__name__)
@@ -93,10 +95,12 @@ def create_app(settings: CoreSettings) -> FastAPI:
     app.include_router(universe_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(forge_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(research_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+    app.include_router(voice_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(vault_admin_router, dependencies=[Depends(TokenAuth(settings.session_token))])
     app.include_router(vault_local_api)  # session token or a scoped local API key, checked per endpoint
     app.include_router(vault_internal)  # Core's own workers (per-boot internal token)
     app.include_router(ws_router)
+    app.include_router(voice_ws_router)  # /ws/voice: session ticket, relayed to the voice process
 
     @app.exception_handler(ChatError)
     async def chat_error(_request: Request, exc: ChatError) -> JSONResponse:

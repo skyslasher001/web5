@@ -27,6 +27,7 @@ from universe_vault.handlers import HANDLERS, Retry, WorkerContext
 from universe_vault.jobs import Job
 from universe_vault.layout import Vault
 from universe_vault.models import SyncOllama
+from universe_vault.transcription import Transcriber
 from universe_vault.vectors import VectorStore
 
 log = get_logger(__name__)
@@ -164,6 +165,7 @@ def build_context(
     report_error: Callable[[str, str, str], None] | None = None,
     gate: EgressGate | None = None,
     conn: sqlite3.Connection | None = None,
+    voice_models: Path | None = None,
 ) -> WorkerContext:
     vault.ensure()
     sink = sink or EventSink()
@@ -174,6 +176,7 @@ def build_context(
         ollama=SyncOllama(ollama_url, gate) if ollama_url else None,
         vectors=VectorStore(vault.vectors),
         emit=sink,
+        transcriber=Transcriber(voice_models) if voice_models is not None else None,
     )
     if report_error is not None:
         ctx.report_error = report_error
@@ -210,6 +213,7 @@ def main() -> int:
         sink=sink,
         report_error=link.report_error if link else None,
         gate=gate,
+        voice_models=data_dir / "models" / "voice",
     )
     stop = threading.Event()
     watch_parent(stop.set)

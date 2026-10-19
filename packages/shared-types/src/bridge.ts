@@ -104,12 +104,26 @@ export interface UniverseBridge {
   setKillSwitch(engaged: boolean): Promise<KillSwitchState>;
   onKillSwitch(callback: (state: KillSwitchState) => void): () => void;
 
+  // ---------- consent (Phase 7; owned by protected Electron main code, docs/proposals/phase-7-consent.md) ----------
+  /** Whether the mic may be used. Off at every launch; only main changes it, on your explicit action. */
+  getConsent(): Promise<ConsentState>;
+  /** Ask main to turn the mic on or off (turning it on happens only from a click or the hotkey you pressed). */
+  setMicConsent(on: boolean): Promise<ConsentState>;
+  onConsent(callback: (state: ConsentState) => void): () => void;
+
   // ---------- Forge releases (Phase 5; owned by protected Electron main code and the supervisor) ----------
   /** Approve a Forge proposal: a native dialog shows it, and only then does the supervisor apply it. */
   forgeApprove(proposalId: string): Promise<ForgeDecision>;
   /** Roll back to a release (a native dialog asks first). */
   forgeRollback(release: string): Promise<ForgeDecision>;
   getReleases(): Promise<ReleasesState>;
+}
+
+export interface ConsentState {
+  /** False until the Phase 7 protected-core patch is applied: then the mic can't be turned on at all. */
+  available: boolean;
+  mic: boolean;
+  reason: string | null;
 }
 
 export interface ForgeDecision {

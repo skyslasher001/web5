@@ -5,6 +5,7 @@ purpose: Finds, reads and summarizes your notes and files, always citing which i
 synopsis: >-
   Librarian knows what's in your vault. It searches by keyword and by meaning, reads notes and files, summarizes them and always lists the items it used, so you can check its sources.
 model: local-fast
+voice: warm-archivist # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLES)
 color: amber
 icon: library
 tools: [vault.search, vault.read, project.list, memory.search, memory.save]

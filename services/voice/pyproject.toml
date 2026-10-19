@@ -14,6 +14,7 @@ dependencies = [
     "misaki==0.9.4",
     "starlette>=0.40",
     "uvicorn>=0.30",
+    "websockets>=17.2",
 ]
 
 [build-system]

@@ -496,6 +496,41 @@
         "title": "AgentTask",
         "type": "object"
       },
+      "AgentVoice": {
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "voice": {
+            "title": "Voice",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "name",
+          "voice",
+          "color"
+        ],
+        "title": "AgentVoice",
+        "type": "object"
+      },
       "ApiKeyCreated": {
         "properties": {
           "info": {
@@ -3579,6 +3614,28 @@
         "title": "MCPServerRequest",
         "type": "object"
       },
+      "MemoSaved": {
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "created",
+              "duplicate"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "status"
+        ],
+        "title": "MemoSaved",
+        "type": "object"
+      },
       "Memory": {
         "properties": {
           "content": {
@@ -5370,6 +5427,346 @@
           "ollama"
         ],
         "title": "Vitals",
+        "type": "object"
+      },
+      "VoiceModelInfo": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "install_done": {
+            "default": 0,
+            "title": "Install Done",
+            "type": "integer"
+          },
+          "install_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install Error"
+          },
+          "install_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "downloading",
+                  "installing",
+                  "done",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Install State"
+          },
+          "installed": {
+            "title": "Installed",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "stt",
+              "tts",
+              "vad"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "license",
+          "source",
+          "size",
+          "installed",
+          "install_state",
+          "install_done",
+          "install_error"
+        ],
+        "title": "VoiceModelInfo",
+        "type": "object"
+      },
+      "VoiceSettings": {
+        "properties": {
+          "agents": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Agents",
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "push_to_talk",
+              "wake",
+              "continuous"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "speed": {
+            "title": "Speed",
+            "type": "number"
+          },
+          "stt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt"
+          },
+          "voice": {
+            "title": "Voice",
+            "type": "string"
+          },
+          "wake_phrase": {
+            "title": "Wake Phrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stt",
+          "wake_phrase",
+          "voice",
+          "mode",
+          "speed",
+          "agents"
+        ],
+        "title": "VoiceSettings",
+        "type": "object"
+      },
+      "VoiceSettingsUpdate": {
+        "properties": {
+          "agents": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agents"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "push_to_talk",
+                  "wake",
+                  "continuous"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 0.5,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          },
+          "stt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Whisper model id; null for the best installed",
+            "title": "Stt"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice"
+          },
+          "wake_phrase": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wake Phrase"
+          }
+        },
+        "title": "VoiceSettingsUpdate",
+        "type": "object"
+      },
+      "VoiceStatus": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceModelInfo"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/VoiceSettings"
+          },
+          "state": {
+            "enum": [
+              "off",
+              "starting",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "stt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt"
+          },
+          "tts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts"
+          },
+          "voices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Voices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "pid",
+          "stt",
+          "tts",
+          "voices",
+          "settings",
+          "models"
+        ],
+        "title": "VoiceStatus",
+        "type": "object"
+      },
+      "VoicesResponse": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentVoice"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "default": {
+            "title": "Default",
+            "type": "string"
+          },
+          "voices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Voices",
+            "type": "array"
+          }
+        },
+        "required": [
+          "voices",
+          "default",
+          "agents"
+        ],
+        "title": "VoicesResponse",
         "type": "object"
       },
       "WatchedFolder": {
@@ -9907,6 +10304,219 @@
         "tags": [
           "universe"
         ]
+      }
+    },
+    "/api/v1/voice/memo": {
+      "post": {
+        "description": "A recorded WAV (the request body, `audio/wav`). Stored as a `voice_memo`; the pipeline transcribes it.",
+        "operationId": "save_memo_api_v1_voice_memo_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoSaved"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Memo"
+      }
+    },
+    "/api/v1/voice/models/{model_id}/install": {
+      "post": {
+        "operationId": "install_model_api_v1_voice_models__model_id__install_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceModelInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Install Model"
+      }
+    },
+    "/api/v1/voice/settings": {
+      "put": {
+        "operationId": "voice_settings_api_v1_voice_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Voice Settings"
+      }
+    },
+    "/api/v1/voice/start": {
+      "post": {
+        "operationId": "voice_start_api_v1_voice_start_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Voice Start"
+      }
+    },
+    "/api/v1/voice/status": {
+      "get": {
+        "operationId": "voice_status_api_v1_voice_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Voice Status"
+      }
+    },
+    "/api/v1/voice/stop": {
+      "post": {
+        "operationId": "voice_stop_api_v1_voice_stop_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Voice Stop"
+      }
+    },
+    "/api/v1/voices": {
+      "get": {
+        "operationId": "voices_api_v1_voices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoicesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Voices"
       }
     },
     "/api/v1/watched-folders": {

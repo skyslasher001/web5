@@ -57,10 +57,13 @@ class WorkerContext:
     report_error: Callable[[str, str, str], None] = lambda _kind, _message, _stack: None
     flush_events: Callable[[], None] = lambda: None
     ocr: OcrEngine = field(default_factory=OcrEngine)
+    transcriber: Callable[[Path], list[Any]] | None = None  # `Transcriber` over the installed voice models
     _models: tuple[float, list[ModelInfo]] | None = None
 
     def stage_context(self) -> StageContext:
-        return StageContext(self.conn, self.vault, self.emit, ocr=self.ocr, thumbnail=make_thumbnail)
+        return StageContext(
+            self.conn, self.vault, self.emit, ocr=self.ocr, thumbnail=make_thumbnail, transcribe=self.transcriber
+        )
 
     def models(self) -> list[ModelInfo]:
         if self.ollama is None:

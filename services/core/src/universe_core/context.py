@@ -38,13 +38,15 @@ from universe_core.security import TicketStore
 from universe_core.seed import ensure_seed_galaxies
 from universe_core.settings import CoreSettings
 from universe_core.vault_runtime import Governor, VaultDb, WorkerManager, worker_env
+from universe_core.voice_runtime import ModelInstaller, VoiceManager, VoiceService
 from universe_core.watchlists import WatchlistRunner
 from universe_models.hardware import HardwareInfo, detect
 from universe_models.ollama import OllamaClient
 from universe_models.recommend import Recommendation, recommend
-from universe_vault import jobs, purge
+from universe_vault import jobs, pipeline, purge
 from universe_vault.layout import Vault
 from universe_vault.models import ModelInfo, pick_embedder, query_prefix
+from universe_vault.transcription import NO_STT
 from universe_vault.vectors import VectorStore, table_name
 from universe_vault.watch import Folder, Watcher
 
@@ -101,6 +103,8 @@ class CoreContext:
     roster: AgentRoster | None = None
     forge: Forge | None = None
     safety: object | None = None  # the protected policy engine (policy, permissions, budget, kill switch)
+    voice: VoiceService | None = None
+    _kill_watch: asyncio.Task[None] | None = None
     _hardware: HardwareInfo | None = None
     _hardware_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -203,7 +207,54 @@ class CoreContext:
         ctx.mcp = MCPManager(ctx)
         ctx.engine.recover_after_restart()
         chat.engine = ctx.engine
+        ctx.voice = ctx._build_voice()
         return ctx
+
+    # ---------- voice (Phase 7, ADR-0016) ----------
+
+    def _build_voice(self) -> VoiceService:
+        models_dir = self.settings.data_dir / "models" / "voice"
+
+        def publish(event_type: str, payload: dict[str, object]) -> None:
+            self.bus.publish(event_type, payload)
+
+        async def installed(model: object) -> None:
+            if getattr(model, "kind", None) == "stt":  # transcribe what was skipped for want of a model
+                count = await self.vdb.run(pipeline.requeue_untranscribed, NO_STT)
+                log.info("transcription_requeued", items=count)
+            voice = self.voice
+            if voice is not None and voice.manager.state == "ready":
+                await voice.manager.restart(voice.config())  # load the new engine
+
+        manager = VoiceManager(
+            models_dir=models_dir,
+            log_dir=self.settings.log_dir,
+            gate=self.gate,
+            publish=publish,
+            env={k: v for k, v in os.environ.items() if not k.startswith(("UNIVERSE_SESSION", "UNIVERSE_SUPERVISOR"))},
+        )
+        installer = ModelInstaller(models_dir=models_dir, gate=self.gate, publish=publish, on_installed=installed)
+        return VoiceService(manager=manager, installer=installer, read_setting=self.read_setting)
+
+    def require_voice(self) -> VoiceService:
+        if self.voice is None:
+            raise RuntimeError("voice is not set up")
+        return self.voice
+
+    def read_setting(self, key: str) -> str | None:
+        row = self.dbs.universe.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    async def _stop_voice_on_kill(self) -> None:
+        """The kill switch stops voice (Electron main stops the mic itself first; ARCHITECTURE §6)."""
+        sub = self.bus.subscribe(["killswitch.engaged"])
+        try:
+            while True:
+                await sub.queue.get()
+                if self.voice is not None:
+                    await self.voice.manager.stop(reason="kill switch engaged")
+        finally:
+            self.bus.unsubscribe(sub)
 
     async def hardware(self, *, refresh: bool = False) -> HardwareInfo:
         async with self._hardware_lock:
@@ -280,6 +331,7 @@ class CoreContext:
         # Research (Phase 6): re-run watched topics/pages on a schedule; gated by offline/kill like everything else.
         self.watchlists = WatchlistRunner(self)
         self.watchlists.start()
+        self._kill_watch = asyncio.create_task(self._stop_voice_on_kill(), name="voice-kill-watch")
 
     def _enqueue_from_watcher(self, kind: str, payload: dict[str, object]) -> None:
         """Called on the watcher's thread: uses that thread's own connection."""
@@ -357,6 +409,10 @@ class CoreContext:
         return deleted
 
     async def close(self) -> None:
+        if self._kill_watch is not None:
+            self._kill_watch.cancel()
+        if self.voice is not None:
+            await self.voice.aclose()
         if self.watchlists is not None:
             await self.watchlists.stop()
         if self.watcher is not None:

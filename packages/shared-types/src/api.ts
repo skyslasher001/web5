@@ -1544,6 +1544,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/voice/memo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Memo
+         * @description A recorded WAV (the request body, `audio/wav`). Stored as a `voice_memo`; the pipeline transcribes it.
+         */
+        post: operations["save_memo_api_v1_voice_memo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/models/{model_id}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Model */
+        post: operations["install_model_api_v1_voice_models__model_id__install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Voice Settings */
+        put: operations["voice_settings_api_v1_voice_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Voice Start */
+        post: operations["voice_start_api_v1_voice_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voice Status */
+        get: operations["voice_status_api_v1_voice_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voice/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Voice Stop */
+        post: operations["voice_stop_api_v1_voice_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/voices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voices */
+        get: operations["voices_api_v1_voices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watched-folders": {
         parameters: {
             query?: never;
@@ -1835,6 +1957,17 @@ export interface components {
             tokens_in: number;
             /** Tokens Out */
             tokens_out: number;
+        };
+        /** AgentVoice */
+        AgentVoice: {
+            /** Agent Id */
+            agent_id: string;
+            /** Color */
+            color: string | null;
+            /** Name */
+            name: string;
+            /** Voice */
+            voice: string;
         };
         /** ApiKeyCreated */
         ApiKeyCreated: {
@@ -2844,6 +2977,16 @@ export interface components {
              */
             name: string;
         };
+        /** MemoSaved */
+        MemoSaved: {
+            /** Item Id */
+            item_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "created" | "duplicate";
+        };
         /** Memory */
         Memory: {
             /** Content */
@@ -3429,6 +3572,105 @@ export interface components {
             version: string;
             /** Ws Clients */
             ws_clients: number;
+        };
+        /** VoiceModelInfo */
+        VoiceModelInfo: {
+            /** Id */
+            id: string;
+            /**
+             * Install Done
+             * @default 0
+             */
+            install_done: number;
+            /** Install Error */
+            install_error: string | null;
+            /** Install State */
+            install_state: ("downloading" | "installing" | "done" | "failed") | null;
+            /** Installed */
+            installed: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "stt" | "tts" | "vad";
+            /** License */
+            license: string;
+            /** Size */
+            size: number;
+            /** Source */
+            source: string;
+            /** Title */
+            title: string;
+        };
+        /** VoiceSettings */
+        VoiceSettings: {
+            /** Agents */
+            agents: {
+                [key: string]: string;
+            };
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "push_to_talk" | "wake" | "continuous";
+            /** Speed */
+            speed: number;
+            /** Stt */
+            stt: string | null;
+            /** Voice */
+            voice: string;
+            /** Wake Phrase */
+            wake_phrase: string;
+        };
+        /** VoiceSettingsUpdate */
+        VoiceSettingsUpdate: {
+            /** Agents */
+            agents?: {
+                [key: string]: string;
+            } | null;
+            /** Mode */
+            mode?: ("push_to_talk" | "wake" | "continuous") | null;
+            /** Speed */
+            speed?: number | null;
+            /**
+             * Stt
+             * @description A Whisper model id; null for the best installed
+             */
+            stt?: string | null;
+            /** Voice */
+            voice?: string | null;
+            /** Wake Phrase */
+            wake_phrase?: string | null;
+        };
+        /** VoiceStatus */
+        VoiceStatus: {
+            /** Models */
+            models: components["schemas"]["VoiceModelInfo"][];
+            /** Pid */
+            pid: number | null;
+            /** Reason */
+            reason: string | null;
+            settings: components["schemas"]["VoiceSettings"];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "starting" | "ready" | "failed";
+            /** Stt */
+            stt: string | null;
+            /** Tts */
+            tts: string | null;
+            /** Voices */
+            voices: string[];
+        };
+        /** VoicesResponse */
+        VoicesResponse: {
+            /** Agents */
+            agents: components["schemas"]["AgentVoice"][];
+            /** Default */
+            default: string;
+            /** Voices */
+            voices: string[];
         };
         /** WatchedFolder */
         WatchedFolder: {
@@ -6507,6 +6749,182 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UniverseLinks"];
+                };
+            };
+        };
+    };
+    save_memo_api_v1_voice_memo_post: {
+        parameters: {
+            query?: {
+                title?: string | null;
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoSaved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_model_api_v1_voice_models__model_id__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceModelInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_settings_api_v1_voice_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_start_api_v1_voice_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceStatus"];
+                };
+            };
+        };
+    };
+    voice_status_api_v1_voice_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceStatus"];
+                };
+            };
+        };
+    };
+    voice_stop_api_v1_voice_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceStatus"];
+                };
+            };
+        };
+    };
+    voices_api_v1_voices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoicesResponse"];
                 };
             };
         };

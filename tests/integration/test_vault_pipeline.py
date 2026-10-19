@@ -12,17 +12,22 @@ import pytest
 
 from tests.support import files
 from tests.support.fake_ollama import CAPTION, VISION_MODEL, FakeOllama, fake_embedding
+from tests.support.fake_voice import FakeSTT, utterances
 from universe_common.sqlite import connect, transaction
 from universe_core.db import Databases
 from universe_core.events import EventBus
 from universe_core.seed import ensure_seed_galaxies
-from universe_vault import ingest, jobs, purge, search, store
+from universe_vault import ingest, jobs, pipeline, purge, search, store
 from universe_vault.handlers import WorkerContext
 from universe_vault.layout import Vault, sidecar_path
 from universe_vault.models import query_prefix
 from universe_vault.query import Project, parse
+from universe_vault.transcription import NO_STT, Transcriber
 from universe_vault.vectors import table_name
 from universe_vault.worker import EventSink, build_context, drain
+from universe_voice import longform
+from universe_voice.audio import STT_RATE, resample, write_wav
+from universe_voice.vad import EnergyVAD
 
 EMBED_TABLE = table_name("fake-embed:latest", "bbb")
 
@@ -85,7 +90,14 @@ def rig(tmp_path: Path, fake_ollama: FakeOllama) -> Iterator[Rig]:
     events: list[dict[str, Any]] = []
     errors: list[tuple[str, str]] = []
     sink = EventSink(post=events.extend)
-    ctx = build_context(vault, worker_id="test-worker", ollama_url=fake_ollama.url, sink=sink, conn=conn)
+    ctx = build_context(
+        vault,
+        worker_id="test-worker",
+        ollama_url=fake_ollama.url,
+        sink=sink,
+        conn=conn,
+        voice_models=tmp_path / "models" / "voice",  # empty: no Whisper installed
+    )
     ctx.report_error = lambda kind, message, _stack: errors.append((kind, message))
     yield Rig(vault, conn, ctx, events, errors)
     if ctx.ollama:
@@ -143,7 +155,7 @@ def test_mixed_folder_goes_through_the_whole_pipeline(rig: Rig, tmp_path: Path) 
     audio = json.loads(rows["take3"]["metadata"])
     assert audio["artist"] == "Sky Slasher"
     stages = {s.stage: s for s in store.stages(rig.conn, rows["take3"]["id"])}
-    assert stages["transcribe"].status == "skipped" and "Phase 7" in (stages["transcribe"].detail or "")
+    assert stages["transcribe"].status == "skipped" and stages["transcribe"].detail == NO_STT
 
     # Originals are copied byte for byte; the source folder is untouched.
     pdf_row = rows["parcel-4471-agreement"]
@@ -314,3 +326,62 @@ def test_captions_from_an_assigned_vision_model(rig: Rig, fake_ollama: FakeOllam
     assert json.loads(row["metadata"])["caption"] == CAPTION
     assert json.loads(sidecar_path(rig.vault.abs(row["path"])).read_text())["caption"] == CAPTION
     assert rig.find("dusk on the water")[0] == "dock"  # caption + concept embeddings: meaning, not words
+
+
+def test_voice_memos_are_transcribed_with_timestamps(rig: Rig, tmp_path: Path) -> None:
+    """SPEC §11 "voice memos are transcribed into the vault automatically", §5.5 "with timestamps"."""
+    stt = FakeSTT(["Ember Wolf needs a bridge in the second verse.", "Call the seller about the lake parcel."])
+    rig.ctx.transcriber = Transcriber(tmp_path, engines=lambda: (stt, EnergyVAD()))
+    memo = tmp_path / "memo.wav"
+    audio = utterances(("pause", 1.0), ("speech", 1.5), ("pause", 2.0), ("speech", 1.0), ("pause", 1.0))
+    write_wav(memo, resample(audio, STT_RATE, 44_100), 44_100)  # a phone-style rate: resampled on the way in
+    result = ingest.import_file(rig.conn, rig.vault, memo, source_kind="quick_capture", item_type="voice_memo")
+    assert result.item_id is not None
+    rig.run()
+
+    row = _row(rig.conn, result.item_id)
+    assert row["type"] == "voice_memo" and row["pipeline_status"] == "done"
+    stage = {s.stage: s for s in store.stages(rig.conn, result.item_id)}["transcribe"]
+    assert stage.status == "done" and json.loads(stage.detail or "{}")["segments"] == 2
+    chunks = [c for c in store.item_chunks(rig.conn, result.item_id) if c["kind"] == "text"]
+    assert [c["text"] for c in chunks] == [
+        "Ember Wolf needs a bridge in the second verse.",
+        "Call the seller about the lake parcel.",
+    ]
+    # Each segment knows where it is in the recording (speech at 1.0–2.5 s and 4.5–5.5 s, ± padding).
+    assert 700 <= chunks[0]["start_ms"] <= 1000 and 2500 <= chunks[0]["end_ms"] <= 2900
+    assert 4200 <= chunks[1]["start_ms"] <= 4500 and 5500 <= chunks[1]["end_ms"] <= 5900
+    assert stt.heard and all(s < 3.0 for s in stt.heard)  # one utterance at a time, not the whole file
+    assert rig.find("lake parcel", semantic=False) == ["memo"]
+    sidecar = json.loads(sidecar_path(rig.vault.abs(row["path"])).read_text(encoding="utf-8"))
+    assert [s["text"] for s in sidecar["transcript"]][1] == "Call the seller about the lake parcel."
+
+
+def test_installing_whisper_transcribes_what_was_skipped(rig: Rig, tmp_path: Path) -> None:
+    idea = tmp_path / "idea.wav"
+    write_wav(idea, utterances(("pause", 0.5), ("speech", 1.0), ("pause", 0.5)), STT_RATE)
+    rig.import_path(idea)
+    rig.run()
+    item_id = rig.conn.execute("SELECT id FROM items").fetchone()["id"]
+    assert {s.stage: s for s in store.stages(rig.conn, item_id)}["transcribe"].detail == NO_STT
+
+    stt = FakeSTT(["a melody for the chorus"])
+    rig.ctx.transcriber = Transcriber(tmp_path, engines=lambda: (stt, EnergyVAD()))
+    assert pipeline.requeue_untranscribed(rig.conn, NO_STT) == 1
+    rig.run()
+    assert {s.stage: s for s in store.stages(rig.conn, item_id)}["transcribe"].status == "done"
+    assert rig.find("melody chorus", semantic=False) == ["idea"]
+    assert pipeline.requeue_untranscribed(rig.conn, NO_STT) == 0
+
+
+def test_formats_without_a_decoder_say_why(rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(longform, "ffmpeg", lambda: None)
+    rig.ctx.transcriber = Transcriber(tmp_path, engines=lambda: (FakeSTT(), EnergyVAD()))
+    song = tmp_path / "demo.mp3"
+    song.write_bytes(b"ID3" + bytes(64))
+    rig.import_path(song)
+    rig.run()
+    item_id = rig.conn.execute("SELECT id FROM items").fetchone()["id"]
+    stage = {s.stage: s for s in store.stages(rig.conn, item_id)}["transcribe"]
+    assert stage.status == "skipped" and "needs ffmpeg on PATH" in (stage.detail or "")
+    assert _row(rig.conn, item_id)["pipeline_status"] == "done"

@@ -105,6 +105,15 @@ export type WatchlistHit = Schemas['WatchlistHit'];
 export type SentRequest = Schemas['SentRequest'];
 export type ResearchResponse = Schemas['ResearchResponse'];
 
+// Phase 7: voice
+export type VoiceStatus = Schemas['VoiceStatus'];
+export type VoiceModelInfo = Schemas['VoiceModelInfo'];
+export type VoiceSettings = Schemas['VoiceSettings'];
+export type VoicesResponse = Schemas['VoicesResponse'];
+export type AgentVoice = Schemas['AgentVoice'];
+export type MemoSaved = Schemas['MemoSaved'];
+export type VoiceSettingsUpdate = Schemas['VoiceSettingsUpdate'];
+
 // Phase 4: the universe view
 export type UniverseItems = Schemas['UniverseItems'];
 export type UniverseLinks = Schemas['UniverseLinks'];

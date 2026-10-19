@@ -1,7 +1,7 @@
 """The ingestion pipeline (SPEC §5): which stages an item gets, and the content stages themselves.
 
-Job chain per item: `pipeline` (metadata → extract | ocr + thumbnail) → `caption` (images, when a vision
-model is assigned) → `embed` (text embeddings, then the sidecar and `item.processed`). Stages that need
+Job chain per item: `pipeline` (metadata → extract | ocr + thumbnail | transcribe) → `caption` (images, when a
+vision model is assigned) → `embed` (text embeddings, then the sidecar and `item.processed`). Stages that need
 a later phase are recorded as skipped with the reason, so every item shows an honest pipeline status.
 """
 
@@ -20,7 +20,6 @@ from universe_vault.layout import Vault
 from universe_vault.metadata import extract as extract_metadata
 
 Emit = Callable[..., None]
-TRANSCRIBE_LATER = "Transcription arrives with the voice service (Phase 7)"
 MARKDOWN_TYPES = frozenset({"note", "idea", "link"})
 
 
@@ -35,7 +34,7 @@ def initial_stages(item_type: str) -> list[tuple[str, str, str | None]]:
     if item_type in IMAGE_TYPES:
         stages += [("thumbnail", "pending", None), ("ocr", "pending", None), ("caption", "pending", None)]
     if item_type in TIME_BASED_TYPES:
-        stages.append(("transcribe", "skipped", TRANSCRIBE_LATER))
+        stages.append(("transcribe", "pending", None))
     stages.append(("embed", "pending", None))
     if item_type not in MARKDOWN_TYPES:
         stages.append(("sidecar", "pending", None))
@@ -49,6 +48,7 @@ class StageContext:
     emit: Emit
     ocr: Callable[[Any], str] | None = None  # set by the worker (lazy RapidOCR)
     thumbnail: Callable[[Any, Any], bool] | None = None
+    transcribe: Callable[[Any], list[Any]] | None = None  # set by the worker (lazy Whisper); pieces with ms + text
 
 
 class StageSkipped(Exception):
@@ -146,11 +146,48 @@ def stage_ocr(ctx: StageContext, row: sqlite3.Row) -> dict[str, Any]:
     return {"chars": len(text)}
 
 
+def stage_transcribe(ctx: StageContext, row: sqlite3.Row) -> dict[str, Any]:
+    """Speech in audio and video becomes timestamped text chunks (kind `text`, with start_ms/end_ms)."""
+    if ctx.transcribe is None:
+        raise StageSkipped("no transcriber")
+    pieces = ctx.transcribe(ctx.vault.abs(row["path"]))
+    chunks = [store.ChunkIn(p.text, "text", start_ms=p.start_ms, end_ms=p.end_ms) for p in pieces]
+    with transaction(ctx.conn):
+        store.replace_chunks(ctx.conn, row["id"], row["current_version"], ["text"], chunks)
+        store.reindex_item(ctx.conn, row["id"])
+    if not chunks:
+        raise StageSkipped("no speech found")
+    return {"segments": len(chunks), "chars": sum(len(c.text) for c in chunks)}
+
+
+def requeue_untranscribed(conn: sqlite3.Connection, reason: str) -> int:
+    """A speech-to-text model was just installed: transcribe the items that were skipped for lack of one."""
+    rows = conn.execute(
+        "SELECT s.item_id FROM item_stages s JOIN items i ON i.id = s.item_id"
+        " WHERE s.stage = 'transcribe' AND s.status = 'skipped' AND s.detail = ? AND i.trashed_at IS NULL",
+        (reason,),
+    ).fetchall()
+    with transaction(conn):
+        for row in rows:
+            store.set_stage(conn, row["item_id"], "transcribe", "pending")
+            store.refresh_pipeline_status(conn, row["item_id"])
+            jobs.enqueue(
+                conn,
+                "pipeline",
+                item_id=row["item_id"],
+                priority_class="background",
+                priority=3,
+                idempotency_key=f"pipeline:{row['item_id']}",
+            )
+    return len(rows)
+
+
 CONTENT_STAGES: dict[str, Callable[[StageContext, sqlite3.Row], dict[str, Any]]] = {
     "metadata": stage_metadata,
     "extract": stage_extract,
     "thumbnail": stage_thumbnail,
     "ocr": stage_ocr,
+    "transcribe": stage_transcribe,
 }
 
 

@@ -10,6 +10,7 @@ import sqlite3
 from typing import Any
 
 from universe_vault import store
+from universe_vault.filetypes import TIME_BASED_TYPES
 from universe_vault.layout import Vault, sidecar_path
 
 SIDECAR_VERSION = 1
@@ -60,6 +61,17 @@ def build(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
         data["caption"] = texts["caption"]
     if texts.get("ocr"):
         data["ocr_text"] = texts["ocr"]
+    if row["type"] in TIME_BASED_TYPES:
+        segments, used = [], 0
+        for r in conn.execute(
+            "SELECT start_ms, end_ms, text FROM chunks WHERE item_id = ? AND kind = 'text' ORDER BY ord", (item_id,)
+        ):
+            used += len(r["text"])
+            if used > MAX_TEXT:
+                break
+            segments.append({"start_ms": r["start_ms"], "end_ms": r["end_ms"], "text": r["text"]})
+        if segments:
+            data["transcript"] = segments
     return data
 
 

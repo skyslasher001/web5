@@ -38,6 +38,8 @@ class ChunkIn:
     page: int | None = None
     char_start: int | None = None
     char_end: int | None = None
+    start_ms: int | None = None  # transcripts: where in the recording
+    end_ms: int | None = None
 
 
 @dataclass
@@ -180,8 +182,8 @@ def replace_chunks(
     ids = []
     for offset, chunk in enumerate(chunks):
         cursor = conn.execute(
-            "INSERT INTO chunks (item_id, version_n, ord, kind, text, page, char_start, char_end, token_count)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO chunks (item_id, version_n, ord, kind, text, page, char_start, char_end, start_ms, end_ms,"
+            " token_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 item_id,
                 version_n,
@@ -191,6 +193,8 @@ def replace_chunks(
                 chunk.page,
                 chunk.char_start,
                 chunk.char_end,
+                chunk.start_ms,
+                chunk.end_ms,
                 max(1, len(chunk.text) // 4),
             ),
         )

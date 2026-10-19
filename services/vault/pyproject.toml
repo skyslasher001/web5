@@ -6,6 +6,7 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "universe-common",
     "universe-models",
+    "universe-voice",
     "pydantic>=2.14",
     "psutil>=7.2",
     "pyyaml>=6.0.3",
@@ -34,3 +35,4 @@ packages = ["src/universe_vault"]
 [tool.uv.sources]
 universe-common = { workspace = true }
 universe-models = { workspace = true }
+universe-voice = { workspace = true }

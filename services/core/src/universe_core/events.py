@@ -118,6 +118,11 @@ CATALOG: dict[str, EventType] = {
     "voice.tts.started": _live("Speech started"),
     "voice.tts.stopped": _live("Speech stopped"),
     "voice.barge_in": _live("You interrupted speech"),
+    "voice.service.changed": _p("The voice process started, stopped or failed"),
+    "voice.settings.changed": _p("Voice settings changed"),
+    "voice.model.progress": _live("Voice model download progress"),
+    "voice.model.installed": _p("A voice model was installed"),
+    "voice.model.failed": _p("A voice model failed to install"),
     # Errors & health
     "error.raised": _p("An error was captured"),
     "service.started": _p("A service started"),

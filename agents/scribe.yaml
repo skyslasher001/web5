@@ -5,6 +5,7 @@ purpose: Writes summaries, notes and drafts into your vault, in your voice.
 synopsis: >-
   Scribe writes into your vault: summaries, notes and drafts, in your voice. Every note it writes is a new item, so nothing you wrote is ever overwritten.
 model: local-fast
+voice: clear-scribe # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLES)
 color: green
 icon: pen-line
 tools: [vault.search, vault.read, note.create, memory.search]
