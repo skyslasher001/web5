@@ -31,7 +31,7 @@ import {
   type ChatMessage,
 } from './reducers';
 
-export type Panel = 'context' | 'vault' | 'agents' | 'research' | 'forge' | 'safety' | 'system';
+export type Panel = 'context' | 'vault' | 'agents' | 'research' | 'voice' | 'forge' | 'safety' | 'system';
 export type View = 'universe' | 'grid' | 'list';
 export type Layout = 'project' | 'semantic' | 'time' | 'graph';
 export const LAYOUTS: Layout[] = ['project', 'semantic', 'time', 'graph'];

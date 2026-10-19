@@ -328,3 +328,16 @@ export function useMcpServers(enabled: boolean) {
   const online = useUniverse((s) => s.connection === 'online');
   return useQuery({ queryKey: ['mcp'], queryFn: api.mcpServers, enabled: enabled && online });
 }
+
+/** Voice (Phase 7): the process, settings and models. Voice events refresh it (refreshForEvent). */
+export function useVoiceStatus(enabled = true) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['voice', 'status'], queryFn: api.voiceStatus, enabled: online && enabled });
+}
+
+export function useVoices(enabled = true) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({ queryKey: ['voice', 'voices'], queryFn: api.voices, enabled: online && enabled });
+}

@@ -20,6 +20,7 @@ import { ErrorBoundary } from './hud/ErrorBoundary';
 import { DropZone } from './hud/DropZone';
 import { KillSwitchBanner } from './hud/KillSwitch';
 import { PerfHud } from './hud/PerfHud';
+import { VoiceOrb, VoiceRuntime } from './hud/VoiceOrb';
 import { ItemsView } from './views2d/ItemsView';
 
 // three.js is most of the bundle: load it after the HUD so the shell is usable first (SPEC §24).
@@ -68,9 +69,7 @@ function Hud() {
       </ErrorBoundary>
       <div className="pointer-events-none absolute inset-0" style={{ zIndex: 'var(--z-hud)' }}>
         {zen ? (
-          <p className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-ink-3">
-            Zen mode · press Z or Esc to return
-          </p>
+          <p className="absolute bottom-6 left-6 text-xs text-ink-3">Zen mode · press Z or Esc to return</p>
         ) : (
           <>
             <TopBar />
@@ -92,6 +91,11 @@ function Hud() {
             <ApprovalsTray />
           </>
         )}
+        {/* Voice works in every view, zen included: you can run the app by voice alone (SPEC §25 Phase 7). */}
+        <ErrorBoundary name="voice" fallback={null}>
+          <VoiceRuntime />
+          {zen && <VoiceOrb floating />}
+        </ErrorBoundary>
         {/* Shown even in zen mode: you should always know that agents are stopped. */}
         <KillSwitchBanner />
         {/* A debug overlay the owner turns on; shown in every view, zen included. */}

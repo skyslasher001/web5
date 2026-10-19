@@ -7,6 +7,7 @@ import { ApiContext } from './api-context';
 import { bridge } from './bridge';
 import { installErrorReporting } from './errorReporting';
 import { CoreSocket } from './socket';
+import { voice } from './voice';
 
 /** The command bar asked the main window to show something. */
 function applyFocus(target: FocusTarget): void {
@@ -73,6 +74,7 @@ export function CoreProvider({
         },
         onEvent: (event) => {
           useUniverse.getState().applyEvent(event);
+          if (event.type.startsWith('chat.')) voice()?.onCoreEvent(event); // spoken answers
           // The roster changed (Agents panel): the dock lists the agents that are on.
           if (/^agent\.(added|updated|removed)$/.test(event.type))
             client.agents().then(

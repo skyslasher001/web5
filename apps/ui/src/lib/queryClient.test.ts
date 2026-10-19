@@ -12,5 +12,9 @@ describe('engine query refresh', () => {
     // The roster's stats and list follow agent events (a task finished, an agent added or turned off).
     expect(staleQueriesFor('agent.completed')).toContain('roster');
     expect(staleQueriesFor('agent.added')).toContain('roster');
+    // Voice: the process, settings and model installs refresh the Voice panel; mic levels never do.
+    expect(staleQueriesFor('voice.service.changed')).toEqual(['voice']);
+    expect(staleQueriesFor('voice.model.progress')).toEqual(['voice']);
+    expect(staleQueriesFor('voice.level')).toEqual([]);
   });
 });

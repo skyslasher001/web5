@@ -6,12 +6,14 @@ import { ResearchPanel } from './ResearchPanel';
 import { SafetyPanel } from './SafetyPanel';
 import { SystemPanel } from './SystemPanel';
 import { VaultPanel } from './VaultPanel';
+import { VoicePanel } from './VoicePanel';
 
 const TABS: { id: Panel; label: string }[] = [
   { id: 'context', label: 'Context' },
   { id: 'vault', label: 'Vault' },
   { id: 'agents', label: 'Agents' },
   { id: 'research', label: 'Research' },
+  { id: 'voice', label: 'Voice' },
   { id: 'forge', label: 'Forge' },
   { id: 'safety', label: 'Safety' },
   { id: 'system', label: 'System' },
@@ -25,7 +27,7 @@ export function SidePanel() {
       aria-label="Details"
       className="glass pointer-events-auto absolute top-16 right-4 bottom-4 flex w-[22rem] flex-col"
     >
-      <div role="tablist" className="flex gap-1 border-b border-hairline-1 p-2">
+      <div role="tablist" className="flex flex-wrap gap-1 border-b border-hairline-1 p-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -48,6 +50,7 @@ export function SidePanel() {
             vault: <VaultPanel />,
             agents: <AgentsPanel />,
             research: <ResearchPanel />,
+            voice: <VoicePanel />,
             forge: <ForgePanel />,
             safety: <SafetyPanel />,
             system: <SystemPanel />,

@@ -1,6 +1,12 @@
 // The only bridge between the sandboxed renderer and the OS: a fixed, typed API (ARCHITECTURE.md §1.3).
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
-import type { DesktopState, FocusTarget, KillSwitchState, UniverseBridge } from '@universe/shared-types';
+import type {
+  ConsentState,
+  DesktopState,
+  FocusTarget,
+  KillSwitchState,
+  UniverseBridge,
+} from '@universe/shared-types';
 import { CH } from '../main/channels';
 
 function subscribe<T>(channel: string, callback: (value: T) => void): () => void {
@@ -40,6 +46,9 @@ const bridge: UniverseBridge = {
   forgeApprove: (proposalId) => ipcRenderer.invoke(CH.forgeApprove, proposalId),
   forgeRollback: (release) => ipcRenderer.invoke(CH.forgeRollback, release),
   getReleases: () => ipcRenderer.invoke(CH.getReleases),
+  getConsent: () => ipcRenderer.invoke(CH.getConsent),
+  setMicConsent: (on) => ipcRenderer.invoke(CH.setMicConsent, on),
+  onConsent: (callback) => subscribe<ConsentState>(CH.consentEvent, callback),
 };
 
 contextBridge.exposeInMainWorld('universe', bridge);

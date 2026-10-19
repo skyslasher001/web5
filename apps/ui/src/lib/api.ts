@@ -5,6 +5,11 @@ import type {
   ForgeStatus,
   ResearchResponse,
   SentRequest,
+  MemoSaved,
+  VoiceModelInfo,
+  VoiceSettingsUpdate,
+  VoiceStatus,
+  VoicesResponse,
   Watchlist,
   WatchlistHit,
   AgentCreate,
@@ -276,6 +281,26 @@ export class CoreApi {
   deleteWatchlist = (id: string) => this.send('DELETE', `/watchlists/${id}`).then(() => undefined);
   watchlistHits = (id: string) => this.call<WatchlistHit[]>('GET', `/watchlists/${id}/hits`);
   checkWatchlist = (id: string) => this.call<Watchlist>('POST', `/watchlists/${id}/check`);
+  // ---------- voice (Phase 7) ----------
+  voiceStatus = () => this.call<VoiceStatus>('GET', '/voice/status');
+  voiceStart = () => this.call<VoiceStatus>('POST', '/voice/start');
+  voiceStop = () => this.call<VoiceStatus>('POST', '/voice/stop');
+  voiceSettings = (body: VoiceSettingsUpdate) => this.call<VoiceStatus>('PUT', '/voice/settings', body);
+  voices = () => this.call<VoicesResponse>('GET', '/voices');
+  installVoiceModel = (id: string) => this.call<VoiceModelInfo>('POST', `/voice/models/${id}/install`);
+  /** A recorded memo (WAV). Stored as a voice_memo; the pipeline transcribes it. */
+  saveMemo = async (wav: Blob, title?: string): Promise<MemoSaved> => {
+    const response = await this.fetchImpl(`${this.baseUrl}/api/v1/voice/memo${queryString({ title })}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'audio/wav' },
+      body: wav,
+    }).catch(() => {
+      throw new ApiError(0, 'Core is not reachable');
+    });
+    if (!response.ok) throw new ApiError(response.status, `Saving the memo failed (HTTP ${response.status})`);
+    return (await response.json()) as MemoSaved;
+  };
+
   addAgent = (body: AgentCreate) => this.call<AgentProfile>('POST', '/agents', body);
   updateAgent = (id: string, body: { enabled?: boolean; synopsis?: string }) =>
     this.call<AgentProfile>('PATCH', `/agents/${id}`, body);

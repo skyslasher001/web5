@@ -282,6 +282,16 @@ function registerIpc(): void {
   ipcMain.handle(CH.forgeRollback, () => ({ ok: false, message: NO_RELEASES }));
   ipcMain.handle(CH.getReleases, () => ({ available: false, reason: NO_RELEASES, releases: [] }));
 
+  // ---------- consent ----------
+  // The mic belongs to protected code (Phase 7 protected-core patch); until it's applied, it can't be turned on.
+  const NO_CONSENT = {
+    available: false,
+    mic: false,
+    reason: 'The microphone needs the Phase 7 protected-core patch (docs/proposals/phase-7-consent.md).',
+  };
+  ipcMain.handle(CH.getConsent, () => NO_CONSENT);
+  ipcMain.handle(CH.setMicConsent, () => NO_CONSENT);
+
   ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
   ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
     if (typeof engaged !== 'boolean') return { available: true, engaged: killSwitch.engaged };

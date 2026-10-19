@@ -29,4 +29,8 @@ export const CH = {
   setKillSwitch: 'universe:set-kill-switch',
   killSwitchEvent: 'universe:kill-switch-event',
   focusEvent: 'universe:focus-event',
+  // consent (Phase 7; protected handlers once the patch is applied)
+  getConsent: 'universe:get-consent',
+  setMicConsent: 'universe:set-mic-consent',
+  consentEvent: 'universe:consent-event',
 } as const;

@@ -478,6 +478,61 @@ test('done when (Phase 5): Forge fixes an injected bug, you approve it, it appli
   await expect(page.getByTestId('core-status')).toHaveText(/Core online/, { timeout: 60_000 });
 });
 
+type VoiceDebug = {
+  state: string;
+  reply: string | null;
+  error: string | null;
+  micOn: boolean;
+  selectedProjectId: string | null;
+  panel: string;
+  view: string;
+};
+const voiceState = () =>
+  page.evaluate(() =>
+    (window as unknown as { __universeDebug: { voiceState(): VoiceDebug } }).__universeDebug.voiceState(),
+  );
+const heard = (text: string) =>
+  page.evaluate(
+    (t) =>
+      (
+        window as unknown as { __universeDebug: { voiceHeard(s: string): Promise<void> } }
+      ).__universeDebug.voiceHeard(t),
+    text,
+  );
+
+test('Phase 7: voice turns on, routes what you say, and the mic waits for the consent patch', async () => {
+  await page.getByRole('button', { name: 'Voice settings' }).click();
+  const panel = page.getByTestId('voice-panel');
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId('voice-model-whisper-tiny.en')).toContainText('Install');
+  // Turning voice on starts the real voice process (no models here: it neither hears nor speaks yet).
+  await page.getByTestId('voice-start').click();
+  await expect(panel).toContainText('On · no speech-to-text · no voice', { timeout: 60_000 });
+  await expect(page.getByTestId('voice-orb')).toHaveAttribute('data-state', 'idle');
+
+  // The mic belongs to protected main code; without the Phase 7 patch it stays off and says why.
+  await page.getByTestId('voice-mic').click();
+  await expect(page.getByTestId('voice-consent')).toContainText('Phase 7 protected-core patch');
+  await expect(page.getByTestId('mic-indicator')).toHaveCount(0);
+  expect((await voiceState()).micOn).toBe(false);
+
+  // What Whisper would hand over: commands run here, navigation takes the recall fast path, questions go to Core.
+  await heard('Open the agents panel.');
+  expect((await voiceState()).panel).toBe('agents');
+  await heard('Show the grid view.');
+  expect((await voiceState()).view).toBe('grid');
+  await heard('Universe view');
+  const projects = await core<{ id: string; name: string }[]>('GET', '/projects');
+  await heard('Take me to Ember Wolf.');
+  await expect
+    .poll(async () => (await voiceState()).selectedProjectId)
+    .toBe(projects.find((p) => p.name === 'Ember Wolf Acquisitions')!.id);
+  await expect(page.getByTestId('voice-bubble')).toContainText('Flying to Ember Wolf Acquisitions');
+  await heard('What can you do?');
+  await expect.poll(async () => (await voiceState()).reply ?? '', { timeout: 30_000 }).not.toBe('');
+  await page.screenshot({ path: 'test-results/voice.png' });
+});
+
 test('the kill switch stops agents and only a native dialog releases it', async () => {
   const engine = await core<EngineStatus>('GET', '/engine');
   test.skip(!engine.available, `needs the Phase 3 protected-core patch: ${engine.reason}`);

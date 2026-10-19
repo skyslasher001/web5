@@ -33,6 +33,7 @@ export function staleQueriesFor(eventType: string): string[] {
   if (eventType.startsWith('mcp.')) return ['mcp', 'engine'];
   if (eventType === 'error.raised') return ['forge', 'errors'];
   if (eventType.startsWith('forge.')) return ['forge'];
+  if (/^voice\.(service|settings|model)\./.test(eventType)) return ['voice'];
   return [];
 }
 

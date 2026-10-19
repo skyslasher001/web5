@@ -8,7 +8,9 @@ import { useApi } from '../lib/api-context';
 import { useModels } from '../lib/queries';
 import { fromStored, type ChatMessage } from '../state/reducers';
 import { useUniverse } from '../state/store';
+import { ErrorBoundary } from './ErrorBoundary';
 import { CopyButton, Kbd } from './ui';
+import { VoiceOrb } from './VoiceOrb';
 
 function Orb() {
   const open = useUniverse((s) => s.chatOpen);
@@ -294,8 +296,11 @@ export function ChatDock() {
   return (
     <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center">
       <AnimatePresence initial={!reduced}>{open && <ChatPanel />}</AnimatePresence>
-      <div className="pointer-events-auto">
+      <div className="pointer-events-auto flex items-end gap-6">
         <Orb />
+        <ErrorBoundary name="voice-orb" fallback={null}>
+          <VoiceOrb />
+        </ErrorBoundary>
       </div>
     </div>
   );
