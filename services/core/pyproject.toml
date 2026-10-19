@@ -9,6 +9,7 @@ dependencies = [
     "universe-models",
     "universe-vault",
     "universe-research",
+    "universe-voice",
     "python-multipart>=0.0.20",
     "fastapi>=0.143",
     "uvicorn>=0.54",
@@ -35,3 +36,4 @@ universe-agents = { workspace = true }
 universe-models = { workspace = true }
 universe-vault = { workspace = true }
 universe-research = { workspace = true }
+universe-voice = { workspace = true }

@@ -12,6 +12,16 @@ members = [
     "universe-research",
     "universe-supervisor",
     "universe-vault",
+    "universe-voice",
+]
+
+[[package]]
+name = "addict"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/ef/fd7649da8af11d93979831e8f1f8097e85e82d5bfeabc8c68b39175d8e75/addict-2.4.0.tar.gz", hash = "sha256:b3b2210e0e067a281f5646c8c5db92e99b7231ea8b0eb5f74dbdf9e259d4e494", size = 9186, upload-time = "2020-11-21T16:21:31.416Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/00/b08f23b7d7e1e14ce01419a467b583edbb93c6cdb8654e54a9cc579cd61f/addict-2.4.0-py3-none-any.whl", hash = "sha256:249bb56bbfd3cdc2a004ea0ff4c2b6ddc84d53bc2194761636eb314d5cfa5dfc", size = 3832, upload-time = "2020-11-21T16:21:29.588Z" },
 ]
 
 [[package]]
@@ -661,6 +671,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ae/91/762d7755d971aff8a28d75f7961656148edf27875c8026e6385aaab08ae7/mcp_types-2.2.0.tar.gz", hash = "sha256:d3ed53703ddd10d9c6399f29d322bb66f3f67ab41348ac8556ba23e07fedefad", size = 65892, upload-time = "2026-09-07T16:06:25.187Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/d7/6ffba5d8cd5dd9b8a19478875c50e04945314ba5074e84d749283f27f62d/mcp_types-2.2.0-py3-none-any.whl", hash = "sha256:ea476b73ee86709ab5abc9452385ed36cc05907e582355622e294595c9a04f13", size = 69106, upload-time = "2026-09-07T16:06:21.461Z" },
+]
+
+[[package]]
+name = "misaki"
+version = "0.9.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "addict" },
+    { name = "regex" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/c7/fb01370a76585b46595a01b52f18e65c8ba6d7a313a05e5d9fff0a8e1c69/misaki-0.9.4.tar.gz", hash = "sha256:3960fa3e6de179a90ee8e628446a4a4f6b8c730b6e3410999cf396189f4d9c40", size = 3756765, upload-time = "2025-04-05T21:57:14.186Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/ec/0ee4110ddb54278b8f21c40a140370ae8f687036c4edf578316602697c56/misaki-0.9.4-py3-none-any.whl", hash = "sha256:90e2eeb169786c014c429e5058d2ea6bcd02d651f2a24450ba6c9ffc0f8da15a", size = 3617774, upload-time = "2025-04-05T21:57:10.678Z" },
 ]
 
 [[package]]
@@ -1471,6 +1494,7 @@ dependencies = [
     { name = "universe-research" },
     { name = "universe-supervisor" },
     { name = "universe-vault" },
+    { name = "universe-voice" },
 ]
 
 [package.dev-dependencies]
@@ -1493,6 +1517,7 @@ requires-dist = [
     { name = "universe-research", editable = "services/research" },
     { name = "universe-supervisor", editable = "services/supervisor" },
     { name = "universe-vault", editable = "services/vault" },
+    { name = "universe-voice", editable = "services/voice" },
 ]
 
 [package.metadata.requires-dev]
@@ -1559,6 +1584,7 @@ dependencies = [
     { name = "universe-models" },
     { name = "universe-research" },
     { name = "universe-vault" },
+    { name = "universe-voice" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -1575,6 +1601,7 @@ requires-dist = [
     { name = "universe-models", editable = "services/models" },
     { name = "universe-research", editable = "services/research" },
     { name = "universe-vault", editable = "services/vault" },
+    { name = "universe-voice", editable = "services/voice" },
     { name = "uvicorn", specifier = ">=0.54" },
     { name = "websockets", specifier = ">=17.2" },
 ]
@@ -1667,6 +1694,29 @@ requires-dist = [
     { name = "universe-common", editable = "services/common" },
     { name = "universe-models", editable = "services/models" },
     { name = "watchdog", specifier = ">=6.0" },
+]
+
+[[package]]
+name = "universe-voice"
+version = "0.1.0"
+source = { editable = "services/voice" }
+dependencies = [
+    { name = "misaki" },
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "starlette" },
+    { name = "universe-common" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "misaki", specifier = "==0.9.4" },
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "onnxruntime", specifier = ">=1.20" },
+    { name = "starlette", specifier = ">=0.40" },
+    { name = "universe-common", editable = "services/common" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]
