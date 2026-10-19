@@ -191,6 +191,29 @@ export function useForgeProposals() {
   return useQuery({ queryKey: ['forge', 'proposals'], queryFn: api.forgeProposals, enabled: online });
 }
 
+/** Research (Phase 6): watched topics/pages and the "sent where" privacy log. */
+export function useWatchlists() {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['research', 'watchlists'],
+    queryFn: api.watchlists,
+    enabled: online,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useSentRequests(enabled: boolean) {
+  const api = useApi();
+  const online = useUniverse((s) => s.connection === 'online');
+  return useQuery({
+    queryKey: ['research', 'requests'],
+    queryFn: api.sentRequests,
+    enabled: enabled && online,
+    refetchInterval: 30_000,
+  });
+}
+
 /** Grouped errors from every service (System → Vitals). New errors refresh it. */
 export function useErrors(enabled: boolean) {
   const api = useApi();

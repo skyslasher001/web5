@@ -3,6 +3,10 @@ import type {
   ForgeIssue,
   ForgeProposal,
   ForgeStatus,
+  ResearchResponse,
+  SentRequest,
+  Watchlist,
+  WatchlistHit,
   AgentCreate,
   AgentInfo,
   AgentProfile,
@@ -259,6 +263,19 @@ export class CoreApi {
   forgeIgnore = (issueId: string) => this.call<ForgeIssue>('POST', `/forge/issues/${issueId}/ignore`);
   forgeProposals = () => this.call<ForgeProposal[]>('GET', '/forge/proposals');
   forgeReject = (id: string) => this.call<ForgeProposal>('POST', `/forge/proposals/${id}/reject`);
+
+  // ---------- research (Phase 6) ----------
+  research = (q: string, mode: 'quick' | 'deep') =>
+    this.call<ResearchResponse>('POST', '/research', { q, mode });
+  sentRequests = () => this.call<SentRequest[]>('GET', '/research/requests?limit=50');
+  watchlists = () => this.call<Watchlist[]>('GET', '/watchlists');
+  createWatchlist = (body: { kind: 'topic' | 'page'; target: string; label?: string; interval_s?: number }) =>
+    this.call<Watchlist>('POST', '/watchlists', body);
+  setWatchlistEnabled = (id: string, enabled: boolean) =>
+    this.call<Watchlist>('PATCH', `/watchlists/${id}`, { enabled });
+  deleteWatchlist = (id: string) => this.send('DELETE', `/watchlists/${id}`).then(() => undefined);
+  watchlistHits = (id: string) => this.call<WatchlistHit[]>('GET', `/watchlists/${id}/hits`);
+  checkWatchlist = (id: string) => this.call<Watchlist>('POST', `/watchlists/${id}/check`);
   addAgent = (body: AgentCreate) => this.call<AgentProfile>('POST', '/agents', body);
   updateAgent = (id: string, body: { enabled?: boolean; synopsis?: string }) =>
     this.call<AgentProfile>('PATCH', `/agents/${id}`, body);

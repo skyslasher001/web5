@@ -99,6 +99,12 @@ export interface BudgetStatus {
   by_model: UsageRow[];
 }
 
+// Phase 6: research
+export type Watchlist = Schemas['Watchlist'];
+export type WatchlistHit = Schemas['WatchlistHit'];
+export type SentRequest = Schemas['SentRequest'];
+export type ResearchResponse = Schemas['ResearchResponse'];
+
 // Phase 4: the universe view
 export type UniverseItems = Schemas['UniverseItems'];
 export type UniverseLinks = Schemas['UniverseLinks'];
