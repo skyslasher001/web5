@@ -110,6 +110,7 @@ test.beforeAll(async () => {
     args: [
       ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
       '--enable-unsafe-swiftshader',
+      '--use-fake-device-for-media-stream', // a fake mic, for when the consent patch lets one open (Phase 7)
       `--log-net-log=${netLog}`, // every request the app makes, checked by the last test
       join(root, 'apps', 'desktop'),
     ],
@@ -500,7 +501,7 @@ const heard = (text: string) =>
     text,
   );
 
-test('Phase 7: voice turns on, routes what you say, and the mic waits for the consent patch', async () => {
+test('Phase 7: voice turns on, routes what you say, and the mic opens only with your consent', async () => {
   await page.getByRole('button', { name: 'Voice settings' }).click();
   const panel = page.getByTestId('voice-panel');
   await expect(panel).toBeVisible();
@@ -510,11 +511,40 @@ test('Phase 7: voice turns on, routes what you say, and the mic waits for the co
   await expect(panel).toContainText('On · no speech-to-text · no voice', { timeout: 60_000 });
   await expect(page.getByTestId('voice-orb')).toHaveAttribute('data-state', 'idle');
 
-  // The mic belongs to protected main code; without the Phase 7 patch it stays off and says why.
-  await page.getByTestId('voice-mic').click();
-  await expect(page.getByTestId('voice-consent')).toContainText('Phase 7 protected-core patch');
-  await expect(page.getByTestId('mic-indicator')).toHaveCount(0);
-  expect((await voiceState()).micOn).toBe(false);
+  // The mic belongs to protected main code (docs/proposals/phase-7-consent.md).
+  const consent = await page.evaluate(() => window.universe!.getConsent());
+  if (!consent.available) {
+    // Without the patch it stays off and says why.
+    await page.getByTestId('voice-mic').click();
+    await expect(page.getByTestId('voice-consent')).toContainText('Phase 7 protected-core patch');
+    await expect(page.getByTestId('mic-indicator')).toHaveCount(0);
+    expect((await voiceState()).micOn).toBe(false);
+  } else {
+    // With it: off at launch; declining the native dialog keeps it off; confirming opens the (fake) mic.
+    expect(consent.mic).toBe(false);
+    const answer = async (response: number) =>
+      app.evaluate(({ dialog }, r) => {
+        dialog.showMessageBox = (async () => ({
+          response: r,
+          checkboxChecked: false,
+        })) as typeof dialog.showMessageBox;
+      }, response);
+    await answer(0);
+    await page.getByTestId('voice-mic').click();
+    await expect(page.getByTestId('voice-consent')).toContainText('You kept the microphone off');
+    expect((await voiceState()).micOn).toBe(false);
+    await answer(1);
+    await page.getByTestId('voice-mic').click();
+    await expect(page.getByTestId('mic-indicator')).toContainText('Microphone on');
+    await expect.poll(async () => (await voiceState()).micOn).toBe(true);
+    await expect(page.getByTestId('voice-orb')).toHaveAttribute('data-state', /idle|listening/);
+    const audit = await core<{ details: { on: boolean; via: string } }[]>(
+      'GET',
+      '/audit?action=consent.changed',
+    );
+    expect(audit[0]?.details).toEqual({ on: true, via: 'hud' });
+    // Left on: the kill switch test below checks that it turns the mic off.
+  }
 
   // What Whisper would hand over: commands run here, navigation takes the recall fast path, questions go to Core.
   await heard('Open the agents panel.');
@@ -536,8 +566,19 @@ test('Phase 7: voice turns on, routes what you say, and the mic waits for the co
 test('the kill switch stops agents and only a native dialog releases it', async () => {
   const engine = await core<EngineStatus>('GET', '/engine');
   test.skip(!engine.available, `needs the Phase 3 protected-core patch: ${engine.reason}`);
+  const micWasOn = (await page.evaluate(() => window.universe!.getConsent())).mic;
   await page.getByTestId('killswitch').click();
   await expect(page.getByTestId('killswitch-banner')).toBeVisible();
+  if (micWasOn) {
+    // Capture stops first, in main: consent revoked, the page holding the stream reloaded, the indicator gone.
+    expect((await page.evaluate(() => window.universe!.getConsent())).mic).toBe(false);
+    await expect(page.getByTestId('mic-indicator')).toHaveCount(0);
+    const audit = await core<{ details: { on: boolean; via: string } }[]>(
+      'GET',
+      '/audit?action=consent.changed',
+    );
+    expect(audit[0]?.details).toEqual({ on: false, via: 'killswitch' });
+  }
   await expect.poll(async () => (await core<EngineStatus>('GET', '/engine')).killswitch_engaged).toBe(true);
   // Core's own API can't release it.
   await expect(core('POST', '/killswitch', { engaged: false })).rejects.toThrow('HTTP 403');

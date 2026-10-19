@@ -144,11 +144,7 @@ export function VoicePanel() {
         {s.reason && <p className="text-[11px] text-amber">{s.reason}</p>}
         <p className="text-[11px] text-ink-3" data-testid="voice-consent">
           Microphone:{' '}
-          {consent.available
-            ? micOn
-              ? 'on (you turned it on)'
-              : 'off'
-            : (consent.reason ?? 'not available')}
+          {micOn ? 'on (you turned it on)' : `off${consent.reason ? ` · ${consent.reason}` : ''}`}
         </p>
         {latencyMs !== null && (
           <p className="text-[11px] text-ink-3" data-testid="voice-latency">

@@ -33,4 +33,5 @@ Template:
 | [0012](0012-phase-4-universe-renderer.md) | Phase 4 universe: scene data, layouts, renderer, Lite mode and viewers | Accepted |
 | [0013](0013-agents-you-add.md) | Agents you add: the roster, custom agents and turning agents off | Accepted |
 | [0014](0014-phase-5-forge-sentinel.md) | Phase 5: Forge and Sentinel v1 (what's protected, verification, apply and rollback) | Accepted |
-| [0015](0015-phase-6-research.md) | Phase 6: Research (live web, cited, injection-defended) | Proposed |
+| [0015](0015-phase-6-research.md) | Phase 6: Research (live web, cited, injection-defended) | Accepted |
+| [0016](0016-phase-7-voice.md) | Phase 7: Voice (ONNX-only local stack, Core-run voice process, consent in main) | Accepted |
