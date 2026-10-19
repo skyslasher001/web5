@@ -1340,6 +1340,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Research */
+        post: operations["start_research_api_v1_research_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Research Requests */
+        get: operations["research_requests_api_v1_research_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -1557,6 +1591,76 @@ export interface paths {
         put?: never;
         /** Scan Watched */
         post: operations["scan_watched_api_v1_watched_folders__folder_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watchlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Watchlists */
+        get: operations["list_watchlists_api_v1_watchlists_get"];
+        put?: never;
+        /** Create Watchlist */
+        post: operations["create_watchlist_api_v1_watchlists_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watchlists/{watchlist_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Watchlist */
+        delete: operations["delete_watchlist_api_v1_watchlists__watchlist_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Watchlist */
+        patch: operations["patch_watchlist_api_v1_watchlists__watchlist_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/watchlists/{watchlist_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Watchlist */
+        post: operations["check_watchlist_api_v1_watchlists__watchlist_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/watchlists/{watchlist_id}/hits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Watchlist Hits */
+        get: operations["watchlist_hits_api_v1_watchlists__watchlist_id__hits_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3053,6 +3157,30 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** ResearchRequest */
+        ResearchRequest: {
+            /**
+             * Mode
+             * @default quick
+             * @enum {string}
+             */
+            mode: "quick" | "deep";
+            /**
+             * Q
+             * @description The research question
+             */
+            q: string;
+        };
+        /** ResearchResponse */
+        ResearchResponse: {
+            /**
+             * Agent Id
+             * @default researcher
+             */
+            agent_id: string;
+            /** Task Id */
+            task_id: string;
+        };
         /** RestoreRequest */
         RestoreRequest: {
             /** Snapshot Id */
@@ -3120,6 +3248,21 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "computing" | "unavailable";
+        };
+        /** SentRequest */
+        SentRequest: {
+            /** Actor */
+            actor: string;
+            /** Host */
+            host: string;
+            /** Path */
+            path: string;
+            /** Purpose */
+            purpose: string;
+            /** Scheme */
+            scheme: string;
+            /** Ts */
+            ts: string;
         };
         /** Snapshot */
         Snapshot: {
@@ -3340,6 +3483,76 @@ export interface components {
             include_globs?: string[] | null;
             /** Recursive */
             recursive?: boolean | null;
+        };
+        /** Watchlist */
+        Watchlist: {
+            /** Created At */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Interval S */
+            interval_s: number;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /**
+             * Last Summary
+             * @default
+             */
+            last_summary: string;
+            /** Target */
+            target: string;
+            /**
+             * Unseen
+             * @default 0
+             */
+            unseen: number;
+        };
+        /** WatchlistCreate */
+        WatchlistCreate: {
+            /**
+             * Interval S
+             * @default 86400
+             */
+            interval_s: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "topic" | "page";
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Target
+             * @description A search query (topic) or a URL (page)
+             */
+            target: string;
+        };
+        /** WatchlistHit */
+        WatchlistHit: {
+            /** Detail */
+            detail: string;
+            /** Found At */
+            found_at: string;
+            /** Id */
+            id: string;
+            /** Seen */
+            seen: boolean;
+            /** Summary */
+            summary: string;
+        };
+        /** WatchlistPatch */
+        WatchlistPatch: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** WsTicket */
         WsTicket: {
@@ -5956,6 +6169,70 @@ export interface operations {
             };
         };
     };
+    start_research_api_v1_research_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    research_requests_api_v1_research_requests_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SentRequest"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_items_api_v1_search_get: {
         parameters: {
             query?: {
@@ -6371,6 +6648,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchedFolder"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_watchlists_api_v1_watchlists_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"][];
+                };
+            };
+        };
+    };
+    create_watchlist_api_v1_watchlists_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_watchlist_api_v1_watchlists__watchlist_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_watchlist_api_v1_watchlists__watchlist_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_watchlist_api_v1_watchlists__watchlist_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                watchlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Watchlist"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watchlist_hits_api_v1_watchlists__watchlist_id__hits_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                watchlist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistHit"][];
                 };
             };
             /** @description Validation Error */

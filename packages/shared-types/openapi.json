@@ -4532,6 +4532,50 @@
         "title": "ReportRequest",
         "type": "object"
       },
+      "ResearchRequest": {
+        "properties": {
+          "mode": {
+            "default": "quick",
+            "enum": [
+              "quick",
+              "deep"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "q": {
+            "description": "The research question",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Q",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "title": "ResearchRequest",
+        "type": "object"
+      },
+      "ResearchResponse": {
+        "properties": {
+          "agent_id": {
+            "default": "researcher",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "agent_id"
+        ],
+        "title": "ResearchResponse",
+        "type": "object"
+      },
       "RestoreRequest": {
         "properties": {
           "snapshot_id": {
@@ -4751,6 +4795,44 @@
           "positions"
         ],
         "title": "SemanticLayout",
+        "type": "object"
+      },
+      "SentRequest": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "scheme": {
+            "title": "Scheme",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "host",
+          "purpose",
+          "scheme",
+          "path",
+          "actor"
+        ],
+        "title": "SentRequest",
         "type": "object"
       },
       "Snapshot": {
@@ -5502,6 +5584,157 @@
           }
         },
         "title": "WatchedFolderPatch",
+        "type": "object"
+      },
+      "Watchlist": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interval_s": {
+            "title": "Interval S",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_summary": {
+            "default": "",
+            "title": "Last Summary",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "unseen": {
+            "default": 0,
+            "title": "Unseen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "target",
+          "label",
+          "interval_s",
+          "enabled",
+          "created_at",
+          "last_checked_at",
+          "last_summary",
+          "unseen"
+        ],
+        "title": "Watchlist",
+        "type": "object"
+      },
+      "WatchlistCreate": {
+        "properties": {
+          "interval_s": {
+            "default": 86400,
+            "maximum": 2592000.0,
+            "minimum": 300.0,
+            "title": "Interval S",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "topic",
+              "page"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Label",
+            "type": "string"
+          },
+          "target": {
+            "description": "A search query (topic) or a URL (page)",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target"
+        ],
+        "title": "WatchlistCreate",
+        "type": "object"
+      },
+      "WatchlistHit": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "found_at": {
+            "title": "Found At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "seen": {
+            "title": "Seen",
+            "type": "boolean"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "found_at",
+          "summary",
+          "detail",
+          "seen"
+        ],
+        "title": "WatchlistHit",
+        "type": "object"
+      },
+      "WatchlistPatch": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WatchlistPatch",
         "type": "object"
       },
       "WsTicket": {
@@ -9069,6 +9302,88 @@
         "summary": "Recall"
       }
     },
+    "/api/v1/research": {
+      "post": {
+        "operationId": "start_research_api_v1_research_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Research"
+      }
+    },
+    "/api/v1/research/requests": {
+      "get": {
+        "operationId": "research_requests_api_v1_research_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SentRequest"
+                  },
+                  "title": "Response Research Requests Api V1 Research Requests Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Requests"
+      }
+    },
     "/api/v1/search": {
       "get": {
         "operationId": "search_items_api_v1_search_get",
@@ -9775,6 +10090,235 @@
           }
         },
         "summary": "Scan Watched"
+      }
+    },
+    "/api/v1/watchlists": {
+      "get": {
+        "operationId": "list_watchlists_api_v1_watchlists_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Watchlist"
+                  },
+                  "title": "Response List Watchlists Api V1 Watchlists Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Watchlists"
+      },
+      "post": {
+        "operationId": "create_watchlist_api_v1_watchlists_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Watchlist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Watchlist"
+      }
+    },
+    "/api/v1/watchlists/{watchlist_id}": {
+      "delete": {
+        "operationId": "delete_watchlist_api_v1_watchlists__watchlist_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "watchlist_id",
+            "required": true,
+            "schema": {
+              "title": "Watchlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Watchlist"
+      },
+      "patch": {
+        "operationId": "patch_watchlist_api_v1_watchlists__watchlist_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "watchlist_id",
+            "required": true,
+            "schema": {
+              "title": "Watchlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Watchlist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Watchlist"
+      }
+    },
+    "/api/v1/watchlists/{watchlist_id}/check": {
+      "post": {
+        "operationId": "check_watchlist_api_v1_watchlists__watchlist_id__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "watchlist_id",
+            "required": true,
+            "schema": {
+              "title": "Watchlist Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Watchlist"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check Watchlist"
+      }
+    },
+    "/api/v1/watchlists/{watchlist_id}/hits": {
+      "get": {
+        "operationId": "watchlist_hits_api_v1_watchlists__watchlist_id__hits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "watchlist_id",
+            "required": true,
+            "schema": {
+              "title": "Watchlist Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WatchlistHit"
+                  },
+                  "title": "Response Watchlist Hits Api V1 Watchlists  Watchlist Id  Hits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Watchlist Hits"
       }
     }
   }

@@ -61,6 +61,8 @@ CATALOG: dict[str, EventType] = {
     "idea.promoted": _p("An idea became a project"),
     # Search / navigation
     "recall.performed": _p("A recall query ran"),
+    # Research (Phase 6)
+    "research.watchlist.changed": _p("A watched topic or page changed"),
     "view.changed": _live("Layout or zoom changed"),
     "layout.updated": _p("A cached universe layout was recomputed"),
     "link.created": _p("Two items were linked"),

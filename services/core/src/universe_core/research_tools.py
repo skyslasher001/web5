@@ -53,12 +53,15 @@ def _search_client(ctx: "CoreContext", actor: str) -> httpx.AsyncClient:
     return ctx.gate.async_client(purpose="research:search", actor=actor)
 
 
-async def _run_search(ctx: "CoreContext", actor: str, query: str, limit: int) -> list[SearchResult]:
+async def run_search(
+    ctx: "CoreContext", actor: str, query: str, limit: int, *, use_cache: bool = True
+) -> list[SearchResult]:
     cache = ResearchCache(ctx.dbs.universe, ttl_s=ctx.settings.research_cache_ttl_s)
     name = _provider_name(ctx)
-    cached = cache.get_search(name, query)
-    if cached is not None:
-        return cached[:limit]
+    if use_cache:
+        cached = cache.get_search(name, query)
+        if cached is not None:
+            return cached[:limit]
     async with _search_client(ctx, actor) as client:
         provider = (
             SearxngProvider(client)
@@ -73,7 +76,7 @@ async def _run_search(ctx: "CoreContext", actor: str, query: str, limit: int) ->
 def research_tools(ctx: "CoreContext") -> list[Tool]:
     async def web_search(args: BaseModel, tc: ToolContext) -> ToolResult:
         assert isinstance(args, WebSearchArgs)
-        results = await _run_search(ctx, tc.actor, args.query, args.limit)
+        results = await run_search(ctx, tc.actor, args.query, args.limit)
         if not results:
             return ToolResult(f"No web results for {args.query!r}.", data={"results": []})
         lines = [f"[{i}] {r.title}\n    {r.url}\n    {r.snippet}" for i, r in enumerate(results, 1)]

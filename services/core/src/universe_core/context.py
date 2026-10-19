@@ -38,6 +38,7 @@ from universe_core.security import TicketStore
 from universe_core.seed import ensure_seed_galaxies
 from universe_core.settings import CoreSettings
 from universe_core.vault_runtime import Governor, VaultDb, WorkerManager, worker_env
+from universe_core.watchlists import WatchlistRunner
 from universe_models.hardware import HardwareInfo, detect
 from universe_models.ollama import OllamaClient
 from universe_models.recommend import Recommendation, recommend
@@ -89,6 +90,7 @@ class CoreContext:
     backups: BackupService | None = None
     governor: Governor | None = None
     watcher: Watcher | None = None
+    watchlists: WatchlistRunner | None = None
     started: float = field(default_factory=time.monotonic)
     pid: int = field(default_factory=os.getpid)
     provider: OpenAICompatibleProvider | None = None
@@ -275,6 +277,9 @@ class CoreContext:
         self.watcher = Watcher(self.vault, self._enqueue_from_watcher)
         self.watcher.start()
         self.refresh_watched(scan=True)
+        # Research (Phase 6): re-run watched topics/pages on a schedule; gated by offline/kill like everything else.
+        self.watchlists = WatchlistRunner(self)
+        self.watchlists.start()
 
     def _enqueue_from_watcher(self, kind: str, payload: dict[str, object]) -> None:
         """Called on the watcher's thread: uses that thread's own connection."""
@@ -352,6 +357,8 @@ class CoreContext:
         return deleted
 
     async def close(self) -> None:
+        if self.watchlists is not None:
+            await self.watchlists.stop()
         if self.watcher is not None:
             await asyncio.to_thread(self.watcher.stop)
         if self.governor is not None:
