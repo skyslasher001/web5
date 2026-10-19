@@ -8,12 +8,18 @@ dependencies = [
     "universe-agents",
     "universe-models",
     "universe-vault",
+    "universe-research",
     "python-multipart>=0.0.20",
     "fastapi>=0.143",
     "uvicorn>=0.54",
     "websockets>=17.2",
     "pydantic>=2.14",
     "psutil>=7.2",
+    # Phase 6 (Research): clean main-content extraction of fetched web pages. Apache-2.0 since v1.8.0
+    # (GPLv3 before), so pin >=1.8 (ADR-0008 license policy, ADR-0015). Fetch goes through the egress gate;
+    # trafilatura only parses HTML we already downloaded. Playwright (JS-heavy pages) stays an optional,
+    # lazily-imported helper, off by default — not a hard dependency here.
+    "trafilatura>=1.8",
 ]
 
 [build-system]
@@ -28,3 +34,4 @@ universe-common = { workspace = true }
 universe-agents = { workspace = true }
 universe-models = { workspace = true }
 universe-vault = { workspace = true }
+universe-research = { workspace = true }
