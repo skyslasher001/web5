@@ -73,7 +73,7 @@ Changes from the SPEC §4 sketch, and why:
 | Supervisor | Python 3.12 stdlib only | Electron main | restarted by main | Imports nothing from the app venv, so a broken dependency upgrade can't break it. Holds child processes in a Windows Job Object so nothing is orphaned. |
 | Core | Python (FastAPI/uvicorn) | supervisor | backoff 0.5 s → 30 s | Single process. Agents run here as asyncio tasks. All request handlers are `async`, so app state is only touched on the event loop. Exits by itself if its parent process disappears, so it can never be left holding its port. |
 | Workers ×N | Python | supervisor | backoff | N = governor-controlled (default 2). Background priority (`BELOW_NORMAL_PRIORITY_CLASS`). Started lazily when jobs exist. |
-| Voice | Python | supervisor | backoff | Started only when the mic is turned on. STT + VAD + wake word + TTS. |
+| Voice | Python | supervisor | backoff | Started only when the mic is turned on. STT + VAD + wake word + TTS. *Phase 7 as built (ADR-0016): run by **Core** (like the pipeline workers), started when you turn voice on, stopped on off or the kill switch.* |
 | Models | Python (ONNX Runtime) | supervisor | backoff | Lazy-loads each model on first use. Evicted under VRAM pressure. |
 | Ollama | Go (external) | supervisor (or reuses a running instance) | backoff | `OLLAMA_HOST=127.0.0.1`. The model directory is user-chosen. |
 | Sidecars | containers | supervisor (on demand) | backoff | SearXNG, code sandbox. Optional. |
@@ -140,9 +140,9 @@ Versions are the current releases on npm / PyPI as of **2026-10-12**; licenses c
 | LLM / VLM runtime | **Ollama** (primary) · llama.cpp `llama-server` (alternative plugin) | Native Windows, GPU auto-detect, model pulls, `keep_alive` residency, OpenAI-compatible. llama.cpp for finer control (e.g. MoE expert offload). ([ADR-0005](adr/0005-model-runtimes.md)) | MIT / MIT |
 | ONNX models | **ONNX Runtime 1.31** (CUDA EP on NVIDIA; DirectML EP on AMD/Intel; CPU fallback) | One runtime for reranker, SigLIP and OCR models, with no PyTorch in the hot path. | MIT |
 | Embeddings / reranker / VLM / LLM models | Candidate shortlist per hardware tier in §2.3. Final picks come from local benchmarks in Phase 1–2. | SPEC §15: don't hardcode from memory. | Apache-2.0 / MIT only (flags in §2.2) |
-| STT | faster-whisper 1.2 (CTranslate2 4.8) + Silero VAD 6 | Streaming-capable, int8/fp16 on GPU, good CPU fallback. Parakeet / Granite Speech benchmarked as candidates in Phase 7. | MIT |
-| Wake word | openWakeWord runtime (ONNX), **custom-trained "Hey Universe"** | Apache-2.0 runtime. Pretrained models are non-commercial so they aren't shipped. ⚠ Training-data licensing is checked before training (§2.2). | Apache-2.0 |
-| TTS | **Kokoro-82M** via `kokoro-onnx` | Best quality per CPU-millisecond among permissive models. Multiple voices give each agent its own. ⚠ espeak-ng fallback (§2.2). | Apache-2.0 weights / MIT runtime |
+| STT | faster-whisper 1.2 (CTranslate2 4.8) + Silero VAD 6 | Streaming-capable, int8/fp16 on GPU, good CPU fallback. Parakeet / Granite Speech benchmarked as candidates in Phase 7. *As built (ADR-0016): **Whisper ONNX** (sherpa-onnx export) on ONNX Runtime + Silero VAD ONNX — faster-whisper's PyAV bundles LGPL FFmpeg in-process.* | MIT |
+| Wake word | openWakeWord runtime (ONNX), **custom-trained "Hey Universe"** *(as built: a transcript-based wake phrase, ADR-0016)* | Apache-2.0 runtime. Pretrained models are non-commercial so they aren't shipped. ⚠ Training-data licensing is checked before training (§2.2). | Apache-2.0 |
+| TTS | **Kokoro-82M** via `kokoro-onnx` *(as built: Kokoro ONNX directly, with our own G2P over misaki's lexicons — kokoro-onnx needs GPL espeak-ng; ADR-0016)* | Best quality per CPU-millisecond among permissive models. Multiple voices give each agent its own. ⚠ espeak-ng fallback (§2.2). | Apache-2.0 weights / MIT runtime |
 | OCR | **RapidOCR 3.10** (PP-OCRv5 models on ONNX Runtime) · Tesseract fallback **Δ** | Same PaddleOCR models without the PaddlePaddle framework. Much lighter install on Windows. | Apache-2.0 |
 | Doc extraction | pypdf 6 (fast path), pdfplumber (tables), docling 2 (deep layout, opt-in background), python-docx, openpyxl | Permissive. PyMuPDF (AGPL) avoided. | BSD-3 / MIT / MIT / MIT / MIT |
 | Audio metadata | **tinytag** (instead of mutagen) **Δ** | mutagen is GPL-2.0+. tinytag (MIT) reads ID3/MP4/FLAC/OGG/WAV tags. | MIT |
@@ -416,8 +416,8 @@ Base URL `http://127.0.0.1:47821/api/v1` (port configurable). JSON everywhere. C
 | Models | `GET /models` · `POST /models/pull {provider,name}` (streams progress events) · `DELETE /models/{id}` · `GET/PUT /models/assignments` · `POST /models/{id}/benchmark` · `GET /models/recommendation` |
 | Budget | `GET /budget` (month-to-date by agent/model) · `PUT /budget/caps` (protected: UI session only) |
 | Settings & permissions | `GET/PATCH /settings` (protected keys rejected unless the UI session confirms) · `GET/PUT /permissions/rules` (UI session only) |
-| Consent | `GET /consent` (read-only for Core; the source of truth is Electron main, which pushes state changes to Core) |
-| Voice | `WS /ws/voice` (binary PCM 16 kHz frames up; transcripts, states and TTS audio chunks down) · `GET /voices` |
+| Consent | `GET /consent` (read-only for Core; the source of truth is Electron main, which pushes state changes to Core) *(Phase 7: `GET`/`POST /consent` in protected core, in the consent proposal)* |
+| Voice | `WS /ws/voice` (binary PCM 16 kHz frames up; transcripts, states and TTS audio chunks down) · `GET /voices` *(as built: Core relays `/ws/voice` to the voice process; plus `GET /voice/status`, `POST /voice/start`, `POST /voice/stop`, `PUT /voice/settings`, `POST /voice/models/{id}/install`, `POST /voice/memo`)* |
 | Vision | `POST /vision/frames` (main posts consented frames) · `POST /vision/ask {frame_ids, q}` · `POST /vision/save {frame_id}` |
 | Research (P6) | `POST /research {q, mode: quick\|deep}` · CRUD `/watchlists` |
 | Timeline & audit | `GET /events?since_seq=&type=` (replay; `from`/`to`/`subject` filters in Phase 9) · `GET /events?tail=N` (newest N) · `GET /timeline?from=&to=` (aggregated activity) · `GET /audit?actor=&action=&from=&to=&q=` · `GET /audit/verify` |

@@ -195,8 +195,9 @@ export class VoiceClient {
         this.stopSpeaking();
         break;
       case 'final':
-        // When you stopped talking: now, minus the time Whisper took.
-        this.firstAudioWanted = performance.now() - Number(event.stt_s ?? 0) * 1000;
+        // When you stopped talking: now, minus Whisper's time and the silence it took to notice you'd finished.
+        this.firstAudioWanted =
+          performance.now() - (Number(event.stt_s ?? 0) + Number(event.waited_s ?? 0)) * 1000;
         store.set({ heard: String(event.text ?? '') });
         break;
       case 'ready':

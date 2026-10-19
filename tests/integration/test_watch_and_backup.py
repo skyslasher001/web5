@@ -257,8 +257,14 @@ def test_backup_restore_and_verify_with_restic(rig: Rig, tmp_path: Path, memory_
     assert restored_pdf.read_bytes() == original.read_bytes()
     assert next(target.rglob("backup-staging/universe.db"), None) is not None  # consistent DB copy
     assert next(target.rglob(".universe/universe.db"), None) is None  # never the live file
-    events = [e["type"] for e in c.get("/api/v1/events", params={"type": "backup.*"}, headers=AUTH).json()["events"]]
-    assert events == ["backup.completed", "backup.restore_tested", "backup.restored"]
+
+    # Files appear while restic is still writing; the restore is done when it says so (no race on the events).
+    def backup_events() -> list[str]:
+        page = c.get("/api/v1/events", params={"type": "backup.*"}, headers=AUTH).json()
+        return [e["type"] for e in page["events"]]
+
+    wait_for(lambda: "backup.restored" in backup_events(), timeout=60)
+    assert backup_events() == ["backup.completed", "backup.restore_tested", "backup.restored"]
 
     # Restoring into the vault is refused; so is a wrong password for an existing repository.
     c.post(

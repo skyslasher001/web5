@@ -40,6 +40,7 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 
 | 18 | 2026-10-18 | "phase six prep phase 5 error  correction and implementation of any ideas that could beni fit the universe being smooth and well running and highly intelligent" | Three things. **Phase 5 error correction:** a readiness audit found 13 issues in the delivered-but-unapproved Phase 5, all fixed with regression tests (non-protected on the branch, protected ones in the regenerated patch), plus a handoff-exporter regression (`5bf2135`, `73b1bbb`, `cdbfeeb`, `41be3be`). **Phase 6 prep:** ADR-0015, [PHASE-6-PLAN.md](../PHASE-6-PLAN.md) and a ranked ideas backlog ([IDEAS-smooth-and-intelligent.md](../IDEAS-smooth-and-intelligent.md)) (`a87c94f`). **Ideas:** the safe-now pick — a toggleable performance overlay (IDEAS S5) — was built with tests (`3a59ace`); the brain-like ideas stay slotted for Phase 9. |
 | 19 | 2026-10-19 | "initiate phase 6" | Taken as the owner greenlighting Phase 6, overriding one-phase-at-a-time (Phase 5 still waits for its own review + patch). **Phase 6 (Research) built and delivered** ([PHASE-6.md](../PHASE-6.md)): the `services/research` package, the `researcher` agent with `web.search`/`web.fetch`/`vault.save`, `POST /research` + watchlists + the "sent where" log, a Research UI tab, and tests (done-when: a cited deep report lands in the vault, offline/kill block it, an injection corpus can't make it act). Two build decisions, both to honour hard rules: the default search is a **gated httpx** request (not the `ddgs` library, which bypasses the egress gate), and only **saving** is approval-gated via the taint model. The **SearXNG sidecar** is a separate proposal ([phase-6-searxng](../proposals/phase-6-searxng.md)), gated on the owner's container-runtime decision; Research works fully without it. |
+| 20 | 2026-10-19 | "phase 7 approved to finish" | Taken as the go-ahead to build Phase 7 through to delivery (Phase 6 itself is not yet approved). **Phase 7 (Voice) built and delivered** ([PHASE-7.md](../PHASE-7.md), [ADR-0016](../adr/0016-phase-7-voice.md)): the `services/voice` package (Whisper ONNX STT, Kokoro TTS with our own G2P, Silero VAD, a transcript wake phrase, push-to-talk / wake / continuous, barge-in), Core's voice runtime and API with the `/ws/voice` relay, gated hash-checked model installs, the vault's real `transcribe` stage (timestamped chunks), the voice orb and Voice panel, voice navigation via the recall fast path, spoken streamed answers in per-agent voices, approvals by voice (never high risk), dictation and memos (`888dd12`, `7cf4738`, `9d69658`, `713e4c4`, `668fe71`). License-driven choice: an ONNX-only stack instead of faster-whisper (PyAV bundles LGPL FFmpeg in-process) and kokoro-onnx (GPL espeak-ng/phonemizer); openWakeWord's models are non-commercial. **Microphone consent** is protected Electron main code, so it's a proposal ([phase-7-consent](../proposals/phase-7-consent.md)); until it's applied voice speaks but can't listen. |
 
 ## Standing decisions (still in force)
 
@@ -52,7 +53,7 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 | All work stays on the branch `claude/phase-0-delivery-zuqlfx`; no PR into `main` for now | row 18 | every handoff document names the branch |
 | DevMind: build fresh; port its pieces once its repo is shared | row 2 | still not shared |
 | Container runtime: Podman + WSL2 | row 2 | needed from Phase 6 (SearXNG) and for real Forge isolation |
-| Voice: English only | row 2 | Phase 7 |
+| Voice: English only | row 2 | Phase 7 (Whisper `.en` models, English voices) |
 | No cloud LLM for now (slot and caps exist, off) | row 2 | Phase 3 budget engine |
 | Neural pathways (links strengthen with use) are a requirement for Phase 9; firings recorded since Phase 4 | row 15 | SPEC §7, §10, §25 |
 | Signal pulses and pathway-flying probes | row 15 | shipped in Phase 4 |
@@ -63,6 +64,9 @@ private GitHub repository `skyslasher001/web5`. Commit hashes refer to that bran
 
 - **Phase 5 review**, and applying the Phase 5 protected-core patch
   ([proposal](../proposals/phase-5-protected-core.md)).
+- **Phase 6 and Phase 7 review**, and applying the Phase 7 microphone-consent patch
+  ([proposal](../proposals/phase-7-consent.md)); then a voice session on their own hardware (latency, echo
+  cancellation).
 - **`pnpm bench:universe` on their PC** (the Phase 4 FPS budget needs a real GPU).
 - **The Windows hardware report** (`scripts/hardware-report.ps1`, asked in Phase 0). The model loadouts stay
   `verified: false` until real hardware and model cards are checked.

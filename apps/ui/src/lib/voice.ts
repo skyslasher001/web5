@@ -326,6 +326,7 @@ export class Voice {
   onCoreEvent(event: CoreEvent): void {
     const p = event.payload as Record<string, unknown>;
     if (event.type === 'approval.requested') {
+      if (!this.client.connected) return; // only when you're using voice
       const who = String(p.agent_id ?? 'An agent');
       const name = who.charAt(0).toUpperCase() + who.slice(1);
       const how = p.risk === 'high' ? 'It is high risk: answer it on screen.' : 'Say approve or deny.';

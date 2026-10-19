@@ -102,7 +102,9 @@ class VoiceSession:
             if event.ended is not None:
                 self._last_speech = self.clock()
                 armed = self.clock() < self._armed_until
-                self._transcribe(event.ended, wake_needed=self.mode == "wake" and not armed)
+                # The endpointer knew you'd stopped only after `hangover_s` of silence: that wait counts too.
+                waited = self.endpointer.hangover_s
+                self._transcribe(event.ended, wake_needed=self.mode == "wake" and not armed, waited_s=waited)
         if (
             self.mode == "continuous"
             and not self.endpointer.in_speech
@@ -118,11 +120,15 @@ class VoiceSession:
             self.playing = False
             self.emit({"type": "barge_in"})
 
-    def _transcribe(self, audio: Audio, *, wake_needed: bool) -> None:
+    def _transcribe(self, audio: Audio, *, wake_needed: bool, waited_s: float = 0.0) -> None:
         self.emit({"type": "state", "state": "thinking"})
         result = self.stt.transcribe(audio)
         text = result.text.strip()
-        timing = {"stt_s": round(result.seconds, 3), "audio_s": round(audio.size / STT_RATE, 2)}
+        timing = {
+            "stt_s": round(result.seconds, 3),
+            "audio_s": round(audio.size / STT_RATE, 2),
+            "waited_s": round(waited_s, 2),  # silence before the end of speech was known (0 for push-to-talk)
+        }
         if not text:
             self.emit({"type": "state", "state": "idle"})
             return

@@ -121,12 +121,15 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
 | 4 Universe interface | Approved 2026-10-14 | 50k items, FPS budget, search flies the camera to results. **Search passed. FPS not yet proven:** there's no GPU here, so the owner must run `pnpm bench:universe` | [PHASE-4](../PHASE-4.md) |
 | 5 Forge + Sentinel v1 | **Delivered 2026-10-14, waiting for review** and for the protected patch | Inject a bug, Forge finds it and proposes a tested fix, approve, it applies, one-click rollback: **passes with the patch applied** (tested in a scratch worktree) | [PHASE-5](../PHASE-5.md), [proposal](../proposals/phase-5-protected-core.md) |
 | 6 Research | **Delivered 2026-10-19** | A deep-research report with cited sources lands in the vault, offline/kill block it, an injection corpus can't make it act: **passed** (`tests/integration/test_research.py`). Default search is a gated httpx request; the SearXNG sidecar is an opt-in proposal | [PHASE-6](../PHASE-6.md), [ADR-0015](../adr/0015-phase-6-research.md) |
-| 7 Voice | Next | Voice transmission chain (SPEC §25, §7) | SPEC §25 |
+| 7 Voice | **Delivered 2026-10-19**; the mic waits for the consent patch | Run the app for 10 minutes by voice alone: every command, navigation, question, approval, memo and dictation is reachable by voice and covered by tests (fakes in CI, real Whisper/Kokoro/Silero round trips with `UNIVERSE_TEST_VOICE_MODELS`); the 10-minute session itself needs the owner's mic | [PHASE-7](../PHASE-7.md), [ADR-0016](../adr/0016-phase-7-voice.md), [proposal](../proposals/phase-7-consent.md) |
+| 8 Vision | Next | "Look at this error" returns a correct explanation and a handoff to Forge or Builder | SPEC §25 |
 
-**Test suites at the end of Phase 5** (all green; Electron tests under `xvfb-run`):
-- **pytest:** 240 without the patch; 257 with it.
-- **Vitest:** 121; 129 with the patch.
-- **Playwright Electron:** 23 without the patch; 15 of 15 in the patched run of the app and safe-mode suites.
+**Test suites at the end of Phase 7** (all green; Electron tests under `xvfb-run`):
+- **pytest:** 312 passed, 8 skipped (7 real-voice-model tests that need `UNIVERSE_TEST_VOICE_MODELS`, which pass
+  7 of 7 with the models; 1 Windows-only).
+- **Vitest:** 161.
+- **Playwright Electron:** app + safe-mode suites 15 passed, 1 skipped (Phase 5's patch-only half); universe suite 9 of 9. With the
+  Phase 7 consent patch applied: the same 15, and the desktop Vitest suite 43 of 43.
 
 ## 4. What exists today
 
@@ -190,9 +193,22 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
   crashes or safe mode. One-click rollback adds revert commits.
 - **System Vitals:** services, loaded models, the job queue, errors, Forge and backups at a glance.
 
+**Phase 6 — Research:**
+- **Researcher agent** with `web.search` / `web.fetch` / `vault.save`; quick answers and deep cited reports saved
+  to the vault. Every request goes through the egress gate; reading a page taints the task, so saving asks you.
+- **Watchlists** (topics and pages re-checked on a schedule) and **"sent where"** (what left the machine).
+
+**Phase 7 — Voice** (all local; ADR-0016):
+- **Listening:** Whisper ONNX (tiny.en default), Silero VAD, push-to-talk (hold Space or the orb), a wake phrase
+  ("Hey Universe", changeable) or continuous mode; barge-in stops speech the moment you talk over it.
+- **Speaking:** Kokoro-82M, a voice per agent, answers spoken sentence by sentence as the model writes them.
+- **What you can say:** navigation through the recall fast path (no LLM), panels and views, "read it", approvals
+  ("approve" / "deny"; high risk and standing rules still need a click), dictation into any text field, memos.
+- **Vault:** voice memos saved as items; every audio and video item gets a timestamped transcript.
+- **Consent:** the mic is protected Electron-main code — off every launch, a native dialog to turn on, the kill
+  switch closes it first. It's a patch waiting for the owner; until then voice speaks but doesn't listen.
+
 **Not built yet** (by design, later phases):
-- web research (6);
-- voice (7);
 - screen vision (8);
 - the brain layer: consolidation, auto-linking, pathway strengthening, morning brief (9);
 - creative studios (10);
@@ -330,21 +346,31 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
 **Waiting on the owner**
 1. Review Phase 5, and apply [`docs/proposals/phase-5-protected-core.patch`](../proposals/phase-5-protected-core.md):
    `git apply …`, run the tests, commit.
-2. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
+2. Review Phases 6 and 7, and apply [`docs/proposals/phase-7-consent.patch`](../proposals/phase-7-consent.md)
+   so the microphone can open; then install the voice models (Voice tab) and run the Phase 7 demo script on
+   their own hardware (latency, echo cancellation).
+3. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
    hardware, 30 FPS at 10k in Lite on minimum hardware.
-3. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
+4. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-4. Fix GitHub Actions. CI ends in `startup_failure` before any job runs: an Actions setting or minutes and
+5. Fix GitHub Actions. CI ends in `startup_failure` before any job runs: an Actions setting or minutes and
    billing on this private repo. **Nothing has run on Windows yet.**
-5. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
+6. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
-6. Push the `pre-universe` tag (the build environment couldn't push tags):
+7. Push the `pre-universe` tag (the build environment couldn't push tags):
    `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`.
-7. Share the DevMind repository if its pieces should be reused.
-8. On their PC, try real models: `nomic-embed-text` for meaning search, and a tool-calling model such as
+8. Share the DevMind repository if its pieces should be reused.
+9. On their PC, try real models: `nomic-embed-text` for meaning search, and a tool-calling model such as
    `qwen3:8b` for agents. Tune search relevance with `scripts/seed_vault.py bench`.
 
 **Known limitations** (the newest first; each phase doc has the full list)
+- **Voice (Phase 7):**
+  - The mic needs the consent patch. Echo cancellation (Chromium's) and latency are unverified on the owner's
+    hardware.
+  - Whisper tiny.en mishears rare names; base.en is better and slower; vault names aren't yet given as hints.
+  - The wake phrase is transcript-based (a Whisper run per utterance); our G2P is simpler than misaki's full
+    pipeline. English only.
+  - Transcribing MP3/M4A/video in the vault needs `ffmpeg` on PATH. No partial transcripts while you talk.
 - **Forge (Phase 5):**
   - Verification isn't container-isolated (flagged, security). It doesn't yet run evals, perf benchmarks or
     the Electron suite.
@@ -379,8 +405,6 @@ SPEC §25, the remaining phases:
 
 | Phase | Scope | Done when |
 | --- | --- | --- |
-| 6 Research | SearXNG, fetch and extract, citations, cache, quick and deep modes, watchlists, save to vault, injection defenses | A deep-research report with cited sources lands in the vault |
-| 7 Voice | Speech to text, text to speech, wake word, push-to-talk, continuous mode, barge-in, per-agent voices, full voice navigation (receive chain: [VISION §4](../VISION-neural-universe.md#4-voice-the-receive-chain-transmissions)) | The owner runs the app for 10 minutes by voice alone |
 | 8 Vision | Consented capture, VLM + OCR, "look at this", watch mode, exclusions, camera toggle | "Look at this error" returns a correct explanation and a handoff to Forge or Builder |
 | 9 Brain layer | Memory UI, nightly consolidation, auto-linking, **neural pathways that strengthen with use**, resurfacing, morning brief, time travel, idea incubator, project dashboards, optional screen recall | The morning brief is generated from real data and the time slider replays history |
 | 10 Creative studios | Composer audio tools, lyrics editor, hum-to-MIDI, Curator photo tools, map view, dedupe | A hummed voice memo becomes a tagged song idea with MIDI attached |
@@ -459,6 +483,9 @@ Measured on a 4-core Linux build machine with no GPU (software rendering).
 | Hybrid search at 50k | 0.36 s | < 400 ms |
 | Camera flight to an item | planned 1200 ms, done in 1206–1328 ms | ≤ 1.2 s |
 | 3D frame rate at 50k | 4–30 FPS in **software**; the GPU number must come from `pnpm bench:universe` | 60 FPS |
+| Voice: Whisper tiny.en for a 2.5 s command (CPU) | 435 ms | — |
+| Voice: Kokoro's first spoken sentence (CPU) | 646 ms | — |
+| Voice: last word → first word back, navigation | ~1.2 s push-to-talk; ~1.8 s hands-free (0.7 s silence detection) | < 1.5 s |
 
 ## 14. Glossary
 
@@ -491,7 +518,7 @@ Measured on a 4-core Linux build machine with no GPU (software rendering).
 | [`docs/handoff/DECISIONS.md`](DECISIONS.md) | Every owner message and answer, verbatim |
 | [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) | The design, with "as built" notes |
 | [`docs/VISION-neural-universe.md`](../VISION-neural-universe.md) | The neural universe and the voice receive chain |
-| `docs/PHASE-0.md` … `docs/PHASE-5.md` | What each phase delivered, tests, limitations, what's next |
-| [`docs/adr/`](../adr/) | 14 architecture decision records |
-| [`docs/proposals/`](../proposals/) | Protected-core patches: 1.5 and 3 applied, 5 waiting |
+| `docs/PHASE-0.md` … `docs/PHASE-7.md` | What each phase delivered, tests, limitations, what's next |
+| [`docs/adr/`](../adr/) | 16 architecture decision records |
+| [`docs/proposals/`](../proposals/) | Protected-core patches: 1.5 and 3 applied; 5 and 7 (microphone consent) waiting; the 6 SearXNG sidecar proposed |
 | [`llms.txt`](../../llms.txt) | A short index for AI tools |

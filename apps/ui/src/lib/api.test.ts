@@ -36,9 +36,12 @@ describe('CoreApi agent engine', () => {
     await api.decideApproval('a1', true, true);
     await api.engageKillSwitch();
     await api.tasks({ agent: 'core', limit: 5 });
+    await api.decideApproval('a2', false, false, 'voice');
     expect(calls[0]![0]).toBe('http://127.0.0.1:1/api/v1/approvals/a1/decision');
-    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ approve: true, remember: true });
+    // Clicks say so; Core uses `via` to refuse high-risk approvals by voice (Phase 7).
+    expect(JSON.parse(String(calls[0]![1].body))).toEqual({ approve: true, remember: true, via: 'ui' });
     expect(JSON.parse(String(calls[1]![1].body))).toEqual({ engaged: true });
     expect(calls[2]![0]).toBe('http://127.0.0.1:1/api/v1/tasks?agent=core&limit=5');
+    expect(JSON.parse(String(calls[3]![1].body))).toEqual({ approve: false, remember: false, via: 'voice' });
   });
 });

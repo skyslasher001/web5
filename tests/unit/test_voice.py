@@ -127,6 +127,7 @@ def test_push_to_talk_transcribes_only_while_held() -> None:
     s.feed(tone(1.0))
     s.push(False)
     assert finals(events) == ["take me to Ember Wolf"]
+    assert next(e for e in events if e["type"] == "final")["waited_s"] == 0  # releasing the key ends it at once
     assert s.stt.heard == [pytest.approx(1.0, abs=0.01)]  # type: ignore[attr-defined]
     s.push(True)
     s.feed(tone(0.1))  # a tap, not speech
@@ -140,6 +141,8 @@ def test_wake_mode_needs_the_phrase() -> None:
     assert finals(events) == [] and any(e["type"] == "ignored" for e in events)
     s.feed(utterances(("speech", 1.0), ("pause", 1.0)))
     assert finals(events) == ["show photos from the lake."]
+    # Hands-free, the end of speech is known only after the hang-over silence; the latency figure counts it.
+    assert next(e for e in events if e["type"] == "final")["waited_s"] == s.endpointer.hangover_s
 
 
 def test_a_bare_wake_phrase_arms_the_next_utterance() -> None:
