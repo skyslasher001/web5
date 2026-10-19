@@ -291,6 +291,30 @@ def _history(messages: list[dict]) -> list[tuple[str, dict, str]]:
     return calls
 
 
+_HTTP_URL = re.compile(r"https?://[^\s\]]+")
+
+
+def _researcher_turn(
+    user: str, done: list[tuple[str, dict, str]], tools: set[str]
+) -> tuple[str, list[tuple[str, dict]]]:
+    """The researcher's loop the way its prompt asks: search, read the results, answer with citations, and in
+    deep mode save a cited report (which the policy gates on the owner's approval because reading taints)."""
+    results = {name: result for name, _args, result in done}
+    names = [name for name, _a, _r in done]
+    if "web__search" not in names:
+        query = m.group(1).strip() if (m := re.search(r"Question:\s*(.+)", user)) else "research"
+        return "", [("web__search", {"query": query, "limit": 5})]
+    urls = list(dict.fromkeys(_HTTP_URL.findall(results.get("web__search", ""))))[:3]
+    if "web__fetch" not in names:
+        if not urls:
+            return "I couldn't find any sources to read.", []
+        return "", [("web__fetch", {"urls": urls})]
+    if "Deep web research" in user and "vault__save" in tools and "vault__save" not in names:
+        report = "## Summary\n\nThe sources agree on the main points [1].\n\n## Findings\n\n- A key point [1].\n"
+        return "", [("vault__save", {"title": "Research report", "text": report, "sources": urls})]
+    return "Here is the answer, grounded in the sources [1].\n\nSources:\n" + "\n".join(urls), []
+
+
 _ISSUE_ID = re.compile(r"Fix issue ([0-9a-f-]{36})")
 _WRONG = re.compile(r"(\w+)\((-?\d+), (-?\d+)\) returns (-?\d+) instead of (-?\d+)")
 _NUMBERED = re.compile(r"^\s*\d+ (.*)$")
@@ -356,6 +380,8 @@ def scripted_turn(body: dict) -> tuple[str, list[tuple[str, dict]]]:
         return "PASS", []
     if system.startswith("You are Forge"):
         return _forge_turn(user, done)
+    if system.startswith("You are Researcher"):
+        return _researcher_turn(user, done, tools)
     if "[[loop]]" in user:
         return "", [("vault__search", {"query": "same thing"})]
     if "[[unknown-tool]]" in user and not done:
