@@ -12,6 +12,7 @@ from universe_supervisor.config import SupervisorConfig, find_ollama
 from universe_supervisor.health import get_json, post_json
 from universe_supervisor.jsonlog import JsonLog
 from universe_supervisor.lkg import current_commit, lkg_pythonpath, prepare_worktree
+from universe_supervisor.releases import ReleaseError, Releases
 from universe_supervisor.service import (
     HEALTH_FAILURES_BEFORE_RESTART,
     HEALTH_INTERVAL_S,
@@ -30,6 +31,7 @@ from universe_supervisor.state import StateFile
 from universe_supervisor.winjob import JobObject
 
 BOOT_FAILURES_FOR_SAFE_MODE = 2
+CRASHES_FOR_ROLLBACK = 2  # Core crashing this often while a new release is watched rolls it back
 KILLSWITCH_ACK_S = 1.0  # Core must apply the kill switch within this, or it's restarted with it engaged
 EXTERNAL_RECHECK_S = 5.0
 TICK_S = 0.2
@@ -59,6 +61,8 @@ class Supervisor:
         self._lkg_promoted = False
         self._last_status = ""
         self._next_external_check = 0.0
+        self.releases = Releases(config.release_repo, config.data_dir / "supervisor" / "releases.json")
+        self._watch_baseline = 0  # Core's restart count right after the watched release was applied
 
         core = ServiceSpec(
             name="core",
@@ -127,6 +131,7 @@ class Supervisor:
         for rt in self.runtimes.values():
             self._tick_service(rt, now)
         self._maybe_promote_lkg(now)
+        self._tick_release_watch()
 
     def _tick_ollama_external(self, now: float) -> None:
         rt = self.runtimes["ollama"]
@@ -316,6 +321,55 @@ class Supervisor:
             rt.state = "stopped"
             self.log("service_restart_requested", service=name)
             return True
+
+    # ---------- releases (Phase 5, ADR-0014) ----------
+
+    def releases_status(self) -> dict[str, Any]:
+        return {"available": True, "releases": self.releases.list()}
+
+    def apply_release(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Electron main asks after your confirmation in a native dialog. Every check is redone here."""
+        fields = ("proposal_id", "branch", "base_commit", "head_commit", "diff_sha", "title")
+        if not all(isinstance(body.get(f), str) and body[f] for f in fields):
+            return {"ok": False, "error": f"send {', '.join(fields)}"}
+        with self.lock:
+            try:
+                release = self.releases.apply(**{f: body[f] for f in fields})
+            except ReleaseError as exc:
+                self.log("release_refused", level="warning", proposal=body.get("proposal_id"), error=str(exc))
+                return {"ok": False, "error": str(exc)}
+            self.log("release_applied", tag=release["tag"], commit=release["commit"], proposal=release["proposal_id"])
+            self.restart("core")
+            self._watch_baseline = self.runtimes["core"].restarts
+            return {"ok": True, "release": release}
+
+    def rollback_release(self, tag: str, reason: str = "rolled back by you") -> dict[str, Any]:
+        with self.lock:
+            try:
+                release = self.releases.rollback(tag, reason)
+            except ReleaseError as exc:
+                self.log("rollback_refused", level="warning", tag=tag, error=str(exc))
+                return {"ok": False, "error": str(exc)}
+            self.log("release_rolled_back", tag=tag, reason=reason)
+            if self.state["safe_mode"]:
+                self.exit_safe_mode()
+            else:
+                self.restart("core")
+            return {"ok": True, "release": release}
+
+    def _tick_release_watch(self) -> None:
+        watching = self.releases.watching()
+        if watching is None:
+            return
+        core = self.runtimes["core"]
+        crashes = core.restarts - self._watch_baseline
+        if self.state["safe_mode"] or crashes >= CRASHES_FOR_ROLLBACK:
+            why = "Core fell into safe mode" if self.state["safe_mode"] else f"Core crashed {crashes} times"
+            self.log("release_auto_rollback", level="error", tag=watching["tag"], reason=why)
+            self.rollback_release(watching["tag"], f"automatic: {why} after the change")
+        elif time.time() >= watching["watch_until"] and core.state == "healthy":
+            self.releases.settle(watching["tag"])
+            self.log("release_settled", tag=watching["tag"])
 
     def kill(self, name: str) -> bool:
         """Hard-kill without telling the watchdog, as a crash would (used to demo and test recovery)."""

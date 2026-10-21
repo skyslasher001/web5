@@ -9,6 +9,17 @@ import type { Logger } from '../logger';
 export type SupervisorLine =
   { event: 'ready'; control_port: number; core_url: string } | { event: 'status'; status: SupervisorStatus };
 
+/** One release as the supervisor's /releases control endpoints report it (ForgeControl consumes this). */
+export interface SupervisorRelease {
+  tag: string;
+  commit: string;
+  proposal_id: string | null;
+  title: string;
+  created_at: number;
+  status: 'watching' | 'good' | 'rolled_back';
+  current: boolean;
+}
+
 export function parseSupervisorLine(line: string): SupervisorLine | null {
   let value: unknown;
   try {
@@ -104,7 +115,12 @@ export class SupervisorProcess extends EventEmitter {
     this.emit('state', this.state);
   }
 
-  private async request<T>(method: 'GET' | 'POST', path: string, payload?: unknown): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    payload?: unknown,
+    timeoutMs = 5000,
+  ): Promise<T> {
     if (this.controlPort === null) throw new Error('The supervisor is not running');
     const response = await fetch(`http://127.0.0.1:${this.controlPort}${path}`, {
       method,
@@ -113,7 +129,7 @@ export class SupervisorProcess extends EventEmitter {
         ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
       body: payload === undefined ? undefined : JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const body = (await response.json()) as T;
     if (!response.ok && response.status !== 409)
@@ -131,6 +147,22 @@ export class SupervisorProcess extends EventEmitter {
 
   async setKillSwitch(engaged: boolean): Promise<{ engaged: boolean; core_acked: boolean }> {
     return this.request('POST', '/killswitch', { engaged });
+  }
+
+  // ---------- releases (Phase 5): only ForgeControl calls these, after your native-dialog confirmation ----------
+
+  async applyRelease(
+    body: Record<string, string>,
+  ): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }> {
+    return this.request('POST', '/releases/apply', body, 60_000);
+  }
+
+  async rollbackRelease(tag: string): Promise<{ ok: boolean; error?: string; release?: SupervisorRelease }> {
+    return this.request('POST', '/releases/rollback', { release: tag }, 60_000);
+  }
+
+  async listReleases(): Promise<{ available: boolean; releases: SupervisorRelease[] }> {
+    return this.request('GET', '/releases');
   }
 
   async exitSafeMode(): Promise<boolean> {

@@ -1395,6 +1395,75 @@
         "title": "ChatSendResponse",
         "type": "object"
       },
+      "ConsentRecord": {
+        "properties": {
+          "changed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed At"
+          },
+          "mic": {
+            "title": "Mic",
+            "type": "boolean"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "mic",
+          "via",
+          "changed_at"
+        ],
+        "title": "ConsentRecord",
+        "type": "object"
+      },
+      "ConsentReport": {
+        "properties": {
+          "kind": {
+            "const": "mic",
+            "default": "mic",
+            "title": "Kind",
+            "type": "string"
+          },
+          "on": {
+            "title": "On",
+            "type": "boolean"
+          },
+          "via": {
+            "description": "Where the change came from",
+            "enum": [
+              "hud",
+              "voice",
+              "tray",
+              "killswitch",
+              "window"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "on",
+          "via"
+        ],
+        "title": "ConsentReport",
+        "type": "object"
+      },
       "Conversation": {
         "properties": {
           "agent_id": {
@@ -7012,6 +7081,60 @@
           }
         },
         "summary": "Chat Send"
+      }
+    },
+    "/api/v1/consent": {
+      "get": {
+        "operationId": "consent_api_v1_consent_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Consent"
+      },
+      "post": {
+        "operationId": "report_consent_api_v1_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Consent"
       }
     },
     "/api/v1/conversations": {

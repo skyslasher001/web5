@@ -381,6 +381,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consent */
+        get: operations["consent_api_v1_consent_get"];
+        put?: never;
+        /** Report Consent */
+        post: operations["report_consent_api_v1_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -2259,6 +2277,32 @@ export interface components {
             conversation_id: string;
             /** User Message Id */
             user_message_id: string;
+        };
+        /** ConsentRecord */
+        ConsentRecord: {
+            /** Changed At */
+            changed_at: string | null;
+            /** Mic */
+            mic: boolean;
+            /** Via */
+            via: string | null;
+        };
+        /** ConsentReport */
+        ConsentReport: {
+            /**
+             * Kind
+             * @default mic
+             * @constant
+             */
+            kind: "mic";
+            /** On */
+            on: boolean;
+            /**
+             * Via
+             * @description Where the change came from
+             * @enum {string}
+             */
+            via: "hud" | "voice" | "tray" | "killswitch" | "window";
         };
         /** Conversation */
         Conversation: {
@@ -4504,6 +4548,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatSendResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consent_api_v1_consent_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRecord"];
+                };
+            };
+        };
+    };
+    report_consent_api_v1_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsentReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsentRecord"];
                 };
             };
             /** @description Validation Error */

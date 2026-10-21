@@ -34,7 +34,9 @@ import { createLogger } from './logger';
 import { isAllowedNavigation } from './navigation';
 import { resolvePaths } from './paths';
 import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
+import { MicConsent, mediaAllowed } from './protected/consent';
 import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
+import { ForgeControl } from './protected/forge';
 import { SupervisorProcess } from './protected/supervisor';
 import { createTray } from './tray';
 import { insideFolder } from './vaultAccess';
@@ -133,6 +135,7 @@ supervisor.on('state', (state: DesktopState) => {
   send(state);
   const core = state.supervisor?.services.core;
   if (core?.state === 'healthy') void errorQueue.flush();
+  forge.coreState(core);
   if (state.supervisor?.safe_mode.active && core?.state === 'failed') showSafeMode('core-failed');
 });
 
@@ -195,7 +198,10 @@ function createWindow(): void {
     log.error('ui_failed_to_load', { code, description, url });
     if (!showingSafeMode && code !== -3) showSafeMode('ui-failed-to-load');
   });
+  // A new page (reload, crash, safe mode) starts with the mic off: consent goes with the page that had it.
+  win.webContents.on('did-navigate', () => consent.revoke('window'));
   win.webContents.on('render-process-gone', (_e, details) => {
+    consent.revoke('window');
     log.error('renderer_gone', { reason: details.reason, exitCode: details.exitCode });
     const now = Date.now();
     rendererCrashes.push(now);
@@ -275,22 +281,26 @@ function registerIpc(): void {
   ipcMain.handle(CH.captureClipboard, saveClipboard);
 
   // ---------- kill switch (protected control) ----------
-  // ---------- Forge releases ----------
-  // Approval and apply live in protected code (Phase 5 protected-core patch); until it's applied, there is none.
-  const NO_RELEASES = 'Applying Forge changes needs the Phase 5 protected-core patch (docs/proposals).';
-  ipcMain.handle(CH.forgeApprove, () => ({ ok: false, message: NO_RELEASES }));
-  ipcMain.handle(CH.forgeRollback, () => ({ ok: false, message: NO_RELEASES }));
-  ipcMain.handle(CH.getReleases, () => ({ available: false, reason: NO_RELEASES, releases: [] }));
+  // ---------- Forge releases (protected control: native dialog, then the supervisor) ----------
+  ipcMain.handle(CH.forgeApprove, (_e, id: unknown) =>
+    typeof id === 'string' ? forge.approve(id) : { ok: false, message: 'Bad proposal id' },
+  );
+  ipcMain.handle(CH.forgeRollback, (_e, tag: unknown) =>
+    typeof tag === 'string' ? forge.rollback(tag) : { ok: false, message: 'Bad release' },
+  );
+  ipcMain.handle(CH.getReleases, () =>
+    forge.releases().catch((err: unknown) => ({ available: false, reason: String(err), releases: [] })),
+  );
 
-  // ---------- consent ----------
-  // The mic belongs to protected code (Phase 7 protected-core patch); until it's applied, it can't be turned on.
-  const NO_CONSENT = {
-    available: false,
-    mic: false,
-    reason: 'The microphone needs the Phase 7 protected-core patch (docs/proposals/phase-7-consent.md).',
-  };
-  ipcMain.handle(CH.getConsent, () => NO_CONSENT);
-  ipcMain.handle(CH.setMicConsent, () => NO_CONSENT);
+  // ---------- consent (protected: ./protected/consent.ts) ----------
+  ipcMain.handle(CH.getConsent, () => consent.state());
+  ipcMain.handle(CH.setMicConsent, (e, on: unknown) => {
+    if (typeof on !== 'boolean') return consent.state();
+    // Only the main window may ask, and asking to turn it on still shows the native dialog.
+    if (on && e.sender !== win?.webContents)
+      return consent.state('Only the main window can turn the mic on.');
+    return consent.request(on, 'hud');
+  });
 
   ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
   ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
@@ -325,10 +335,80 @@ function registerIpc(): void {
   });
 }
 
+const forge = new ForgeControl({
+  core: async (method, path, body) => {
+    const response = await net.fetch(`${coreUrl}/api/v1${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`Core ${path}: HTTP ${response.status}`);
+    return (await response.json()) as never;
+  },
+  applyRelease: (body) => supervisor.applyRelease(body),
+  rollbackRelease: (tag) => supervisor.rollbackRelease(tag),
+  listReleases: () => supervisor.listReleases(),
+  confirm: async ({ title, message, detail, confirmLabel }) => {
+    const parent = BrowserWindow.getFocusedWindow() ?? undefined;
+    const options = {
+      type: 'warning' as const,
+      title,
+      message,
+      detail,
+      buttons: ['Cancel', confirmLabel],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    };
+    const { response } = parent
+      ? await dialog.showMessageBox(parent, options)
+      : await dialog.showMessageBox(options);
+    return response === 1;
+  },
+  log: (event, fields) => log.info(event, fields),
+});
+
+const consent = new MicConsent({
+  confirm: async () => {
+    const options = {
+      type: 'question' as const,
+      buttons: ['Keep it off', 'Turn on the microphone'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Turn on the microphone?',
+      message: 'Turn on the microphone?',
+      detail:
+        'UNIVERSE will listen while the mic is on. What you say is processed on this computer and never stored, ' +
+        'unless you save a voice memo. Turn it off any time from the orb, the tray or the kill switch. ' +
+        'It is off again the next time UNIVERSE starts.',
+    };
+    const choice = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+    return choice.response === 1;
+  },
+  killSwitchEngaged: () => killSwitch.engaged,
+  onChange: (state) => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.consentEvent, state);
+    tray?.setToolTip(state.mic ? 'UNIVERSE · microphone on' : 'UNIVERSE'); // main's own indicator
+  },
+  record: async (mic, via) => {
+    const response = await net.fetch(`${coreUrl}/api/v1/consent`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'mic', on: mic, via }),
+    });
+    if (!response.ok) throw new Error(`Core answered ${response.status}`);
+  },
+  log: (event, fields) => log.info(event, fields),
+});
+
 const killSwitch = new KillSwitchControl({
   initial: readKillSwitchFile(join(paths.dataDir, 'killswitch.json')),
   setOnSupervisor: (engaged) => supervisor.setKillSwitch(engaged),
-  stopCapture: () => {}, // no capture exists yet; mic, screen and camera arrive in Phases 7–8
+  stopCapture: () => {
+    // Chromium keeps an open stream running even after permission is revoked: if the mic was on, reload the
+    // page, which ends every capture it holds. Then tell any window (the reload already did for the main one).
+    if (consent.revoke('killswitch') && win && !win.isDestroyed()) win.webContents.reload();
+  },
   confirmRelease: async () => {
     const options = {
       type: 'warning' as const,
@@ -391,6 +471,9 @@ function startCommandBarAndTray(): void {
       quit: () => app.quit(),
       hotkey: () => commandBar?.status.accelerator ?? '',
       extraItems: () => [
+        ...(consent.mic
+          ? [{ label: 'Microphone on: turn it off', click: () => void consent.request(false, 'tray') }]
+          : []),
         killSwitch.engaged
           ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }
           : {
@@ -429,13 +512,32 @@ if (!app.requestSingleInstanceLock()) {
         headers: { 'content-type': contentType(file), 'content-security-policy': csp },
       });
     });
-    // Mic, camera, screen, notifications…: denied until the consent system lands (Phases 7–8).
-    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) =>
-      callback(permission === 'clipboard-sanitized-write'),
-    );
-    session.defaultSession.setPermissionCheckHandler(
-      (_wc, permission) => permission === 'clipboard-sanitized-write',
-    );
+    // The mic: audio only, for our main window, while you've consented (protected/consent.ts). Camera, screen,
+    // notifications…: denied (screen and camera consent arrive in Phase 8).
+    const appOrigins = ['app://universe', ...(devUiUrl ? [new URL(devUiUrl).origin] : [])];
+    session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
+      if (permission === 'clipboard-sanitized-write') return callback(true);
+      const mediaTypes = 'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
+      const request = {
+        permission,
+        mediaTypes,
+        requestingUrl: details.requestingUrl ?? wc.getURL(),
+        fromMainWindow: wc === win?.webContents,
+      };
+      const allowed = mediaAllowed(request, consent.mic, appOrigins);
+      if (permission === 'media') log.info('media_permission', { mediaTypes, allowed });
+      callback(allowed);
+    });
+    session.defaultSession.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => {
+      if (permission === 'clipboard-sanitized-write') return true;
+      const request = {
+        permission,
+        mediaTypes: details.mediaType ? [details.mediaType] : [],
+        requestingUrl: details.requestingUrl ?? requestingOrigin,
+        fromMainWindow: wc !== null && wc === win?.webContents,
+      };
+      return mediaAllowed(request, consent.mic, appOrigins);
+    });
     registerIpc();
     log.info('app_ready', {
       repo: paths.repoRoot,

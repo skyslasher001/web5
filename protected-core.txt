@@ -5,7 +5,8 @@
 protected-core.txt
 services/supervisor/**
 services/core/src/universe_core/protected/**
-services/sentinel/**
+# Sentinel is services/core/src/universe_core/protected/sentinel.py (ADR-0014) — covered by the glob above.
+# There is no separate services/sentinel/ service, so it needs no glob of its own.
 apps/desktop/src/main/protected/**
 apps/desktop/src/safe-mode/**
 agents/forge.yaml
@@ -13,3 +14,9 @@ agents/sentinel.yaml
 tests/protected/**
 .github/workflows/**
 .pre-commit-config.yaml
+# Phase 5 (ADR-0014): Forge's own definition, prompts, tools and checks, and Sentinel's prompt.
+agents/prompts/forge.md
+agents/prompts/sentinel.md
+services/core/src/universe_core/forge.py
+services/core/src/universe_core/forge_tools.py
+services/core/src/universe_core/forge_verify.py

@@ -61,12 +61,22 @@ class _Handler(BaseHTTPRequestHandler):
         sup = self.srv.supervisor
         if url.path == "/status":
             self._send(200, sup.status())
+        elif url.path == "/releases":
+            self._send(200, sup.releases_status())
         elif url.path.startswith("/logs/"):
             lines = int(parse_qs(url.query).get("tail", ["200"])[0])
             text = sup.logs(url.path.removeprefix("/logs/"), max(1, min(lines, 2000)))
             self._send(404, {"error": "unknown service"}) if text is None else self._send(200, {"text": text})
         else:
             self._send(404, {"error": "not found"})
+
+    def _json_body(self) -> dict[str, Any] | None:
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(min(length, 65536)) or b"{}")
+        except ValueError:
+            return None
+        return body if isinstance(body, dict) else None
 
     def do_POST(self) -> None:
         if not self._authorized():
@@ -86,6 +96,18 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": 'send {"engaged": true|false}'})
                 return
             self._send(200, sup.killswitch(body["engaged"]))
+        elif parts == ["releases", "apply"] or parts == ["releases", "rollback"]:
+            body = self._json_body()
+            if body is None:
+                self._send(400, {"error": "send a JSON object"})
+            elif parts[1] == "apply":
+                result = sup.apply_release(body)
+                self._send(200 if result["ok"] else 409, result)
+            elif not isinstance(body.get("release"), str):
+                self._send(400, {"error": 'send {"release": "<tag>"}'})
+            else:
+                result = sup.rollback_release(body["release"])
+                self._send(200 if result["ok"] else 409, result)
         elif parts == ["safe-mode", "exit"]:
             self._send(200, {"ok": sup.exit_safe_mode()})
         elif parts == ["shutdown"]:

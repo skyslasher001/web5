@@ -34,6 +34,7 @@ class SupervisorConfig:
     watch_stdin: bool = False
     lkg_stable_s: float = 60.0
     boot_timeout_s: float = 30.0
+    forge_repo: Path | None = None  # the checkout Forge repairs and releases go to (default: repo_root)
 
     @property
     def log_dir(self) -> Path:
@@ -42,6 +43,10 @@ class SupervisorConfig:
     @property
     def state_path(self) -> Path:
         return self.data_dir / "supervisor" / "state.json"
+
+    @property
+    def release_repo(self) -> Path:
+        return self.forge_repo or self.repo_root
 
     @property
     def lkg_dir(self) -> Path:
@@ -81,6 +86,7 @@ class SupervisorConfig:
             watch_stdin=_flag(env.get("UNIVERSE_SUPERVISOR_WATCH_STDIN"), False),
             lkg_stable_s=lkg_stable,
             boot_timeout_s=boot_timeout,
+            forge_repo=Path(env["UNIVERSE_REPO_DIR"]) if env.get("UNIVERSE_REPO_DIR") else None,
         )
 
 

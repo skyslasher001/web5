@@ -40,7 +40,7 @@ export class KillSwitchControl {
       initial: boolean;
       /** POST /killswitch on the supervisor. */
       setOnSupervisor: (engaged: boolean) => Promise<KillSwitchResult>;
-      /** Stop mic, screen and camera capture locally, before anything else (none exists before Phase 7). */
+      /** Stop mic, screen and camera capture locally, before anything else (the mic since Phase 7). */
       stopCapture: () => void;
       /** A native yes/no dialog; resolves true only if you confirm. */
       confirmRelease: () => Promise<boolean>;
