@@ -10,11 +10,12 @@ The details live in the files it links to. Written 2026-10-14; updated 2026-10-1
 >   local AI agents. Electron + React UI, Python/FastAPI services, SQLite + LanceDB, local models via Ollama.
 > - **State:**
 >   - Phases 0–4 are built and approved.
->   - Phase 5 (Forge + Sentinel: self-repair) is built and waiting for the owner's review. Its protected-core
->     patch is waiting for the owner to apply it.
->   - Phase 6 (Research: live web, cited, injection-defended) is built and delivered. The default search is a
->     gated httpx request; the SearXNG sidecar is an opt-in proposal gated on a container runtime.
->   - Next is Phase 7 (voice).
+>   - Phases 5 (Forge + Sentinel: self-repair), 6 (Research: live web, cited, injection-defended) and 7 (Voice)
+>     are built, delivered and reviewed (2026-10-21), and wait for the owner's approval. The Phase 5 and Phase 7
+>     protected-core patches are applied. The review's protected-core fixes are a new proposal
+>     ([review-fixes-protected](../proposals/review-fixes-protected.md)): apply it before approving any Forge change.
+>   - The SearXNG sidecar is an opt-in proposal gated on a container runtime.
+>   - Next is Phase 8 (vision).
 > - **Where the code is:** the private GitHub repo `skyslasher001/web5`, branch
 >   **`claude/phase-0-delivery-zuqlfx`**. Not `main`: that still holds an old unrelated landing page.
 > - **Rules that are never broken** (full list in `AGENTS.md`):
@@ -119,17 +120,21 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
 | 2 Vault + Recall | Approved 2026-10-13 | 500 mixed files, each found by keyword or meaning in under a second: **passed** (slowest 309 ms) | [PHASE-2](../PHASE-2.md) |
 | 3 Agent engine | Approved 2026-10-13, protected patch applied | "Find my notes about X, summarize them, link them to project Y" with a full audit trail: **passed** | [PHASE-3](../PHASE-3.md) |
 | 4 Universe interface | Approved 2026-10-14 | 50k items, FPS budget, search flies the camera to results. **Search passed. FPS not yet proven:** there's no GPU here, so the owner must run `pnpm bench:universe` | [PHASE-4](../PHASE-4.md) |
-| 5 Forge + Sentinel v1 | **Delivered 2026-10-14, waiting for review** and for the protected patch | Inject a bug, Forge finds it and proposes a tested fix, approve, it applies, one-click rollback: **passes with the patch applied** (tested in a scratch worktree) | [PHASE-5](../PHASE-5.md), [proposal](../proposals/phase-5-protected-core.md) |
+| 5 Forge + Sentinel v1 | **Delivered 2026-10-14, reviewed 2026-10-21, protected patch applied**; waiting for approval and the review-fixes patch | Inject a bug, Forge finds it and proposes a tested fix, approve, it applies, one-click rollback: **passes** | [PHASE-5](../PHASE-5.md), [proposal](../proposals/phase-5-protected-core.md) |
 | 6 Research | **Delivered 2026-10-19** | A deep-research report with cited sources lands in the vault, offline/kill block it, an injection corpus can't make it act: **passed** (`tests/integration/test_research.py`). Default search is a gated httpx request; the SearXNG sidecar is an opt-in proposal | [PHASE-6](../PHASE-6.md), [ADR-0015](../adr/0015-phase-6-research.md) |
-| 7 Voice | **Delivered 2026-10-19**; the mic waits for the consent patch | Run the app for 10 minutes by voice alone: every command, navigation, question, approval, memo and dictation is reachable by voice and covered by tests (fakes in CI, real Whisper/Kokoro/Silero round trips with `UNIVERSE_TEST_VOICE_MODELS`); the 10-minute session itself needs the owner's mic | [PHASE-7](../PHASE-7.md), [ADR-0016](../adr/0016-phase-7-voice.md), [proposal](../proposals/phase-7-consent.md) |
+| 7 Voice | **Delivered 2026-10-19, reviewed 2026-10-21, consent patch applied**; waiting for approval | Run the app for 10 minutes by voice alone: every command, navigation, question, approval, memo and dictation is reachable by voice and covered by tests (fakes in CI, real Whisper/Kokoro/Silero round trips with `UNIVERSE_TEST_VOICE_MODELS`); the 10-minute session itself needs the owner's mic | [PHASE-7](../PHASE-7.md), [ADR-0016](../adr/0016-phase-7-voice.md), [proposal](../proposals/phase-7-consent.md) |
 | 8 Vision | Next | "Look at this error" returns a correct explanation and a handoff to Forge or Builder | SPEC §25 |
 
-**Test suites at the end of Phase 7** (all green; Electron tests under `xvfb-run`):
-- **pytest:** 312 passed, 8 skipped (7 real-voice-model tests that need `UNIVERSE_TEST_VOICE_MODELS`, which pass
+**Test suites after the Phase 5–7 review** (2026-10-21, branch `470ba3d` with the Phase 5 and 7 patches applied;
+all green; Electron tests under `xvfb-run`):
+- **pytest:** 359 passed, 8 skipped (7 real-voice-model tests that need `UNIVERSE_TEST_VOICE_MODELS`, which pass
   7 of 7 with the models; 1 Windows-only).
-- **Vitest:** 161.
-- **Playwright Electron:** app + safe-mode suites 15 passed, 1 skipped (Phase 5's patch-only half); universe suite 9 of 9. With the
-  Phase 7 consent patch applied: the same 15, and the desktop Vitest suite 43 of 43.
+- **Vitest:** 187, including the desktop suite's 51. The 50k-layout timing test can miss its limit when another
+  heavy job runs on the same machine; it passes when run alone.
+- **Playwright Electron:** app + safe-mode suites 16 of 16, including the full Phase 5 loop and the Phase 7 consent
+  test; universe suite 9 of 9 (Phase 4).
+- **With the review-fixes patch applied** (scratch worktree): pytest 368 passed, 8 skipped (9 new); Vitest 188 (desktop 52);
+  e2e 16 of 16.
 
 ## 4. What exists today
 
@@ -206,7 +211,7 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
   ("approve" / "deny"; high risk and standing rules still need a click), dictation into any text field, memos.
 - **Vault:** voice memos saved as items; every audio and video item gets a timestamped transcript.
 - **Consent:** the mic is protected Electron-main code — off every launch, a native dialog to turn on, the kill
-  switch closes it first. It's a patch waiting for the owner; until then voice speaks but doesn't listen.
+  switch closes it first (applied 2026-10-21).
 
 **Not built yet** (by design, later phases):
 - screen vision (8);
@@ -282,7 +287,7 @@ phase.
 
 **The owner's** (verbatim, with dates): [`DECISIONS.md`](DECISIONS.md). In short:
 - Phase 0 defaults accepted.
-- Phases 1–4 approved, and the Phase 1.5 and 3 protected patches applied.
+- Phases 1–4 approved, and the Phase 1.5, 3, 5 and 7 protected patches applied (5 and 7 on 2026-10-21).
 - Neural pathways added to SPEC, with signal pulses and pathway-flying probes built.
 - The agent roster with synopses.
 - Portability to other AIs.
@@ -344,17 +349,17 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
 ## 9. Open items
 
 **Waiting on the owner**
-1. Review Phase 5, and apply [`docs/proposals/phase-5-protected-core.patch`](../proposals/phase-5-protected-core.md):
-   `git apply …`, run the tests, commit.
-2. Review Phases 6 and 7, and apply [`docs/proposals/phase-7-consent.patch`](../proposals/phase-7-consent.md)
-   so the microphone can open; then install the voice models (Voice tab) and run the Phase 7 demo script on
-   their own hardware (latency, echo cancellation).
+1. Apply [`docs/proposals/review-fixes-protected.patch`](../proposals/review-fixes-protected.md): the
+   protected-core fixes from the Phase 5–7 review. **Until then, don't approve a Forge proposal**: applying one
+   replaces `.venv` with a dangling link.
+2. Approve Phases 5, 6 and 7; install the voice models (Voice tab) and run the Phase 7 demo script on their own
+   hardware (latency, echo cancellation).
 3. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
    hardware, 30 FPS at 10k in Lite on minimum hardware.
 4. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-5. Fix GitHub Actions. CI ends in `startup_failure` before any job runs: an Actions setting or minutes and
-   billing on this private repo. **Nothing has run on Windows yet.**
+5. Fix GitHub Actions. Jobs never get a runner (they end in 2–3 s with no logs); a re-run after the 2026-10-21
+   billing fix failed the same way. **Nothing has run on Windows yet.**
 6. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
 7. Push the `pre-universe` tag (the build environment couldn't push tags):
@@ -365,8 +370,7 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
 
 **Known limitations** (the newest first; each phase doc has the full list)
 - **Voice (Phase 7):**
-  - The mic needs the consent patch. Echo cancellation (Chromium's) and latency are unverified on the owner's
-    hardware.
+  - Echo cancellation (Chromium's) and latency are unverified on the owner's hardware.
   - Whisper tiny.en mishears rare names; base.en is better and slower; vault names aren't yet given as hints.
   - The wake phrase is transcript-based (a Whisper run per utterance); our G2P is simpler than misaki's full
     pipeline. English only.
@@ -520,5 +524,5 @@ Measured on a 4-core Linux build machine with no GPU (software rendering).
 | [`docs/VISION-neural-universe.md`](../VISION-neural-universe.md) | The neural universe and the voice receive chain |
 | `docs/PHASE-0.md` … `docs/PHASE-7.md` | What each phase delivered, tests, limitations, what's next |
 | [`docs/adr/`](../adr/) | 16 architecture decision records |
-| [`docs/proposals/`](../proposals/) | Protected-core patches: 1.5 and 3 applied; 5 and 7 (microphone consent) waiting; the 6 SearXNG sidecar proposed |
+| [`docs/proposals/`](../proposals/) | Protected-core patches: 1.5, 3, 5 and 7 (microphone consent) applied; the review fixes waiting; the 6 SearXNG sidecar proposed |
 | [`llms.txt`](../../llms.txt) | A short index for AI tools |

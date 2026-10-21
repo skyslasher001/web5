@@ -1,0 +1,551 @@
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index 9540a91..8b72b22 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -472,7 +472,15 @@ function startCommandBarAndTray(): void {
+       hotkey: () => commandBar?.status.accelerator ?? '',
+       extraItems: () => [
+         ...(consent.mic
+-          ? [{ label: 'Microphone on: turn it off', click: () => void consent.request(false, 'tray') }]
++          ? [
++              {
++                label: 'Microphone on: turn it off',
++                // From outside the page: don't rely on it to stop its stream. A reload ends every capture.
++                click: () => {
++                  if (consent.revoke('tray') && win && !win.isDestroyed()) win.webContents.reload();
++                },
++              },
++            ]
+           : []),
+         killSwitch.engaged
+           ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }
+diff --git a/apps/desktop/src/main/protected/consent.test.ts b/apps/desktop/src/main/protected/consent.test.ts
+index 209cbe2..017cf7c 100644
+--- a/apps/desktop/src/main/protected/consent.test.ts
++++ b/apps/desktop/src/main/protected/consent.test.ts
+@@ -124,3 +124,20 @@ describe('mediaAllowed', () => {
+     expect(mediaAllowed(dev, true, ours)).toBe(false);
+   });
+ });
++
++describe('review 2026-10-21', () => {
++  it('asks again after the kill switch or a new page', async () => {
++    for (const via of ['killswitch', 'window'] as const) {
++      const { consent, confirm } = make({ confirm: [true, true] });
++      await consent.request(true, 'hud');
++      consent.revoke(via);
++      await consent.request(true, 'hud');
++      expect(confirm).toHaveBeenCalledTimes(2); // the dialog came back
++    }
++    const { consent, confirm } = make({ confirm: [true] });
++    await consent.request(true, 'hud');
++    await consent.request(false, 'hud'); // you turned it off yourself: no new dialog needed this launch
++    await consent.request(true, 'hud');
++    expect(confirm).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/apps/desktop/src/main/protected/consent.ts b/apps/desktop/src/main/protected/consent.ts
+index 1b137a2..6ce3b40 100644
+--- a/apps/desktop/src/main/protected/consent.ts
++++ b/apps/desktop/src/main/protected/consent.ts
+@@ -75,6 +75,8 @@ export class MicConsent {
+   /** The kill switch, a closed window, or the tray: off now, no questions. */
+   revoke(via: ConsentVia): boolean {
+     const was = this.mic;
++    // The page that was trusted is gone (reload, crash) or the kill switch fired: the next "on" asks again.
++    if (via === 'killswitch' || via === 'window') this.confirmed = false;
+     this.set(false, via);
+     return was;
+   }
+diff --git a/apps/desktop/src/main/protected/supervisor.ts b/apps/desktop/src/main/protected/supervisor.ts
+index 8707da4..a1acff0 100644
+--- a/apps/desktop/src/main/protected/supervisor.ts
++++ b/apps/desktop/src/main/protected/supervisor.ts
+@@ -16,7 +16,7 @@ export interface SupervisorRelease {
+   proposal_id: string | null;
+   title: string;
+   created_at: number;
+-  status: 'watching' | 'good' | 'rolled_back';
++  status: 'watching' | 'good' | 'rolled_back' | 'rollback_failed';
+   current: boolean;
+ }
+ 
+diff --git a/services/core/src/universe_core/forge.py b/services/core/src/universe_core/forge.py
+index f228212..231d07b 100644
+--- a/services/core/src/universe_core/forge.py
++++ b/services/core/src/universe_core/forge.py
+@@ -37,6 +37,10 @@ IssueStatus = Literal["open", "working", "proposed", "fixed", "ignored"]
+ ProposalStatus = Literal["draft", "verifying", "failed", "ready", "approved", "applied", "rolled_back", "rejected"]
+ 
+ 
++# Links verification makes in a worktree (forge_verify): never part of a proposal.
++VERIFY_LINKS = (":(exclude).venv", ":(exclude,glob)**/node_modules", ":(exclude)node_modules")
++
++
+ class ForgeError(Exception):
+     """A refused or failed Forge operation, with a message fit for the agent and for you."""
+ 
+@@ -138,6 +142,8 @@ def git(repo: Path, *args: str, timeout: float = 120.0) -> str:
+             [exe, "-C", str(repo), *args],
+             capture_output=True,
+             text=True,
++            encoding="utf-8",  # git output is UTF-8; Windows' default (cp1252) can't decode it (same as the supervisor)
++            errors="replace",
+             timeout=timeout,
+             env=_git_env(),
+             check=False,
+@@ -193,8 +199,15 @@ class Worktree:
+         return target.relative_to(self.path.resolve()).as_posix()
+ 
+     def commit(self, message: str) -> str:
+-        git(self.path, "add", "-A")
+-        if git(self.path, "status", "--porcelain").strip():
++        # Verification links the repo's .venv and node_modules in here; `.venv/` in .gitignore matches only
++        # directories, so without this the links were committed (and applying replaced the real .venv).
++        git(self.path, "add", "-A", "--", ".", *VERIFY_LINKS)
++        staged = git(self.path, "diff", "--cached", "--raw", "--no-renames", f"{self.base}")
++        links = [line.split("\t", 1)[-1] for line in staged.splitlines() if line.split(" ")[1:2] == ["120000"]]
++        if links:
++            git(self.path, "reset", "-q", "--", *links)
++            raise ForgeError(f"Forge doesn't commit symbolic links: {', '.join(links)}")
++        if git(self.path, "diff", "--cached", "--name-only").strip():  # not status: the links stay untracked
+             git(self.path, "commit", "-q", "--no-verify", "-m", message)
+         return git(self.path, "rev-parse", "HEAD").strip()
+ 
+@@ -208,7 +221,8 @@ class Worktree:
+         return files
+ 
+     def diff(self) -> str:
+-        return git(self.path, "diff", "--no-color", f"{self.base}..HEAD")
++        # --text: a file git thinks is binary (e.g. a NUL byte in a comment) can't hide its content from Sentinel.
++        return git(self.path, "diff", "--no-color", "--text", f"{self.base}..HEAD")
+ 
+ 
+ def diff_sha(diff: str) -> str:
+diff --git a/services/core/src/universe_core/forge_verify.py b/services/core/src/universe_core/forge_verify.py
+index 5ac2ecb..7870453 100644
+--- a/services/core/src/universe_core/forge_verify.py
++++ b/services/core/src/universe_core/forge_verify.py
+@@ -87,7 +87,17 @@ def scrubbed_env(tree: Path, home: Path) -> dict[str, str]:
+ def run(name: str, command: list[str], cwd: Path, env: dict[str, str], timeout: float) -> CheckResult:
+     started = time.monotonic()
+     try:
+-        done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
++        done = subprocess.run(
++            command,
++            cwd=cwd,
++            env=env,
++            capture_output=True,
++            text=True,
++            encoding="utf-8",
++            errors="replace",
++            timeout=timeout,
++            check=False,
++        )
+         ok, output = done.returncode == 0, (done.stdout + done.stderr)
+     except subprocess.TimeoutExpired as exc:
+         ok, output = False, f"timed out after {timeout:.0f} s\n{exc.stdout or ''}"
+diff --git a/services/core/src/universe_core/protected/sentinel.py b/services/core/src/universe_core/protected/sentinel.py
+index a55d2e0..402830f 100644
+--- a/services/core/src/universe_core/protected/sentinel.py
++++ b/services/core/src/universe_core/protected/sentinel.py
+@@ -3,7 +3,9 @@
+ A proposal reaches the owner only if this passes. It reads the diff, not the model's description of it:
+ 
+ - **block**: touches protected core; deletes, skips or weakens a test (fewer assertions, `skip`/`xfail`/`.only`);
+-  adds network code outside the egress gate; raises an agent's permission tier; addresses the reviewers.
++  changes how the tests or linters run (conftest, pytest/ruff/pyright/eslint/vitest config); hides content from
++  this review (binary or NUL-byte changes to text, symbolic links); adds network code outside the egress gate;
++  raises an agent's permission tier; addresses the reviewers.
+ - **high risk** (allowed, flagged): dependency or lockfile changes, database migrations, new subprocess or
+   dynamic-code calls, consent and capture code, agent tool lists.
+ - **medium**: large diffs (over 200 changed lines).
+@@ -42,6 +44,13 @@ INJECTION = re.compile(
+     r"\b(sentinel|critic|reviewers?)\s*,\s*(please|approve|pass|allow)",
+     re.I,
+ )
++# Files that decide how the checks Forge is judged by run: a patch must not change them (review 2026-10-21: a root
++# conftest.py hook or `addopts = -k repro` made a failing suite pass).
++TEST_CONFIG = re.compile(
++    r"(^|/)(conftest\.py|pytest\.ini|tox\.ini|setup\.cfg|pyrightconfig\.json|ruff\.toml|\.ruff\.toml|"
++    r"(vitest|vite|playwright|eslint)\.config\.[cm]?[jt]s|\.eslintrc[^/]*|\.prettierrc[^/]*)$"
++)
++PYPROJECT_TOOLS = re.compile(r"\[tool\.(pytest|pyright|ruff|coverage)|\baddopts\b|\btestpaths\b|\bpython_files\b")
+ DEPENDENCY_FILES = re.compile(r"(^|/)(pyproject\.toml|package\.json|uv\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt)$")
+ EGRESS_MODULE = "services/common/src/universe_common/egress.py"
+ TIERS = {"read": 0, "write": 1, "system": 2}
+@@ -64,6 +73,25 @@ def _matches(rel: str, patterns: list[str]) -> bool:
+     return False
+ 
+ 
++def _hidden(diff: str) -> dict[str, str]:
++    """file → why its content can't be reviewed line by line: a binary diff or a symbolic link."""
++    out: dict[str, str] = {}
++    current: str | None = None
++    for line in diff.splitlines():
++        if line.startswith("diff --git "):
++            parts = line.split(" b/", 1)
++            current = parts[1] if len(parts) == 2 else None
++        elif current is None:
++            continue
++        elif line.startswith("Binary files ") or line == "GIT binary patch":
++            out[current] = "a binary change: its content can't be reviewed"
++        elif re.match(r"(new file |new |deleted file )?mode 120000", line):
++            out[current] = "a symbolic link"
++        elif line.startswith("+") and not line.startswith("+++") and "\x00" in line:
++            out[current] = "a NUL byte in a text file hides it from line-by-line review"
++    return out
++
++
+ def _hunks(diff: str) -> dict[str, tuple[list[str], list[str]]]:
+     """file → (added lines, removed lines), from a unified diff."""
+     out: dict[str, tuple[list[str], list[str]]] = {}
+@@ -87,6 +115,8 @@ def review(*, diff: str, files: list[dict[str, str]], protected_patterns: list[s
+     findings: list[Finding] = []
+     statuses = {f["path"]: f.get("status", "M") for f in files}
+     hunks = _hunks(diff)
++    for path, why in _hidden(diff).items():
++        findings.append(Finding("unreviewable", "block", path, why))
+     changed_lines = 0
+     for path in sorted(set(statuses) | set(hunks)):
+         added, removed = hunks.get(path, ([], []))
+@@ -115,6 +145,10 @@ def review(*, diff: str, files: list[dict[str, str]], protected_patterns: list[s
+                         "assertions-loosened", "block", path, f"{removed_asserts - added_asserts} fewer assertion(s)"
+                     )
+                 )
++        if TEST_CONFIG.search(path):
++            findings.append(Finding("test-config", "block", path, "changes how the tests or linters run"))
++        if path.endswith("pyproject.toml") and any(PYPROJECT_TOOLS.search(a) for a in added + removed):
++            findings.append(Finding("test-config", "block", path, "changes test, type-check or lint settings"))
+         if path != EGRESS_MODULE and not TEST_FILE.search(path) and any(NETWORK.search(a) for a in added):
+             findings.append(Finding("network", "block", path, "adds network code outside the egress gate"))
+         if any(INJECTION.search(a) for a in added):
+diff --git a/services/supervisor/src/universe_supervisor/releases.py b/services/supervisor/src/universe_supervisor/releases.py
+index 4635398..fbca3b9 100644
+--- a/services/supervisor/src/universe_supervisor/releases.py
++++ b/services/supervisor/src/universe_supervisor/releases.py
+@@ -13,6 +13,7 @@ Applying is a fast-forward merge between two tags; rolling back adds revert comm
+ rewritten). State is a JSON file written atomically, like the rest of the supervisor's. Standard library only.
+ """
+ 
++import contextlib
+ import hashlib
+ import json
+ import os
+@@ -78,6 +79,8 @@ class Releases:
+                 [exe, "-C", str(self.repo), *args],
+                 capture_output=True,
+                 text=True,
++                encoding="utf-8",  # not the ANSI code page on Windows (-I ignores PYTHONUTF8); same as Core's
++                errors="replace",
+                 timeout=timeout,
+                 env=env,
+                 check=False,
+@@ -131,7 +134,8 @@ class Releases:
+             head = self.head()
+             if head != base_commit:
+                 raise ReleaseError("The code moved on since Forge started: ask Forge to redo the fix")
+-            diff = self._git("diff", "--no-color", f"{base_commit}..{head_commit}")
++            # --text, as Core's Worktree.diff: a "binary" file can't hide its content (and the hashes agree).
++            diff = self._git("diff", "--no-color", "--text", f"{base_commit}..{head_commit}")
+             if hashlib.sha256(diff.encode("utf-8")).hexdigest() != diff_sha:
+                 raise ReleaseError("The change isn't the one you approved (its hash differs)")
+             # --no-renames: list both sides of a rename, so renaming a protected file to an unprotected path
+@@ -144,6 +148,9 @@ class Releases:
+             touched = [p for p in paths if protected(p, self.patterns)]
+             if touched:
+                 raise ReleaseError(f"It changes protected core ({', '.join(touched)}): apply those by hand")
++            summary = self._git("diff", "--summary", "--no-renames", f"{base_commit}..{head_commit}")
++            if " mode 120000 " in summary or "=> 120000" in summary:
++                raise ReleaseError("It adds or changes a symbolic link: Forge changes never do")
+             n = len(self.data["releases"]) + 1
+             tag = f"universe/release-{n}"
+             self._git("merge", "--ff-only", "-q", head_commit)
+@@ -178,7 +185,17 @@ class Releases:
+                 raise ReleaseError(f"{tag} is already rolled back")
+             if self._git("status", "--porcelain", "--untracked-files=no").strip():
+                 raise ReleaseError("The checkout has uncommitted changes: commit or stash them first")
+-            self._git("revert", "--no-edit", f"{release['previous']}..{release['commit']}")
++            try:
++                self._git("revert", "--no-edit", f"{release['previous']}..{release['commit']}")
++            except ReleaseError:
++                # A conflict (you changed the same lines since): leave the checkout as it was, and stop the
++                # watch so it doesn't retry every tick; the owner rolls back by hand.
++                with contextlib.suppress(ReleaseError):
++                    self._git("revert", "--abort")
++                release["status"] = "rollback_failed"
++                release["rollback_reason"] = f"{reason}; the revert conflicted, so nothing was changed"
++                self._save()
++                raise
+             release["status"] = "rolled_back"
+             release["rollback_reason"] = reason
+             release["rolled_back_at"] = time.time()
+diff --git a/services/supervisor/src/universe_supervisor/service.py b/services/supervisor/src/universe_supervisor/service.py
+index 1de3c83..43eea88 100644
+--- a/services/supervisor/src/universe_supervisor/service.py
++++ b/services/supervisor/src/universe_supervisor/service.py
+@@ -48,6 +48,7 @@ class ServiceRuntime:
+     health_failures: int = 0
+     crash_streak: int = 0
+     restarts: int = 0
++    crashes: int = 0  # crashes and failed boots only (not restarts you asked for)
+     last_exit_code: int | None = None
+     last_error: str | None = None
+     start_reason: str = "boot"
+diff --git a/services/supervisor/src/universe_supervisor/supervisor.py b/services/supervisor/src/universe_supervisor/supervisor.py
+index 0f00a35..c8c7dc6 100644
+--- a/services/supervisor/src/universe_supervisor/supervisor.py
++++ b/services/supervisor/src/universe_supervisor/supervisor.py
+@@ -62,7 +62,7 @@ class Supervisor:
+         self._last_status = ""
+         self._next_external_check = 0.0
+         self.releases = Releases(config.release_repo, config.data_dir / "supervisor" / "releases.json")
+-        self._watch_baseline = 0  # Core's restart count right after the watched release was applied
++        self._watch_baseline = 0  # Core's crash count right after the watched release was applied
+ 
+         core = ServiceSpec(
+             name="core",
+@@ -238,6 +238,7 @@ class Supervisor:
+         if rt.healthy_since is not None and now - rt.healthy_since > STABLE_RESET_S:
+             rt.crash_streak = 0
+         rt.last_error = self._error_with_tail(rt, why)
++        rt.crashes += 1
+         self.log("service_crashed", level="error", service=rt.spec.name, why=why)
+         self._schedule_restart(rt, now, reason)
+ 
+@@ -245,6 +246,7 @@ class Supervisor:
+         if self._adopt_external_ollama(rt):
+             return
+         rt.last_error = self._error_with_tail(rt, why)
++        rt.crashes += 1
+         self.log("service_boot_failed", level="error", service=rt.spec.name, why=why)
+         if rt.spec.name != "core":
+             self._schedule_restart(rt, now, "boot-retry")
+@@ -333,6 +335,8 @@ class Supervisor:
+         if not all(isinstance(body.get(f), str) and body[f] for f in fields):
+             return {"ok": False, "error": f"send {', '.join(fields)}"}
+         with self.lock:
++            if self.state["safe_mode"]:  # the watch would read safe mode as the release failing, at once
++                return {"ok": False, "error": "UNIVERSE is in safe mode: get Core healthy before applying changes"}
+             try:
+                 release = self.releases.apply(**{f: body[f] for f in fields})
+             except ReleaseError as exc:
+@@ -340,7 +344,7 @@ class Supervisor:
+                 return {"ok": False, "error": str(exc)}
+             self.log("release_applied", tag=release["tag"], commit=release["commit"], proposal=release["proposal_id"])
+             self.restart("core")
+-            self._watch_baseline = self.runtimes["core"].restarts
++            self._watch_baseline = self.runtimes["core"].crashes
+             return {"ok": True, "release": release}
+ 
+     def rollback_release(self, tag: str, reason: str = "rolled back by you") -> dict[str, Any]:
+@@ -362,7 +366,7 @@ class Supervisor:
+         if watching is None:
+             return
+         core = self.runtimes["core"]
+-        crashes = core.restarts - self._watch_baseline
++        crashes = core.crashes - self._watch_baseline  # a restart you asked for isn't a crash
+         if self.state["safe_mode"] or crashes >= CRASHES_FOR_ROLLBACK:
+             why = "Core fell into safe mode" if self.state["safe_mode"] else f"Core crashed {crashes} times"
+             self.log("release_auto_rollback", level="error", tag=watching["tag"], reason=why)
+diff --git a/tests/protected/test_releases.py b/tests/protected/test_releases.py
+index 3aad77a..f58d9f2 100644
+--- a/tests/protected/test_releases.py
++++ b/tests/protected/test_releases.py
+@@ -27,7 +27,7 @@ def forge_branch(repo: Path, name: str = "forge/p1", files: dict[str, str] | Non
+     sh(repo, "commit", "-q", "-m", "Forge: fix add")
+     tip = head(repo)
+     sh(repo, "checkout", "-q", "main")
+-    diff = sh(repo, "diff", "--no-color", f"{base}..{tip}")
++    diff = sh(repo, "diff", "--no-color", "--text", f"{base}..{tip}")
+     return {
+         "proposal_id": "p1",
+         "branch": name,
+@@ -120,7 +120,7 @@ def test_renaming_a_protected_file_to_an_unprotected_path_is_refused(repo: Path,
+     sh(repo, "commit", "-q", "-m", "sneak a protected file out by renaming it")
+     tip = head(repo)
+     sh(repo, "checkout", "-q", "main")
+-    diff = sh(repo, "diff", "--no-color", f"{base}..{tip}")
++    diff = sh(repo, "diff", "--no-color", "--text", f"{base}..{tip}")
+     proposal = {
+         "proposal_id": "p1", "branch": "forge/p1", "base_commit": base, "head_commit": tip,
+         "diff_sha": hashlib.sha256(diff.encode()).hexdigest(), "title": "rename",
+@@ -179,3 +179,118 @@ def test_a_release_that_makes_core_crash_rolls_itself_back(tmp_path: Path, monke
+         assert refused["ok"] is False and "error" in refused
+     finally:
+         h.sup.shutdown()
++
++
++def test_a_rollback_that_conflicts_changes_nothing_and_isnt_retried(repo: Path, tmp_path: Path) -> None:
++    # Review 2026-10-21: a conflicting revert left the checkout mid-revert and the watch retried it every tick.
++    releases = Releases(repo, tmp_path / "releases.json")
++    release = releases.apply(**forge_branch(repo))
++    (repo / "calc" / "__init__.py").write_text(FIXED.replace("return a + b", "return b + a  # owner"), encoding="utf-8")
++    sh(repo, "commit", "-q", "-am", "the owner edits the same line")
++    before = head(repo)
++    with pytest.raises(ReleaseError):
++        releases.rollback(release["tag"], "automatic: Core crashed 2 times after the change")
++    assert head(repo) == before and sh(repo, "status", "--porcelain") == ""  # the checkout is as it was
++    assert not (repo / ".git" / "sequencer").exists() and not (repo / ".git" / "REVERT_HEAD").exists()
++    saved = Releases(repo, tmp_path / "releases.json").list()[0]
++    assert saved["status"] == "rollback_failed" and "conflicted" in saved["rollback_reason"]
++    assert releases.watching() is None  # so the watch stops instead of retrying
++
++
++def test_a_symbolic_link_is_refused(repo: Path, tmp_path: Path) -> None:
++    releases = Releases(repo, tmp_path / "releases.json")
++    base = head(repo)
++    sh(repo, "checkout", "-q", "-b", "forge/p1")
++    (repo / "calc" / "env").symlink_to("../../outside")
++    sh(repo, "add", "-A")
++    sh(repo, "commit", "-q", "-m", "a link out of the checkout")
++    tip = head(repo)
++    sh(repo, "checkout", "-q", "main")
++    diff = sh(repo, "diff", "--no-color", "--text", f"{base}..{tip}")
++    proposal = {
++        "proposal_id": "p1", "branch": "forge/p1", "base_commit": base, "head_commit": tip,
++        "diff_sha": hashlib.sha256(diff.encode()).hexdigest(), "title": "link",
++    }  # fmt: skip
++    with pytest.raises(ReleaseError, match="symbolic link"):
++        releases.apply(**proposal)
++    assert head(repo) == base
++
++
++def test_the_approved_hash_covers_binary_content(repo: Path, tmp_path: Path) -> None:
++    # Without --text two different "binary" files diff to the same "Binary files differ" line, so one hash
++    # would approve either.
++    releases = Releases(repo, tmp_path / "releases.json")
++    proposal = forge_branch(repo, files={"calc/data.bin": "a\x00b\n"})
++    assert "a\x00b" in sh(repo, "diff", "--text", f"{proposal['base_commit']}..{proposal['head_commit']}")
++    plain = sh(repo, "diff", "--no-color", f"{proposal['base_commit']}..{proposal['head_commit']}")
++    with pytest.raises(ReleaseError, match="hash differs"):
++        releases.apply(**{**proposal, "diff_sha": hashlib.sha256(plain.encode()).hexdigest()})
++    assert releases.apply(**proposal)["status"] == "watching"
++
++
++def _supervisor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo: Path):
++    from tests.integration.test_supervisor import CONTROL_TOKEN, Harness
++
++    (tmp_path / "sup").mkdir()
++    h = Harness(tmp_path / "sup", repo)
++    monkeypatch.setenv("FAKE_CORE_CONTROL", str(h.control_file))
++    monkeypatch.setenv("FAKE_CORE_ENV_OUT", str(h.env_out))
++    monkeypatch.setenv("UNIVERSE_SUPERVISOR_TOKEN", CONTROL_TOKEN)
++    return h
++
++
++@pytest.mark.slow
++def test_restarts_you_ask_for_dont_roll_a_release_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    from tests.integration.test_supervisor import core
++
++    repo = make_repo(tmp_path)
++    h = _supervisor(tmp_path, monkeypatch, repo)
++    try:
++        h.run_until(lambda s: core(s)["state"] == "healthy")
++        assert h.sup.apply_release(forge_branch(repo))["ok"]
++        h.run_until(lambda s: core(s)["state"] == "healthy")
++        for n in (2, 3):  # restarts from the System panel (or a model change) during the 30-minute watch
++            assert h.sup.restart("core")
++            h.run_until(lambda s, n=n: core(s)["state"] == "healthy" and core(s)["restarts"] == n)
++        assert h.sup.releases.list()[0]["status"] == "watching"
++    finally:
++        h.sup.shutdown()
++
++
++@pytest.mark.slow
++def test_nothing_is_applied_in_safe_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    from tests.integration.test_supervisor import core
++
++    repo = make_repo(tmp_path)
++    h = _supervisor(tmp_path, monkeypatch, repo)
++    try:
++        h.set_mode("crash")
++        h.run_until(lambda s: s["safe_mode"]["active"])
++        h.set_mode("ok")
++        h.run_until(lambda s: core(s)["state"] == "healthy")
++        proposal = forge_branch(repo)
++        result = h.sup.apply_release(proposal)
++        assert result["ok"] is False and "safe mode" in result["error"]
++        assert head(repo) == proposal["base_commit"] and h.sup.releases.list() == []
++    finally:
++        h.sup.shutdown()
++
++
++def test_a_change_that_isnt_utf8_is_still_read(repo: Path, tmp_path: Path) -> None:
++    # Review 2026-10-21: git's output was decoded strictly (and with the ANSI code page on Windows), so one Latin-1
++    # byte in a diff crashed the apply. Core and the supervisor both decode as UTF-8 with replacement.
++    releases = Releases(repo, tmp_path / "releases.json")
++    base = head(repo)
++    sh(repo, "checkout", "-q", "-b", "forge/p1")
++    (repo / "calc" / "names.py").write_bytes(b"CAFE = 'caf\xe9'\n")
++    sh(repo, "add", "-A")
++    sh(repo, "commit", "-q", "-m", "latin-1")
++    tip = head(repo)
++    sh(repo, "checkout", "-q", "main")
++    git_diff = ["git", "-C", str(repo), "diff", "--no-color", "--text", f"{base}..{tip}"]
++    diff = subprocess.run(git_diff, capture_output=True, check=True).stdout.decode("utf-8", errors="replace")
++    proposal = {
++        "proposal_id": "p1", "branch": "forge/p1", "base_commit": base, "head_commit": tip,
++        "diff_sha": hashlib.sha256(diff.encode()).hexdigest(), "title": "latin-1",
++    }  # fmt: skip
++    assert releases.apply(**proposal)["status"] == "watching"
+diff --git a/tests/protected/test_sentinel.py b/tests/protected/test_sentinel.py
+index 43833ea..267ab90 100644
+--- a/tests/protected/test_sentinel.py
++++ b/tests/protected/test_sentinel.py
+@@ -98,3 +98,26 @@ def test_risky_but_allowed_changes_are_flagged_high() -> None:
+ def test_big_diffs_are_medium_risk() -> None:
+     result = check("services/core/src/universe_core/x.py", [f"x{n} = {n}" for n in range(250)])
+     assert result["risk"] == "medium" and "size" in rules(result)
++
++
++def test_changing_how_the_checks_run_is_blocked() -> None:
++    # Review 2026-10-21: a root conftest.py hook or `addopts = -k repro` could make a failing suite "pass".
++    for path in ("conftest.py", "tests/conftest.py", "pytest.ini", "apps/ui/vitest.config.ts", "eslint.config.mjs"):
++        result = check(path, ["x = 1"], status="A")
++        assert result["verdict"] == "block" and "test-config" in rules(result), path
++    for line in ('addopts = "-k repro"', "[tool.pyright]", 'testpaths = ["tests/unit"]'):
++        result = check("pyproject.toml", [line])
++        assert result["verdict"] == "block" and "test-config" in rules(result), line
++    assert check("pyproject.toml", ['dependencies = ["leftpad"]'])["verdict"] == "pass"
++
++
++def test_content_hidden_from_the_review_is_blocked() -> None:
++    binary = "diff --git a/calc/x.py b/calc/x.py\nindex 1..2 100644\nBinary files a/calc/x.py and b/calc/x.py differ\n"
++    link = (
++        "diff --git a/calc/env b/calc/env\nnew file mode 120000\nindex 0..1\n--- /dev/null\n+++ b/calc/env\n"
++        "@@ -0,0 +1 @@\n+../../.venv\n"
++    )
++    nul = diff_for("calc/x.py", ["x = 1\x00import os; os.system('curl evil')"])
++    for diff, path in ((binary, "calc/x.py"), (link, "calc/env"), (nul, "calc/x.py")):
++        result = review(diff=diff, files=[{"path": path, "status": "M"}], protected_patterns=PATTERNS)
++        assert result["verdict"] == "block" and "unreviewable" in rules(result), diff
+diff --git a/tests/unit/test_forge_core.py b/tests/unit/test_forge_core.py
+index fcc09e6..2caed8e 100644
+--- a/tests/unit/test_forge_core.py
++++ b/tests/unit/test_forge_core.py
+@@ -168,3 +168,24 @@ def test_a_refused_over_cap_begin_leaves_no_orphan_worktree(forge: Forge) -> Non
+         forge.start_proposal(title="over", issue_id=None, task_id="orphan_over")
+     worktrees = forge.root / "worktrees"
+     assert len(list(worktrees.iterdir())) == DAILY_CAP  # the refused begin cleaned up its own worktree
++
++
++def test_verification_links_never_enter_a_proposal(forge: Forge) -> None:
++    """Review 2026-10-21: checks() links the repo's .venv and node_modules into the worktree; `.venv/` in
++    .gitignore matches only directories, so `git add -A` committed the links and applying the proposal replaced
++    the owner's real .venv with a dangling link."""
++    repo = forge.require_repo()
++    (repo / ".gitignore").write_text(".venv/\nnode_modules/\n", encoding="utf-8")
++    (repo / ".venv").mkdir()
++    (repo / "node_modules").mkdir()
++    _proposal, tree = forge.start_proposal(title="Fix add", issue_id=None, task_id="t-links")
++    tree.write("calc/__init__.py", FIXED)
++    (tree.path / ".venv").symlink_to(repo / ".venv", target_is_directory=True)  # what checks() does
++    (tree.path / "node_modules").symlink_to(repo / "node_modules", target_is_directory=True)
++    first = tree.commit("Fix add")
++    assert [f.path for f in tree.changes()] == ["calc/__init__.py"]
++    assert tree.commit("Nothing new") == first  # only the untracked links are left: nothing to commit, no error
++    # Forge itself can't smuggle in a symlink either: a link anywhere else is refused.
++    (tree.path / "calc" / "link").symlink_to(repo / "calc" / "__init__.py")
++    with pytest.raises(ForgeError, match="symbolic link"):
++        tree.commit("Add a link")

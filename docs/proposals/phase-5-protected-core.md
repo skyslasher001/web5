@@ -1,6 +1,9 @@
 # Proposal: Phase 5 protected core — Sentinel, Forge's definition, releases and the approval dialog
 
-Status: **waiting for your approval.** Nothing in it is applied yet.
+Status: **applied 2026-10-21** (owner-approved, DECISIONS row 21) in `df2af16`. Both patches were applied with
+`git apply --3way` onto the branch head. They overlap in `apps/desktop/src/main/index.ts`, where each adds a
+block before `const killSwitch`, and both blocks were kept. Review fixes to the same files are a separate
+proposal: [review-fixes-protected](review-fixes-protected.md).
 
 Patch: [`phase-5-protected-core.patch`](phase-5-protected-core.patch). Design: [ADR-0014](../adr/0014-phase-5-forge-sentinel.md).
 

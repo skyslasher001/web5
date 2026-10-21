@@ -112,8 +112,14 @@ The web is the fake server `tests/support/fake_search.py`; the model is the scri
 - **SearXNG is a proposal, not applied.** The default gated-httpx search works out of the box; SearXNG (better,
   more neutral results) waits on your container-runtime decision. The DuckDuckGo-Lite HTML endpoint is a public
   page with no stability guarantee — if its markup shifts, the parser needs a touch; SearXNG is the robust path.
-- **The SearXNG egress gap** (its upstream requests bypass our gate) is mitigated by loopback + the supervisor
-  pausing the container on offline/kill, not closed in code. The strict path is to leave SearXNG off.
+- **The SearXNG egress gap** (its upstream requests bypass our gate) is mitigated by loopback, by Core refusing
+  to search through SearXNG while offline or killed, and by the supervisor pausing the container. It isn't closed
+  in code. The strict path is to leave SearXNG off.
+- **web.fetch reads only public hosts.** Loopback, private and link-local addresses are refused, checked again at
+  every redirect (SSRF), so the researcher can't read intranet pages. Pages over 3 MB or 45 s, and anything that
+  isn't text, are refused. (`UNIVERSE_RESEARCH_ALLOW_PRIVATE_FETCH=1` exists for the tests' local fake web.)
+- **Saving always asks** (2026-10-21 review): `vault.save` is a write tool the researcher must get your OK for,
+  even when the task only searched.
 - **Playwright/JS rendering is off.** Extraction-only for now; a page that needs a browser returns little text.
 - **Watchlist runner is best-effort** and surfaces changes in the Research panel; morning-brief delivery and
   free-tier search APIs are deferred (Phase 9 / optional).

@@ -1,6 +1,9 @@
 # Proposal: Phase 7 protected core — microphone consent
 
-Status: **waiting for your approval.** Nothing in it is applied yet.
+Status: **applied 2026-10-21** (owner-approved, DECISIONS row 21) in `df2af16`. Both patches were applied with
+`git apply --3way` onto the branch head. They overlap in `apps/desktop/src/main/index.ts`, where each adds a
+block before `const killSwitch`, and both blocks were kept. Review fixes to the same files are a separate
+proposal: [review-fixes-protected](review-fixes-protected.md).
 
 Patch: [`phase-7-consent.patch`](phase-7-consent.patch). Design: [ADR-0016](../adr/0016-phase-7-voice.md) §6.
 
