@@ -132,6 +132,11 @@ class VoiceManager:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         async with self._lock:
+            # A start() queued on the lock may have run first and made a new monitor: this stop still wins.
+            self._wanted = False
+            late, self._task = self._task, None
+            if late is not None:
+                late.cancel()
             await self._terminate()
             self._set("off", reason)
 
@@ -168,6 +173,7 @@ class VoiceManager:
             self._publish("voice.service.changed", {"state": state, "reason": reason})
 
     async def _spawn_and_wait(self) -> None:
+        await self._terminate()  # a half-started process from a cancelled monitor must not be orphaned
         self._set("starting", None)
         self.port = None
         port_file = self._log_dir / "voice.port"  # the process binds any free loopback port and writes it here
@@ -186,7 +192,8 @@ class VoiceManager:
             env["UNIVERSE_VOICE_STT"] = self._config.stt
         else:
             env.pop("UNIVERSE_VOICE_STT", None)
-        self._proc = await asyncio.to_thread(self._popen, env)
+        await asyncio.to_thread(self._popen, env)  # sets self._proc itself, so a cancellation can't lose it
+        assert self._proc is not None
         self._started_at = time.monotonic()
         log.info("voice_spawned", pid=self._proc.pid)
         deadline = time.monotonic() + self.READY_TIMEOUT_S
@@ -210,10 +217,10 @@ class VoiceManager:
         await self._terminate()
         self._set("failed", f"the voice process didn't come up within {self.READY_TIMEOUT_S:.0f} s")
 
-    def _popen(self, env: dict[str, str]) -> "subprocess.Popen[bytes]":
+    def _popen(self, env: dict[str, str]) -> None:
         self._log_dir.mkdir(parents=True, exist_ok=True)
         with (self._log_dir / "voice.out.log").open("ab") as out:
-            return subprocess.Popen(
+            self._proc = subprocess.Popen(
                 self.command,
                 env=env,
                 stdin=subprocess.DEVNULL,

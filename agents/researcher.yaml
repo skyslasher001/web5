@@ -11,10 +11,10 @@ voice: curious-reporter # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLE
 color: blue
 icon: globe
 tools: [web.search, web.fetch, vault.save]
-permission_tier: read
+permission_tier: write # only for vault.save, which always asks (requires_approval)
 memory: []
 triggers:
   - manual: true
 limits: { max_steps: 20, max_tokens: 8192, timeout_s: 600 }
-requires_approval: []
+requires_approval: [vault.save]
 prompt: prompts/researcher.md

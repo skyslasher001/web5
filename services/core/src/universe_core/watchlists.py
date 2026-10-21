@@ -79,6 +79,11 @@ class WatchlistStore:
                 (uuid7(), wid, checked_at, summary, detail),
             )
 
+    def record_failure(self, wid: str, summary: str, checked_at: str) -> None:
+        self._conn.execute(
+            "UPDATE watchlists SET last_checked_at = ?, last_summary = ? WHERE id = ?", (checked_at, summary, wid)
+        )
+
     def hits(self, wid: str, limit: int = 50) -> list[sqlite3.Row]:
         return self._conn.execute(
             "SELECT * FROM watchlist_hits WHERE watchlist_id = ? ORDER BY found_at DESC LIMIT ?", (wid, limit)
@@ -99,13 +104,16 @@ async def check_one(ctx: CoreContext, store: WatchlistStore, row: sqlite3.Row) -
     target = row["target"]
     checked_at = utcnow()
     if row["kind"] == "topic":
-        results = await run_search(ctx, "agent:researcher", target, 8, use_cache=False)
+        async with asyncio.timeout(60):
+            results = await run_search(ctx, "agent:researcher", target, 8, use_cache=False)
         fp = fingerprint([r.url for r in results])
         summary = f"{len(results)} result(s); top: {results[0].title}" if results else "no results"
         detail = "\n".join(f"- {r.title} — {r.url}" for r in results[:8])
     else:
         async with ctx.gate.async_client(purpose="research:watch", actor="agent:researcher") as client:
-            page = await fetch_page(client, target, max_chars=20_000)
+            page = await fetch_page(
+                client, target, max_chars=20_000, allow_private=ctx.settings.research_allow_private_fetch
+            )
         fp = fingerprint([page.text])
         summary = f"Page updated: {page.title}"
         detail = page.text[:800]
@@ -160,5 +168,7 @@ class WatchlistRunner:
             except EgressDenied:
                 break  # offline or kill switch: stop this cycle and try again next time
             except Exception as exc:
+                # Count the attempt, so a dead page is retried on its own interval, not every tick.
+                self.store.record_failure(row["id"], f"check failed: {type(exc).__name__}", utcnow())
                 self.ctx.record_exception(exc)
         return changed

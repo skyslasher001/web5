@@ -168,6 +168,8 @@ async def reject_proposal(ctx: Ctx, proposal_id: str) -> ForgeProposal:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     if p.status in ("applied", "rolled_back", "rejected"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"It's already {p.status.replace('_', ' ')}")
+    if p.status == "verifying":  # the verify thread would set it back to draft, with its worktree gone
+        raise HTTPException(status.HTTP_409_CONFLICT, "It's being verified: reject it when the checks finish")
     updated = f.update(proposal_id, status="rejected", decided_at=utcnow())
     if p.issue_id:
         f.set_issue_status(p.issue_id, "open")

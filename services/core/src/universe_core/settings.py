@@ -46,6 +46,8 @@ class CoreSettings:
     research_searxng_url: str = "http://127.0.0.1:8888"  # loopback sidecar
     research_cache_ttl_s: int = 24 * 60 * 60
     research_playwright_enabled: bool = False  # render JS-heavy pages (optional, heavy); off by default
+    # web.fetch refuses loopback/private/link-local hosts (SSRF); tests point it at a local fake web.
+    research_allow_private_fetch: bool = False
 
     @property
     def log_dir(self) -> Path:
@@ -110,4 +112,5 @@ class CoreSettings:
             research_searxng_url=searxng_url,
             research_cache_ttl_s=cache_ttl,
             research_playwright_enabled=_flag(env.get("UNIVERSE_RESEARCH_PLAYWRIGHT")),
+            research_allow_private_fetch=_flag(env.get("UNIVERSE_RESEARCH_ALLOW_PRIVATE_FETCH")),
         )

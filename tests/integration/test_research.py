@@ -5,6 +5,7 @@ act, offline blocks a remote fetch, and watchlists detect changes.
 The model is the scripted stand-in (tests/support/fake_ollama.py); the web is the fake server
 (tests/support/fake_search.py). Needs the Phase 3 protected policy engine (otherwise skipped)."""
 
+import dataclasses
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -35,7 +36,7 @@ def search() -> Iterator[FakeSearch]:
 
 @pytest.fixture
 def api(make_settings: Callable[..., CoreSettings], fake_ollama: FakeOllama, search: FakeSearch) -> Iterator[Api]:
-    settings = make_settings(research_search_endpoint=f"{search.url}/lite/")
+    settings = make_settings(research_search_endpoint=f"{search.url}/lite/", research_allow_private_fetch=True)
     with TestClient(create_app(settings), base_url=BASE) as client:
         a = Api(client, settings, fake_ollama.url)
         a.search = search  # type: ignore[attr-defined]
@@ -129,3 +130,56 @@ def test_sent_where_log_lists_outbound_requests(api: Api) -> None:
     )
     entries = api.get("/research/requests")
     assert entries[0]["host"] == "lite.duckduckgo.com" and entries[0]["purpose"] == "research:search"
+
+
+# ---------- review 2026-10-21: regressions ----------
+
+
+def test_saving_always_asks_even_before_any_page_was_read(api: Api) -> None:
+    """Search snippets don't taint a task; an injected snippet must still not get a note written unasked."""
+    from universe_agents.runtime import TaskState
+
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    save = ctx.tools.get("vault.save")
+    from universe_core.research_tools import SaveArgs
+
+    args = SaveArgs(title="x", text="y")
+    untainted = ctx.safety.check_tool(ctx.agents["researcher"], save, args, TaskState("t", "researcher"))
+    assert untainted.verdict == "ask" and "needs your OK" in untainted.reason
+    tainted = ctx.safety.check_tool(ctx.agents["researcher"], save, args, TaskState("t", "researcher", tainted=True))
+    assert tainted.verdict == "ask" and "untrusted" in tainted.reason
+
+
+def test_offline_research_is_a_plain_tool_error_not_a_crashed_task(api: Api) -> None:
+    from universe_agents.tools import ToolContext
+    from universe_core.research_tools import WebFetchArgs, WebSearchArgs
+
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    tc = ToolContext(task_id="t", agent_id="researcher", actor="agent:researcher", tainted=False)
+    search, fetch = ctx.tools.get("web.search"), ctx.tools.get("web.fetch")
+    settings = ctx.settings
+    # The real (remote) search endpoint: offline, the gate refuses it before any request is made.
+    ctx.settings = dataclasses.replace(settings, research_search_endpoint="https://lite.duckduckgo.com/lite/")
+    ctx.gate.offline = True
+    try:
+        found = api.client.portal.call(search.run, WebSearchArgs(query="never cached"), tc)  # type: ignore[union-attr]
+        read = api.client.portal.call(fetch.run, WebFetchArgs(urls=["https://example.com/"]), tc)  # type: ignore[union-attr]
+    finally:
+        ctx.gate.offline = False
+        ctx.settings = settings
+    assert found.error and "unreachable" in found.content
+    assert "unreachable" in read.content and "stop and tell the owner" in read.content
+
+
+def test_a_failing_page_watch_waits_for_its_interval(api: Api) -> None:
+    """A dead page used to be retried every 5-minute tick forever (last_checked_at never moved)."""
+    from universe_core.watchlists import WatchlistRunner
+
+    dead = f"{api.search.url}/no-such-page"  # type: ignore[attr-defined]
+    created = api.post("/watchlists", {"kind": "page", "target": dead, "interval_s": 86400}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    runner = WatchlistRunner(ctx)
+    api.client.portal.call(runner.check_due)  # type: ignore[union-attr]
+    [row] = [w for w in api.get("/watchlists") if w["id"] == created["id"]]
+    assert row["last_checked_at"] is not None and "check failed" in (row["last_summary"] or "")
+    assert created["id"] not in [r["id"] for r in runner.store.due(row["last_checked_at"])]

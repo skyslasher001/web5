@@ -104,6 +104,10 @@ def parse_ddg_lite(html: str) -> list[SearchResult]:
     return results
 
 
+class SearchUnavailable(httpx.HTTPError):
+    """The search engine answered, but with no results page (rate limit or bot check)."""
+
+
 @dataclass
 class HttpSearchProvider:
     """Default provider: a keyless HTML search endpoint, fetched through the egress gate."""
@@ -115,6 +119,8 @@ class HttpSearchProvider:
     async def search(self, query: str, *, limit: int = 8) -> list[SearchResult]:
         response = await self.client.post(self.endpoint, data={"q": query})
         response.raise_for_status()
+        if response.status_code == 202:  # DuckDuckGo's answer to a rate-limited or bot-flagged request
+            raise SearchUnavailable("the search engine is rate-limiting us (HTTP 202)")
         return parse_ddg_lite(response.text)[:limit]
 
 

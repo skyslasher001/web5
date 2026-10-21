@@ -3,6 +3,7 @@ download the models), hands out single-use tickets, the renderer's WebSocket spe
 per-agent voices persist, the kill switch stops voice, memos land in the vault and get transcribed, and model
 installs are gated, hash-checked and requeue transcription."""
 
+import asyncio
 import hashlib
 import io
 import json
@@ -301,3 +302,43 @@ def test_the_gate_blocks_model_downloads_when_offline(api: Api, files_server: st
     _run(api, install())
     state = voice.installer.installs["whisper-remote"]
     assert state.state == "failed" and "offline" in (state.error or "").lower()
+
+
+# ---------- review 2026-10-21: regressions ----------
+
+
+def test_stop_wins_over_a_start_queued_behind_a_respawn(api: Api) -> None:
+    """The kill switch's stop() used to lose to a start() waiting on the lock: the start made a new monitor
+    and voice came back after the kill switch."""
+    manager = ctx_of(api).require_voice().manager
+    config = ctx_of(api).require_voice().config()
+
+    async def scenario() -> tuple[str, bool]:
+        await manager.start(config)
+        crashed = manager._proc
+        assert crashed is not None
+        crashed.kill()  # the voice process dies...
+        await asyncio.to_thread(crashed.wait)
+        async with manager._lock:
+            starter = asyncio.create_task(manager.start(config))
+            stopper = asyncio.create_task(manager.stop(reason="kill switch engaged"))
+            await asyncio.sleep(0.05)
+        await asyncio.gather(starter, stopper)
+        await asyncio.sleep(2.5)  # a stray monitor would have respawned by now
+        proc = manager._proc
+        return manager.state, proc is not None and proc.poll() is None
+
+    state, alive = api.client.portal.call(scenario)  # type: ignore[union-attr]
+    assert state == "off" and not alive
+
+
+def test_the_audio_relay_never_goes_through_a_proxy(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """websockets uses the system proxy by default; the mic stream must stay on loopback."""
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")  # nothing listens there
+    assert api.post("/voice/start")["state"] == "ready"
+    ticket = api.post("/session/ws-ticket")["ticket"]
+    with api.client.websocket_connect(f"{WS}/ws/voice?ticket={ticket}") as ws:
+        assert ws.receive_json()["type"] == "ready"

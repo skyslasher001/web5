@@ -15,7 +15,7 @@ const MODE_NAMES: Record<VoiceMode, string> = {
   wake: 'Wake word mode. Say "Hey Universe" first.',
   continuous: "Continuous mode. I'm listening.",
 };
-const HANGOVER_S = 0.8; // the silence that ended your last utterance
+const TRANSIT_S = 0.15; // the final event's trip from the voice process to here
 
 interface Answer {
   conversationId: string;
@@ -104,6 +104,7 @@ export class Voice {
       await this.client.startMic();
       store.set({ error: null });
     } catch (err) {
+      this.client.stopMic(); // nothing half-open stays behind
       await bridge().setMicConsent(false);
       throw err;
     }
@@ -116,7 +117,7 @@ export class Voice {
 
   /** Consent was withdrawn (kill switch, tray, another window): close the mic now. */
   consentChanged(mic: boolean): void {
-    if (!mic && useVoice.getState().micOn) this.client.stopMic();
+    if (!mic) this.client.stopMic(); // also cancels a mic that is still starting
   }
 
   shutdown(): void {
@@ -146,9 +147,12 @@ export class Voice {
   private async onVoiceEvent(e: VoiceEvent): Promise<void> {
     if (e.type === 'barge_in' && this.answer) this.answer.silenced = true;
     if (e.type === 'memo_full') await this.finishMemo(0);
+    if (e.type === 'closed') return this.socketClosed();
     if (e.type !== 'final') return;
     try {
-      await this.handle(String(e.text ?? ''), Number(e.audio_s ?? 0));
+      // Recorded since you finished that sentence: the utterance itself (its silence included) plus Whisper's time.
+      const since = Number(e.audio_s ?? 0) + Number(e.stt_s ?? 0);
+      await this.handle(String(e.text ?? ''), since);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       useVoice.getState().set({ error: message, state: 'idle' });
@@ -156,14 +160,32 @@ export class Voice {
     }
   }
 
-  async handle(text: string, audioS = 0): Promise<void> {
+  /** Voice restarted (new settings, a model installed) or stopped: reconnect, or close the mic — never leave it
+   *  open with nothing listening. */
+  private async socketClosed(): Promise<void> {
+    if (!useVoice.getState().micOn) return;
+    try {
+      await new Promise((r) => setTimeout(r, 500)); // a restart takes a moment
+      const status = await this.api.voiceStatus();
+      if (status.state === 'starting' || status.state === 'ready') {
+        await this.connect();
+        return;
+      }
+    } catch {
+      // fall through: turn the mic off
+    }
+    await this.micOff();
+    useVoice.getState().set({ error: 'Voice stopped, so the microphone was turned off.' });
+  }
+
+  async handle(text: string, spokenS = 0): Promise<void> {
     const store = useVoice.getState();
     const s = useUniverse.getState();
     const cmd = parseVoiceCommand(text);
     if (!cmd) return;
     if (store.memo) {
       // While recording, only memo commands count; everything else is the memo.
-      if (cmd.kind === 'memo' && cmd.action === 'stop') await this.finishMemo(audioS + HANGOVER_S);
+      if (cmd.kind === 'memo' && cmd.action === 'stop') await this.finishMemo(spokenS + TRANSIT_S);
       else if (cmd.kind === 'memo' && cmd.action === 'cancel') {
         this.client.cancelMemo();
         this.say('Memo discarded.');
@@ -310,7 +332,6 @@ export class Voice {
 
   private async ask(text: string): Promise<void> {
     this.conversationId ??= crypto.randomUUID();
-    this.client.newAnswer();
     this.answer = {
       conversationId: this.conversationId,
       agentId: 'core',

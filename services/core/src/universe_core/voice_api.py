@@ -303,7 +303,11 @@ async def voice_socket(websocket: WebSocket, ticket: str = "") -> None:
     await websocket.accept()
     try:
         async with connect(
-            f"{url}?ticket={voice.manager.ticket()}", max_size=4 * 1024 * 1024, compression=None, open_timeout=10
+            f"{url}?ticket={voice.manager.ticket()}",
+            max_size=4 * 1024 * 1024,
+            compression=None,
+            open_timeout=10,
+            proxy=None,  # loopback only: never via a system or corporate proxy (websockets reads env/registry)
         ) as upstream:
             down = asyncio.create_task(_relay_down(upstream, websocket))
             try:

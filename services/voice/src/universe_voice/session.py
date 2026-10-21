@@ -46,6 +46,7 @@ class VoiceSession:
     playing: bool = False  # the renderer is speaking an answer
     _held: bool = False
     _ptt: list[Audio] = field(default_factory=list)
+    _ptt_samples: int = 0
     _armed_until: float = 0.0
     _last_speech: float = 0.0
     _since_level: float = 0.0
@@ -67,18 +68,21 @@ class VoiceSession:
     def push(self, down: bool) -> None:
         if self.mode != "push_to_talk":
             return
-        if down and not self._held:
-            self._held, self._ptt = True, []
+        if down:  # a fresh press, even if a key-up was lost (focus left the window while you held it)
+            self._held, self._ptt, self._ptt_samples = True, [], 0
             self._interrupt()
             self.emit({"type": "state", "state": "listening"})
-        elif not down and self._held:
-            self._held = False
-            audio = np.concatenate(self._ptt) if self._ptt else np.zeros(0, dtype=np.float32)
-            self._ptt = []
-            if audio.size >= MIN_PTT_S * STT_RATE:
-                self._transcribe(audio, wake_needed=False)
-            else:
-                self.emit({"type": "state", "state": "idle"})
+        elif self._held:
+            self._release()
+
+    def _release(self) -> None:
+        self._held = False
+        audio = np.concatenate(self._ptt) if self._ptt else np.zeros(0, dtype=np.float32)
+        self._ptt, self._ptt_samples = [], 0
+        if audio.size >= MIN_PTT_S * STT_RATE:
+            self._transcribe(audio, wake_needed=False)
+        else:
+            self.emit({"type": "state", "state": "idle"})
 
     def set_playing(self, playing: bool) -> None:
         self.playing = playing
@@ -92,7 +96,11 @@ class VoiceSession:
             self.emit({"type": "level", "value": round(level(audio), 3)})
         if self.mode == "push_to_talk":
             if self._held:
-                self._ptt.append(audio)
+                room = int(self.endpointer.max_s * STT_RATE) - self._ptt_samples
+                self._ptt.append(audio[:room])
+                self._ptt_samples += min(room, audio.size)
+                if self._ptt_samples >= self.endpointer.max_s * STT_RATE:  # held too long: let go for you
+                    self._release()
             return
         for event in self.endpointer.feed(audio):
             if event.started:

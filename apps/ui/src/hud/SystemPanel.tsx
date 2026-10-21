@@ -81,9 +81,11 @@ function Releases() {
             color={
               rel.status === 'rolled_back'
                 ? tokens.color.slate
-                : rel.status === 'watching'
-                  ? tokens.color.amber
-                  : tokens.color.green
+                : rel.status === 'rollback_failed'
+                  ? tokens.color.danger
+                  : rel.status === 'watching'
+                    ? tokens.color.amber
+                    : tokens.color.green
             }
             label={rel.status}
           />
@@ -93,6 +95,12 @@ function Releases() {
               · {rel.tag.replace('universe/', '')}
               {rel.current ? ' · current' : ''}
             </span>
+            {rel.status === 'rollback_failed' && (
+              <span className="block text-danger" data-testid="release-rollback-failed">
+                The rollback conflicted with later edits, so nothing changed. Revert{' '}
+                {rel.tag.replace('universe/', '')} by hand, or resolve the conflict and roll back again.
+              </span>
+            )}
           </span>
           {rel.status !== 'rolled_back' && (
             <button

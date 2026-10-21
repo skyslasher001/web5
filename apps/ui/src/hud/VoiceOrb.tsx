@@ -71,11 +71,24 @@ function usePushToTalkKey() {
       held = false;
       voice()?.client.push(false);
     };
+    // Alt-Tab while holding Space never delivers the key-up: let go when the window loses focus.
+    const lost = () => {
+      if (!held) return;
+      held = false;
+      voice()?.client.push(false);
+    };
+    const hidden = () => {
+      if (document.hidden) lost();
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', lost);
+    document.addEventListener('visibilitychange', hidden);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', lost);
+      document.removeEventListener('visibilitychange', hidden);
     };
   }, []);
 }

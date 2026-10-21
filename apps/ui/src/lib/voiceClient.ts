@@ -107,13 +107,15 @@ export class VoiceClient {
   private nextAt = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private speechSeq = 0;
-  private muted = new Set<string>(); // speech ids cut off by barge-in or stop
+  private mutedThrough = 0; // speech ids up to this one were cut off (stop or barge-in): never played late
   private firstAudioWanted: number | null = null; // performance.now() at end of speech
   // capture
   private stream: MediaStream | null = null;
   private mic: AudioContext | null = null;
   private node: AudioWorkletNode | null = null;
   private memoFrames: Float32Array[] = [];
+  private micGen = 0; // bumped by stopMic: a start still in flight must not open the mic after it
+  private starting: Promise<void> | null = null;
 
   constructor(private readonly socketUrl: () => Promise<string>) {}
 
@@ -165,7 +167,7 @@ export class VoiceClient {
     if (typeof data !== 'string') {
       const header = this.pendingAudio;
       this.pendingAudio = null;
-      if (header && !this.muted.has(String(header.id)))
+      if (header && Number(String(header.id).slice(1)) > this.mutedThrough)
         this.play(fromPcm16(data), Number(header.rate) || 24000);
       return;
     }
@@ -221,7 +223,7 @@ export class VoiceClient {
 
   /** Stop talking now: drop the queue, tell the voice process to stop synthesising. */
   stopSpeaking(): void {
-    for (let i = 1; i <= this.speechSeq; i++) this.muted.add(`s${i}`);
+    this.mutedThrough = this.speechSeq;
     this.send({ type: 'stop' });
     this.stopPlayback();
   }
@@ -279,11 +281,6 @@ export class VoiceClient {
     this.emit({ type: 'playback_ended' });
   }
 
-  /** A new answer is starting: earlier cut-offs don't apply to it. */
-  newAnswer(): void {
-    this.muted.clear();
-  }
-
   // ---------- listening ----------
 
   setMode(mode: VoiceMode): void {
@@ -296,15 +293,37 @@ export class VoiceClient {
     this.send({ type: 'push', down });
   }
 
-  async startMic(): Promise<void> {
-    if (this.stream) return;
-    this.stream = await navigator.mediaDevices.getUserMedia({
+  /** One start at a time (a double click must not open two streams); stopMic cancels one still in flight. */
+  startMic(): Promise<void> {
+    if (this.stream) return Promise.resolve();
+    this.starting ??= this.openMic().finally(() => {
+      this.starting = null;
+    });
+    return this.starting;
+  }
+
+  private async openMic(): Promise<void> {
+    const gen = ++this.micGen;
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     });
-    this.mic = new AudioContext({ sampleRate: CAPTURE_RATE });
-    await this.mic.audioWorklet.addModule(new URL('./voice-capture.worklet.js', document.baseURI).href);
-    const source = this.mic.createMediaStreamSource(this.stream);
-    this.node = new AudioWorkletNode(this.mic, 'voice-capture');
+    const mic = new AudioContext({ sampleRate: CAPTURE_RATE });
+    const abandon = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      void mic.close();
+    };
+    if (gen !== this.micGen) return abandon(); // turned off while the browser was asking for the mic
+    try {
+      await mic.audioWorklet.addModule(new URL('./voice-capture.worklet.js', document.baseURI).href);
+    } catch (err) {
+      abandon();
+      throw err;
+    }
+    if (gen !== this.micGen) return abandon();
+    this.stream = stream;
+    this.mic = mic;
+    const source = mic.createMediaStreamSource(stream);
+    this.node = new AudioWorkletNode(mic, 'voice-capture');
     this.node.port.onmessage = (e: MessageEvent<Float32Array>) => {
       const frame = e.data;
       if (useVoice.getState().memo) {
@@ -319,6 +338,7 @@ export class VoiceClient {
   }
 
   stopMic(): void {
+    this.micGen++;
     this.node?.disconnect();
     this.node = null;
     this.stream?.getTracks().forEach((t) => t.stop());

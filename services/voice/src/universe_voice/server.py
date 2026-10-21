@@ -74,6 +74,7 @@ class Connection:
         self.listen_pool = ThreadPoolExecutor(1, thread_name_prefix="voice-listen")
         self.speak_pool = ThreadPoolExecutor(1, thread_name_prefix="voice-speak")
         self.cancel_speech = threading.Event()
+        self._speech_gen = 0  # bumped by `stop`: speech queued before it is dropped, not spoken late
         self.session: VoiceSession | None = None
         if engines.stt is not None:
             self.session = VoiceSession(
@@ -160,16 +161,20 @@ class Connection:
         elif kind == "playing" and session:
             session.set_playing(bool(msg.get("playing")))
         elif kind == "stop":
+            self._speech_gen += 1
             self.cancel_speech.set()
         elif kind == "speak":
             self.cancel_speech.clear()
-            self._submit(self.speak_pool, self._speak, str(msg.get("text", ""))[:4000], msg)
+            self._submit(self.speak_pool, self._speak, str(msg.get("text", ""))[:4000], msg, self._speech_gen)
         else:
             self.emit({"type": "error", "message": f"unknown control {kind!r}"})
 
-    def _speak(self, text: str, msg: dict[str, Any]) -> None:
+    def _speak(self, text: str, msg: dict[str, Any], gen: int = 0) -> None:
         tts = self.engines.tts
         speech_id = str(msg.get("id", ""))
+        if gen != self._speech_gen:  # queued before a `stop`: the answer it belonged to was cut off
+            self.emit({"type": "speech_end", "id": speech_id, "chunks": 0, "cancelled": True})
+            return
         if tts is None:
             self.emit({"type": "error", "id": speech_id, "message": "no text-to-speech model is installed"})
             return
@@ -178,9 +183,10 @@ class Connection:
             voice = self.engines.default_voice
         seq = 0
         for audio in tts.speak(text, voice, float(msg.get("speed", 1.0))):
-            if self.cancel_speech.is_set():
+            if self.cancel_speech.is_set() or gen != self._speech_gen:
                 break
             self.emit({"type": "audio", "id": speech_id, "seq": seq, "rate": tts.rate})
             self.emit(float_to_pcm16(audio))
             seq += 1
-        self.emit({"type": "speech_end", "id": speech_id, "chunks": seq, "cancelled": self.cancel_speech.is_set()})
+        cancelled = self.cancel_speech.is_set() or gen != self._speech_gen
+        self.emit({"type": "speech_end", "id": speech_id, "chunks": seq, "cancelled": cancelled})

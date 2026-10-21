@@ -138,7 +138,9 @@ export interface ReleaseInfo {
   created_at: string;
   proposal_id: string | null;
   title: string;
-  status: 'watching' | 'good' | 'rolled_back';
+  /** rollback_failed: the revert conflicted with later edits, so nothing changed and you roll back by hand. */
+  status: 'watching' | 'good' | 'rolled_back' | 'rollback_failed';
+  rollback_reason?: string;
   current: boolean;
 }
 

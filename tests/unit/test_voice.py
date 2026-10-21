@@ -354,3 +354,53 @@ def test_voice_config_round_trips_and_survives_junk() -> None:
     assert load_config("not json") == VoiceConfig()
     assert load_config('{"mode": "continuous", "unknown": 1}').mode == "continuous"
     assert load_config("[1, 2]") == VoiceConfig()
+
+
+# ---------- review 2026-10-21: regressions ----------
+
+
+def test_a_lost_key_up_doesnt_record_forever() -> None:
+    """Holding Space and Alt-Tabbing away lost the key-up: the buffer grew without limit and a later press was
+    ignored, so ten minutes of room audio became one command."""
+    s, events, _ = session(["first", "second"])
+    s.push(True)
+    s.feed(tone(2.0))  # ...key-up lost; you come back and press again
+    s.push(True)  # a fresh start: what was recorded before is dropped
+    s.feed(tone(1.0))
+    s.push(False)
+    assert finals(events) == ["first"] and s.stt.heard == [pytest.approx(1.0, abs=0.01)]  # type: ignore[attr-defined]
+    s.push(True)
+    s.feed(tone(s.endpointer.max_s + 5))  # held far too long: let go automatically at the cap
+    assert len(finals(events)) == 2 and s.stt.heard[-1] <= s.endpointer.max_s + 0.1  # type: ignore[attr-defined]
+
+
+def test_speech_queued_before_stop_is_never_spoken() -> None:
+    """`stop` then a new `speak` used to clear the flag, so the old answer's queued sentences played first."""
+    import json as _json
+
+    from starlette.testclient import TestClient
+
+    from tests.support.fake_voice import FakeTTS
+    from universe_voice.server import Engines, create_app
+
+    key = b"k" * 32
+    tts = FakeTTS(delay_s=0.15)
+    app = create_app(Engines(stt=FakeSTT(), tts=tts, vad=EnergyVAD), key)
+    with TestClient(app).websocket_connect(f"/ws?ticket={tickets.mint(key)}") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        for n in (1, 2, 3):
+            ws.send_json({"type": "speak", "text": "One. Two. Three.", "id": f"old{n}"})
+        ws.send_json({"type": "stop"})
+        ws.send_json({"type": "speak", "text": "New answer.", "id": "new"})
+        heard: list[str] = []
+        while True:
+            message = ws.receive()
+            if message.get("text") is None:
+                continue
+            event = _json.loads(message["text"])
+            if event["type"] == "audio":
+                heard.append(event["id"])
+            if event["type"] == "speech_end" and event["id"] == "new":
+                break
+    assert "new" in heard
+    assert "old2" not in heard and "old3" not in heard  # queued before the stop: dropped, not spoken late

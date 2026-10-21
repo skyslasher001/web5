@@ -147,3 +147,18 @@ def test_a_report_forge_cant_reproduce_changes_nothing(forge_api: tuple[Api, Pat
         (api.client.app.state.ctx.forge.root / "worktrees").iterdir()  # type: ignore[attr-defined]
     )
     assert head(repo)
+
+
+def test_a_proposal_being_verified_cannot_be_rejected(forge_api: tuple[Api, Path]) -> None:
+    """Review 2026-10-21: rejecting mid-verification removed the worktree, then the verify thread set the
+    proposal back to 'draft' — a rejected proposal came back with no worktree."""
+    api, _repo = forge_api
+    issue = api.post("/forge/reports", {"text": "add(1, 1) returns 0 instead of 2"}, 201)
+    task = api.post(f"/forge/issues/{issue['id']}/fix", None, 202)
+    assert wait_task(api, task["task_id"])["status"] == "done"
+    [proposal] = api.get("/forge/proposals")
+    forge = api.client.app.state.ctx.forge  # type: ignore[attr-defined]
+    forge.update(proposal["id"], status="verifying")  # as while forge.check runs
+    refused = api.client.post(f"/api/v1/forge/proposals/{proposal['id']}/reject", headers=AUTH)
+    assert refused.status_code == 409 and "being verified" in refused.text
+    assert (forge.root / "worktrees" / proposal["id"]).exists()  # the checks still have their worktree
