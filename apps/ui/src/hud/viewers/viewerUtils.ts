@@ -75,6 +75,49 @@ export function markdownToHtml(source: string): string {
   return markdown.parse(source, { async: false });
 }
 
+/** Attributes that make the browser load a URL as soon as the element is rendered. */
+const LOADING_ATTRS = new Set(['src', 'srcset', 'poster', 'background', 'href', 'xlink:href']);
+
+/** True when loading `url` stays on this machine: a blob: or data: URL, or a path relative to the app. */
+function isLocalUrl(url: string): boolean {
+  // The URL parser ignores tabs and newlines anywhere and leading spaces and control characters.
+  // eslint-disable-next-line no-control-regex
+  const u = url.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+/, '');
+  if (/^(blob|data):/i.test(u)) return true;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[\\/]{2}/.test(u); // no scheme, no //host or \\share
+}
+
+/** The URLs in a srcset ("a.png 1x, data:…,… 2x": a URL runs to whitespace, then descriptors to a comma). */
+function srcsetUrls(value: string): string[] {
+  const urls: string[] = [];
+  let i = 0;
+  while (i < value.length) {
+    while (i < value.length && /[\s,]/.test(value[i]!)) i++;
+    let end = i;
+    while (end < value.length && !/\s/.test(value[end]!)) end++;
+    const url = value.slice(i, end);
+    if (url) urls.push(url.replace(/,+$/, ''));
+    i = end;
+    if (!url.endsWith(',')) while (i < value.length && value[i] !== ',') i++;
+  }
+  return urls;
+}
+
+/**
+ * Whether the sanitizer keeps this attribute: nothing in a note may make the viewer fetch from another
+ * machine (a tracking pixel; the dev server has no CSP to stop it). Links stay: following one is a click.
+ */
+export function keepAttribute(tag: string, name: string, value: string): boolean {
+  if (name === 'style') return !/(url|image|image-set)\s*\(|\\|@import/i.test(value);
+  if (!LOADING_ATTRS.has(name) || (tag === 'a' && name === 'href')) return true;
+  if (name === 'srcset') return srcsetUrls(value).every(isLocalUrl);
+  return isLocalUrl(value);
+}
+
+DOMPurify.addHook?.('uponSanitizeAttribute', (node, data) => {
+  if (!keepAttribute(node.nodeName.toLowerCase(), data.attrName, data.attrValue)) data.keepAttr = false;
+});
+
 /** Markdown → sanitized HTML. `[[Wikilinks]]` become links the viewer follows. */
 export function renderMarkdown(source: string): string {
   return DOMPurify.sanitize(markdownToHtml(source), {
