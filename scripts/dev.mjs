@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyDotEnv, killCommand } from './dev-lib.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const prod = process.argv.includes('--prod');
@@ -15,20 +16,11 @@ const electronArgs = process.argv.includes('--') ? process.argv.slice(process.ar
 const win = process.platform === 'win32';
 const UI_URL = 'http://127.0.0.1:5173';
 const children = [];
+const viaShell = new Set(); // children spawned with shell: true (on Windows: a cmd.exe in front of them)
 
 function loadDotEnv() {
   const file = join(root, '.env');
-  if (!existsSync(file)) return;
-  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#') || !line.includes('=')) continue;
-    const [key, ...rest] = line.split('=');
-    const value = rest
-      .join('=')
-      .trim()
-      .replace(/^["']|["']$/g, '');
-    if (process.env[key.trim()] === undefined) process.env[key.trim()] = value;
-  }
+  if (existsSync(file)) applyDotEnv(readFileSync(file, 'utf8'), process.env);
 }
 
 function step(label, cmd, args) {
@@ -56,7 +48,12 @@ async function waitFor(url, timeoutMs = 30_000) {
 }
 
 function shutdown(code = 0) {
-  for (const child of children) if (child.exitCode === null) child.kill();
+  for (const child of children) {
+    if (child.exitCode !== null) continue;
+    const tree = killCommand(child.pid, process.platform, viaShell.has(child));
+    if (tree) spawnSync(tree[0], tree[1], { stdio: 'ignore' });
+    else child.kill();
+  }
   process.exit(code);
 }
 
@@ -76,6 +73,7 @@ if (!prod) {
     shell: win,
   });
   children.push(vite);
+  if (win) viaShell.add(vite);
   vite.on('exit', (code) => code && shutdown(code));
   await waitFor(UI_URL);
 }
