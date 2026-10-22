@@ -62,7 +62,9 @@ export class CommandBar {
       if (this.win === win) this.win = null;
       if (!win.isDestroyed()) win.destroy();
     };
-    win.webContents.on('render-process-gone', (_event, details) => discard('render-process-gone', { ...details }));
+    win.webContents.on('render-process-gone', (_event, details) =>
+      discard('render-process-gone', { ...details }),
+    );
     win.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
       if (isMainFrame && code !== -3) discard('did-fail-load', { code, description }); // -3: aborted, not failed
     });
@@ -120,7 +122,8 @@ export class CommandBar {
       // Report the failed attempt, but keep the working shortcut as the status.
       return { ...attempt, error: `${error} ${previous.accelerator} still works.` };
     }
-    if (registered && previous.registered && previous.accelerator) globalShortcut.unregister(previous.accelerator);
+    if (registered && previous.registered && previous.accelerator)
+      globalShortcut.unregister(previous.accelerator);
     this.hotkey = attempt;
     return attempt;
   }
