@@ -10,6 +10,7 @@ const workers: FakeWorker[] = [];
 
 class FakeWorker {
   onmessage: ((e: MessageEvent<LayoutResponse>) => void) | null = null;
+  onerror: ((e: ErrorEvent) => void) | null = null;
   constructor() {
     workers.push(this);
   }
@@ -114,5 +115,42 @@ describe('layout controller', () => {
     expect(useLayout.getState().current).toBe(shown);
     c.dispose();
     vi.useRealTimers();
+  });
+
+  it('settles a computation cut short by dispose, so the next layout still computes', async () => {
+    const c = new LayoutController({} as CoreApi);
+    void c.show('graph', sceneOf(3), 1);
+    await flush();
+    expect(useLayout.getState().computing).toBe('graph');
+    c.dispose(); // React StrictMode (or leaving the view) while the worker computes
+    await flush();
+    expect(useLayout.getState().computing).toBeNull(); // no "Arranging…" left behind
+    posted.length = 0;
+    void c.show('graph', sceneOf(4), 2);
+    await flush();
+    expect(posted).toHaveLength(1);
+    workers.at(-1)!.answer();
+    await flush();
+    expect(useLayout.getState().current?.sceneVersion).toBe(2);
+    expect(useLayout.getState().computing).toBeNull();
+    c.dispose();
+  });
+
+  it('says so when the worker fails, and computes again on the next request', async () => {
+    const c = new LayoutController({} as CoreApi);
+    void c.show('graph', sceneOf(3), 1);
+    await flush();
+    workers.at(-1)!.onerror?.({ message: 'out of memory' } as ErrorEvent);
+    await flush();
+    expect(useLayout.getState().computing).toBeNull();
+    expect(useLayout.getState().notice).toContain('out of memory');
+    posted.length = 0;
+    void c.show('graph', sceneOf(4), 2);
+    await flush();
+    expect(posted).toHaveLength(1);
+    workers.at(-1)!.answer();
+    await flush();
+    expect(useLayout.getState().current?.sceneVersion).toBe(2);
+    c.dispose();
   });
 });

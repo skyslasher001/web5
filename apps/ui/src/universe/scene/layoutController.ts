@@ -27,7 +27,7 @@ const SEMANTIC_POLL_MS = 3000;
 export class LayoutController {
   private worker: Worker | null = null;
   private nextId = 1;
-  private pending = new Map<number, (r: LayoutResponse) => void>();
+  private pending = new Map<number, { resolve: (r: LayoutResponse) => void; reject: (e: Error) => void }>();
   private cache = new Map<string, PlacedLayout>();
   private wanted: { kind: Layout; scene: SceneData; version: number } | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
@@ -35,6 +35,8 @@ export class LayoutController {
   // bump the scene every second or two, and a Graph layout at 50k takes seconds).
   private running = false;
   private next: { kind: LayoutKind; scene: SceneData; version: number } | null = null;
+  // Bumped by dispose(): a drain or Semantic fetch from before it leaves the state alone.
+  private generation = 0;
 
   constructor(private readonly api: CoreApi) {}
 
@@ -42,8 +44,14 @@ export class LayoutController {
     if (!this.worker) {
       this.worker = new Worker(new URL('./layout.worker.ts', import.meta.url), { type: 'module' });
       this.worker.onmessage = (event: MessageEvent<LayoutResponse>) => {
-        this.pending.get(event.data.id)?.(event.data);
+        this.pending.get(event.data.id)?.resolve(event.data);
         this.pending.delete(event.data.id);
+      };
+      // A crashed worker (out of memory, a load error) never answers: fail what waits, start fresh next time.
+      this.worker.onerror = (event: ErrorEvent) => {
+        this.worker?.terminate();
+        this.worker = null;
+        this.failPending(new Error(event.message || 'the layout worker stopped'));
       };
     }
     return this.worker;
@@ -53,14 +61,15 @@ export class LayoutController {
     const id = this.nextId++;
     // Typed arrays are copied (structured clone), so the scene on the main thread stays intact.
     const request: LayoutRequest = { id, kind, input: layoutInput(scene) };
-    return new Promise((resolve) => {
-      this.pending.set(id, resolve);
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
       this.ensureWorker().postMessage(request);
     });
   }
 
   /** Show `kind` for this scene. Results that arrive after a newer request are dropped. */
   async show(kind: Layout, scene: SceneData, version: number): Promise<void> {
+    const generation = this.generation;
     this.wanted = { kind, scene, version };
     if (this.poll) clearTimeout(this.poll);
     this.poll = null;
@@ -113,6 +122,7 @@ export class LayoutController {
         this.poll = setTimeout(() => void this.show('semantic', scene, version), SEMANTIC_POLL_MS);
       }
     } catch (err) {
+      if (generation !== this.generation || !this.isWanted('semantic', version)) return;
       useLayout.setState({
         computing: null,
         notice: `Semantic layout failed to load: ${err instanceof Error ? err.message : String(err)}`,
@@ -122,17 +132,34 @@ export class LayoutController {
 
   private async drain(): Promise<void> {
     this.running = true;
+    const generation = this.generation;
     try {
-      while (this.next) {
+      while (this.next && generation === this.generation) {
         const job = this.next;
         this.next = null;
         if (!this.isWanted(job.kind, job.version)) continue; // superseded while it waited
-        const response = await this.compute(job.kind, job.scene);
-        this.accept(job.kind, job.version, response.result, null);
+        try {
+          const response = await this.compute(job.kind, job.scene);
+          this.accept(job.kind, job.version, response.result, null);
+        } catch (err) {
+          if (generation !== this.generation) return; // disposed meanwhile
+          if (this.isWanted(job.kind, job.version)) {
+            useLayout.setState({
+              computing: null,
+              notice: `The layout failed: ${err instanceof Error ? err.message : String(err)}`,
+            });
+          }
+        }
       }
     } finally {
-      this.running = false;
+      if (generation === this.generation) this.running = false; // else a drain after dispose() owns it
     }
+  }
+
+  private failPending(err: Error): void {
+    const waiting = [...this.pending.values()];
+    this.pending.clear();
+    for (const p of waiting) p.reject(err);
   }
 
   /** Core finished a Semantic layout (`layout.updated`): drop the cached one so it's fetched again. */
@@ -171,8 +198,13 @@ export class LayoutController {
   }
 
   dispose(): void {
+    this.generation++;
+    this.running = false;
     if (this.poll) clearTimeout(this.poll);
+    this.poll = null;
     this.worker?.terminate();
     this.worker = null;
+    this.failPending(new Error('the layout was cancelled'));
+    if (useLayout.getState().computing) useLayout.setState({ computing: null });
   }
 }
