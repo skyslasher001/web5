@@ -31,7 +31,7 @@ import { createErrorQueue } from './errorQueue';
 import { parseFocusTarget } from './focusTarget';
 import { createLogger } from './logger';
 import { isAllowedNavigation } from './navigation';
-import { resolvePaths } from './paths';
+import { corePortFrom, envValue, resolvePaths } from './paths';
 import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
 import { MicConsent, mediaAllowed } from './protected/consent';
 import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
@@ -42,15 +42,16 @@ import { insideFolder } from './vaultAccess';
 
 const env = process.env;
 const paths = resolvePaths(__dirname, env, process.platform);
-const corePort = Number(env.UNIVERSE_CORE_PORT ?? 47821);
+const corePort = corePortFrom(env);
 const coreUrl = `http://127.0.0.1:${corePort}`;
-const devUiUrl = env.UNIVERSE_UI_URL; // set by `pnpm dev` (Vite); otherwise the built UI via app://
+const devUiUrl = envValue(env, 'UNIVERSE_UI_URL'); // set by `pnpm dev` (Vite); otherwise the built UI via app://
 const sessionToken = randomBytes(32).toString('base64url');
 const controlToken = randomBytes(32).toString('base64url');
 const log = createLogger(join(paths.logDir, 'desktop.jsonl'), [sessionToken, controlToken]);
 const allowedOrigins = ['app://universe', ...(devUiUrl ? [new URL(devUiUrl).origin] : [])];
 
-if (env.UNIVERSE_USER_DATA_DIR) app.setPath('userData', env.UNIVERSE_USER_DATA_DIR);
+const userDataDir = envValue(env, 'UNIVERSE_USER_DATA_DIR');
+if (userDataDir) app.setPath('userData', userDataDir);
 
 // Local-first: stop Chromium's own background traffic (component updates, field trials, etc.).
 app.commandLine.appendSwitch('disable-background-networking');

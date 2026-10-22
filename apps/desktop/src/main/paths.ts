@@ -17,15 +17,25 @@ export interface AppPaths {
   basePython: string;
 }
 
+/** An environment variable's value, or undefined when it is unset or empty (`KEY=` in .env). */
+export function envValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = env[key]?.trim();
+  return value ? value : undefined;
+}
+
+export function corePortFrom(env: NodeJS.ProcessEnv): number {
+  return Number(envValue(env, 'UNIVERSE_CORE_PORT') ?? 47821);
+}
+
 export function resolvePaths(mainDir: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): AppPaths {
   // mainDir is apps/desktop/dist
-  const repoRoot = env.UNIVERSE_REPO_ROOT ?? resolve(mainDir, '..', '..', '..');
-  const dataDir = env.UNIVERSE_DATA_DIR ?? join(repoRoot, '.dev', 'data');
+  const repoRoot = envValue(env, 'UNIVERSE_REPO_ROOT') ?? resolve(mainDir, '..', '..', '..');
+  const dataDir = envValue(env, 'UNIVERSE_DATA_DIR') ?? join(repoRoot, '.dev', 'data');
   const readFile = (p: string) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
   return {
     repoRoot,
     dataDir,
-    vaultDir: env.UNIVERSE_VAULT_DIR ?? join(repoRoot, '.dev', 'vault'),
+    vaultDir: envValue(env, 'UNIVERSE_VAULT_DIR') ?? join(repoRoot, '.dev', 'vault'),
     logDir: join(dataDir, 'logs'),
     uiDist: join(repoRoot, 'apps', 'ui', 'dist'),
     safeModeDir: join(mainDir, 'safe-mode'),
