@@ -66,18 +66,28 @@ export function detectQuality(renderer: string | null, webgl: boolean): Quality 
   return 'balanced';
 }
 
-/** The GPU's name as WebGL reports it (null when the browser hides it). */
+let renderer: { name: string | null } | null = null;
+
+/**
+ * The GPU's name as WebGL reports it (null when the browser hides it). Asked once: each probe is a WebGL
+ * context, and the browser keeps only a few alive (the oldest, maybe the universe's, is dropped).
+ */
 export function webglRenderer(): string | null {
+  if (renderer) return renderer.name;
+  let name: string | null = null;
   try {
-    const gl =
-      document.createElement('canvas').getContext('webgl2') ??
-      document.createElement('canvas').getContext('webgl');
-    if (!gl) return null;
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    }
   } catch {
-    return null;
+    name = null;
   }
+  renderer = { name };
+  return name;
 }
 
 /** One step down, never below Lite. */
