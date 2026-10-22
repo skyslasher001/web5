@@ -73,6 +73,21 @@ export function distanceAt(fraction: number, min: number, max: number): number {
  * The galaxy the camera has zoomed into without selecting it: the orbit target is inside the galaxy and the
  * camera is close enough that its stars fill the view. -1 when none. Only meaningful in the Project layout.
  */
+/**
+ * The next zoom goal. `by` scales the goal already in flight, so quick wheel notches add up; `to` is a
+ * point on the 0–1 log scale (the zoom slider).
+ */
+export function zoomGoal(
+  request: { by: number } | { to: number },
+  inFlight: number | null,
+  distance: number,
+  min: number,
+  max: number,
+): number {
+  if ('to' in request) return clamp(distanceAt(request.to, min, max), min, max);
+  return clamp((inFlight ?? distance) * request.by, min, max);
+}
+
 export function focusGalaxy(
   target: V3,
   distance: number,

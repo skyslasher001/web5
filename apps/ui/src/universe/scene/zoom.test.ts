@@ -8,6 +8,7 @@ import {
   wheelFactor,
   zoomAnchor,
   zoomFraction,
+  zoomGoal,
   zoomLimits,
 } from './zoom';
 
@@ -86,5 +87,18 @@ describe('smooth zoom', () => {
     expect(focusGalaxy({ x: 2, y: 0, z: 0 }, 400, centres, radii)).toBe(-1); // too far away to be "in" it
     expect(focusGalaxy({ x: 99, y: 0, z: 1 }, 20, centres, radii)).toBe(1);
     expect(focusGalaxy({ x: 50, y: 0, z: 0 }, 10, centres, radii)).toBe(-1); // between galaxies
+  });
+});
+
+describe('zoom goals', () => {
+  it('adds up wheel notches, but puts the slider exactly where it points while a zoom is in flight', () => {
+    const { min, max } = { min: 1, max: 10_000 };
+    // A zoom is gliding from 400 toward 100: another notch scales the goal, not the current distance.
+    expect(zoomGoal({ by: 0.5 }, 100, 400, min, max)).toBe(50);
+    // Dragging the slider to the middle (distance 100) lands on 100, however far the glide got.
+    expect(zoomGoal({ to: 0.5 }, 100, 400, min, max)).toBeCloseTo(100);
+    expect(zoomGoal({ to: 0.5 }, 25, 400, min, max)).toBeCloseTo(100);
+    expect(zoomGoal({ to: 0.5 }, null, 400, min, max)).toBeCloseTo(100);
+    expect(zoomGoal({ by: 1e9 }, null, 400, min, max)).toBe(max);
   });
 });

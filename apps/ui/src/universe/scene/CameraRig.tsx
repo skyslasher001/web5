@@ -13,12 +13,12 @@ import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
 import {
   clipPlanes,
-  distanceAt,
   easeToward,
   focusGalaxy,
   wheelFactor,
   zoomAnchor,
   zoomFraction,
+  zoomGoal,
   zoomLimits,
 } from './zoom';
 
@@ -69,12 +69,12 @@ export function CameraRig() {
     c.screenSpacePanning = true;
     controls.current = c;
 
-    // Start (or retarget) a zoom: scale the goal distance and keep `anchor` fixed on screen.
-    const zoomBy = (factor: number, anchor: Vector3) => {
+    // Start (or retarget) a zoom: move the goal distance and keep `anchor` fixed on screen.
+    const zoomBy = (request: { by: number } | { to: number }, anchor: Vector3) => {
       flight.current = null; // zooming takes over from a flight
       const { min, max } = limits();
-      const from = zoom.current?.goal ?? camera.position.distanceTo(c.target);
-      zoom.current = { goal: Math.min(max, Math.max(min, from * factor)), anchor };
+      const distance = camera.position.distanceTo(c.target);
+      zoom.current = { goal: zoomGoal(request, zoom.current?.goal ?? null, distance, min, max), anchor };
     };
     // The point under the pointer: the item it's on, else where the pointer ray meets the plane through the
     // orbit target, facing the camera.
@@ -97,14 +97,12 @@ export function CameraRig() {
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoomBy(wheelFactor(e.deltaY, e.deltaMode, e.ctrlKey), pointUnder(e));
+      zoomBy({ by: wheelFactor(e.deltaY, e.deltaMode, e.ctrlKey) }, pointUnder(e));
     };
     gl.domElement.addEventListener('wheel', onWheel, { passive: false });
-    rig.zoomBy = (factor) => zoomBy(factor, c.target.clone());
-    rig.zoomTo = (fraction) => {
-      const { min, max } = limits();
-      zoomBy(distanceAt(fraction, min, max) / camera.position.distanceTo(c.target), c.target.clone());
-    };
+    rig.zoomBy = (factor) => zoomBy({ by: factor }, c.target.clone());
+    // The slider sets the goal outright: dragging it mid-glide must not compound on the goal in flight.
+    rig.zoomTo = (fraction) => zoomBy({ to: fraction }, c.target.clone());
     rig.zoom = () => {
       const { min, max } = limits();
       const distance = zoom.current?.goal ?? camera.position.distanceTo(c.target);
