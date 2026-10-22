@@ -87,7 +87,17 @@ def scrubbed_env(tree: Path, home: Path) -> dict[str, str]:
 def run(name: str, command: list[str], cwd: Path, env: dict[str, str], timeout: float) -> CheckResult:
     started = time.monotonic()
     try:
-        done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+        done = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
         ok, output = done.returncode == 0, (done.stdout + done.stderr)
     except subprocess.TimeoutExpired as exc:
         ok, output = False, f"timed out after {timeout:.0f} s\n{exc.stdout or ''}"

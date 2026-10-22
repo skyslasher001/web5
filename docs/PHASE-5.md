@@ -1,9 +1,8 @@
 # Phase 5: Forge + Sentinel v1
 
 Status: **delivered 2026-10-14, reviewed 2026-10-21, waiting for your approval.** The protected-core patch is
-applied ([proposal](proposals/phase-5-protected-core.md), `df2af16`). The review's protected-core fixes are a new
-proposal, [review-fixes-protected](proposals/review-fixes-protected.md). **Apply it before you approve a Forge
-change**: without it, applying one replaces your `.venv` with a dangling link.
+applied ([proposal](proposals/phase-5-protected-core.md), `df2af16`), and so are the review's protected-core fixes
+([review-fixes-protected](proposals/review-fixes-protected.md), 2026-10-22). Forge changes can be approved.
 
 Forge keeps UNIVERSE healthy. It notices what's broken (errors, failing background jobs, your bug reports),
 reproduces it with a failing test, fixes it in its own git worktree, proves the fix and asks you. Nothing
@@ -73,13 +72,7 @@ same test checks that the Forge panel says what's missing and that **Fix it** is
 
 From [PHASE-4.md](PHASE-4.md#setup), then:
 
-1. The protected-core patch is applied (2026-10-21). Apply the review fixes before approving a Forge change:
-   ```sh
-   git apply docs/proposals/review-fixes-protected.patch
-   uv run pytest tests/protected tests/unit/test_forge_core.py
-   pnpm exec vitest run apps/desktop
-   git add -A && git commit -m "Apply the review-fixes protected-core patch"
-   ```
+1. The protected-core patch (2026-10-21) and the review fixes (2026-10-22) are applied. Nothing to do.
 2. **Tell UNIVERSE where its code is:** `UNIVERSE_REPO_DIR=C:\path\to\web5` (the git checkout the app runs
    from). Without it, Forge says so and stays off.
 3. **A large local model with tools** for Forge (`local-large`; System → Recommended models suggests one for
@@ -167,11 +160,9 @@ for a rare, owner-initiated apply; restructuring the lock was judged riskier tha
   in Phase 11, when there's an eval set to run).
 - **Applying restarts Core only.** A fix in the UI or Electron main needs `pnpm build` and an app restart to
   show (the supervisor doesn't rebuild the app). Packaged installs and a runtime checkout come in Phase 12.
-- **The watch looks at crashes and safe mode,** not error rates or performance. Until the review-fixes patch is
-  applied, two restarts you ask for during the watch also count as crashes and roll the release back.
-- **A rollback that conflicts with your later edits** (the same lines) is left to you. With the review-fixes
-  patch, it changes nothing and shows `rollback_failed` in System → Releases. Without it, the checkout is left
-  mid-revert.
+- **The watch looks at crashes and safe mode,** not error rates or performance. Restarts you ask for don't count.
+- **A rollback that conflicts with your later edits** (the same lines) is left to you. It changes nothing and shows
+  `rollback_failed` in System → Releases; revert by hand.
 - **Schema migrations:** Sentinel flags them high risk, and Core snapshots the database before migrating.
   There's no check that a restic backup is recent before applying yet.
 - **Not built yet from SPEC §9:** a scheduled test run that files failing tests as issues (the issue type
@@ -188,6 +179,6 @@ injection defenses. Done when a deep-research report with cited sources lands in
 phase that goes online, through the egress gate, so expect a privacy and egress review first.
 
 Useful from you now:
-- apply the [review fixes](proposals/review-fixes-protected.md), then approve Phase 5;
+- approve Phase 5;
 - try the demo on the scratch repository, then point Forge at a real issue;
 - run `pnpm bench:universe` on your PC if you haven't yet (Phase 4).

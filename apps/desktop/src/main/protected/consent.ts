@@ -75,6 +75,8 @@ export class MicConsent {
   /** The kill switch, a closed window, or the tray: off now, no questions. */
   revoke(via: ConsentVia): boolean {
     const was = this.mic;
+    // The page that was trusted is gone (reload, crash) or the kill switch fired: the next "on" asks again.
+    if (via === 'killswitch' || via === 'window') this.confirmed = false;
     this.set(false, via);
     return was;
   }

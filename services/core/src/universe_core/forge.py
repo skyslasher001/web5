@@ -37,6 +37,10 @@ IssueStatus = Literal["open", "working", "proposed", "fixed", "ignored"]
 ProposalStatus = Literal["draft", "verifying", "failed", "ready", "approved", "applied", "rolled_back", "rejected"]
 
 
+# Links verification makes in a worktree (forge_verify): never part of a proposal.
+VERIFY_LINKS = (":(exclude).venv", ":(exclude,glob)**/node_modules", ":(exclude)node_modules")
+
+
 class ForgeError(Exception):
     """A refused or failed Forge operation, with a message fit for the agent and for you."""
 
@@ -138,6 +142,8 @@ def git(repo: Path, *args: str, timeout: float = 120.0) -> str:
             [exe, "-C", str(repo), *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",  # git output is UTF-8; Windows' default (cp1252) can't decode it (same as the supervisor)
+            errors="replace",
             timeout=timeout,
             env=_git_env(),
             check=False,
@@ -193,8 +199,15 @@ class Worktree:
         return target.relative_to(self.path.resolve()).as_posix()
 
     def commit(self, message: str) -> str:
-        git(self.path, "add", "-A")
-        if git(self.path, "status", "--porcelain").strip():
+        # Verification links the repo's .venv and node_modules in here; `.venv/` in .gitignore matches only
+        # directories, so without this the links were committed (and applying replaced the real .venv).
+        git(self.path, "add", "-A", "--", ".", *VERIFY_LINKS)
+        staged = git(self.path, "diff", "--cached", "--raw", "--no-renames", f"{self.base}")
+        links = [line.split("\t", 1)[-1] for line in staged.splitlines() if line.split(" ")[1:2] == ["120000"]]
+        if links:
+            git(self.path, "reset", "-q", "--", *links)
+            raise ForgeError(f"Forge doesn't commit symbolic links: {', '.join(links)}")
+        if git(self.path, "diff", "--cached", "--name-only").strip():  # not status: the links stay untracked
             git(self.path, "commit", "-q", "--no-verify", "-m", message)
         return git(self.path, "rev-parse", "HEAD").strip()
 
@@ -208,7 +221,8 @@ class Worktree:
         return files
 
     def diff(self) -> str:
-        return git(self.path, "diff", "--no-color", f"{self.base}..HEAD")
+        # --text: a file git thinks is binary (e.g. a NUL byte in a comment) can't hide its content from Sentinel.
+        return git(self.path, "diff", "--no-color", "--text", f"{self.base}..HEAD")
 
 
 def diff_sha(diff: str) -> str:

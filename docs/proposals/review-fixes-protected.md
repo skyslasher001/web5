@@ -1,6 +1,6 @@
 # Proposal: protected-core fixes from the Phase 5–7 review
 
-Status: **waiting for your approval.** Nothing in it is applied yet.
+Status: **applied 2026-10-22** (owner-approved, DECISIONS row 22). It applied cleanly onto `0d7ac49`.
 
 Patch: [`review-fixes-protected.patch`](review-fixes-protected.patch), on top of the Phase 5 and Phase 7 patches
 (applied 2026-10-21, df2af16). Review notes: [`docs/handoff/DECISIONS.md`](../handoff/DECISIONS.md) row 21.

@@ -1,0 +1,34 @@
+diff --git a/tests/protected/test_policy.py b/tests/protected/test_policy.py
+index bcf1b8d..cc0c6a1 100644
+--- a/tests/protected/test_policy.py
++++ b/tests/protected/test_policy.py
+@@ -1,6 +1,7 @@
+ """The policy engine decides every agent call (ARCHITECTURE.md §7.3). PROTECTED: Forge may not change these."""
+ 
+ import sqlite3
++import time
+ from pathlib import Path
+ from typing import Any
+ 
+@@ -153,12 +154,19 @@ def test_the_kill_switch_refuses_everything(rig: Rig) -> None:
+     assert rig.check(tool("vault.search")) == "allow" and rig.halted == [True, False]
+ 
+ 
+-def test_limits_are_checked_before_every_model_call(rig: Rig) -> None:
++@pytest.mark.parametrize("uptime_s", [None, 30.0])  # None: this machine's clock; 30.0: just after a boot
++def test_limits_are_checked_before_every_model_call(
++    rig: Rig, monkeypatch: pytest.MonkeyPatch, uptime_s: float | None
++) -> None:
++    # time.monotonic() counts from boot, so "started at 0" isn't long ago on a fresh machine (a container
++    # recreated under a minute before the run failed this). Start the late task a timeout and more before now.
++    if uptime_s is not None:
++        monkeypatch.setattr(time, "monotonic", lambda: uptime_s)
+     a = agent(max_steps=2, max_tokens=100, timeout_s=60)
+     assert rig.policy.check_llm(a, TaskState("t", "scribe")).verdict == "allow"
+     assert rig.policy.check_llm(a, TaskState("t", "scribe", steps_used=2)).verdict == "deny"
+     assert rig.policy.check_llm(a, TaskState("t", "scribe", tokens_out=100)).verdict == "deny"
+-    late = TaskState("t", "scribe", started=0.0)  # started at monotonic 0: long ago
++    late = TaskState("t", "scribe", started=time.monotonic() - 61)  # a second past the 60 s timeout
+     assert rig.policy.check_llm(a, late).verdict == "deny"
+ 
+ 

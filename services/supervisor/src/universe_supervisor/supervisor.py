@@ -62,7 +62,7 @@ class Supervisor:
         self._last_status = ""
         self._next_external_check = 0.0
         self.releases = Releases(config.release_repo, config.data_dir / "supervisor" / "releases.json")
-        self._watch_baseline = 0  # Core's restart count right after the watched release was applied
+        self._watch_baseline = 0  # Core's crash count right after the watched release was applied
 
         core = ServiceSpec(
             name="core",
@@ -238,6 +238,7 @@ class Supervisor:
         if rt.healthy_since is not None and now - rt.healthy_since > STABLE_RESET_S:
             rt.crash_streak = 0
         rt.last_error = self._error_with_tail(rt, why)
+        rt.crashes += 1
         self.log("service_crashed", level="error", service=rt.spec.name, why=why)
         self._schedule_restart(rt, now, reason)
 
@@ -245,6 +246,7 @@ class Supervisor:
         if self._adopt_external_ollama(rt):
             return
         rt.last_error = self._error_with_tail(rt, why)
+        rt.crashes += 1
         self.log("service_boot_failed", level="error", service=rt.spec.name, why=why)
         if rt.spec.name != "core":
             self._schedule_restart(rt, now, "boot-retry")
@@ -333,6 +335,8 @@ class Supervisor:
         if not all(isinstance(body.get(f), str) and body[f] for f in fields):
             return {"ok": False, "error": f"send {', '.join(fields)}"}
         with self.lock:
+            if self.state["safe_mode"]:  # the watch would read safe mode as the release failing, at once
+                return {"ok": False, "error": "UNIVERSE is in safe mode: get Core healthy before applying changes"}
             try:
                 release = self.releases.apply(**{f: body[f] for f in fields})
             except ReleaseError as exc:
@@ -340,7 +344,7 @@ class Supervisor:
                 return {"ok": False, "error": str(exc)}
             self.log("release_applied", tag=release["tag"], commit=release["commit"], proposal=release["proposal_id"])
             self.restart("core")
-            self._watch_baseline = self.runtimes["core"].restarts
+            self._watch_baseline = self.runtimes["core"].crashes
             return {"ok": True, "release": release}
 
     def rollback_release(self, tag: str, reason: str = "rolled back by you") -> dict[str, Any]:
@@ -362,7 +366,7 @@ class Supervisor:
         if watching is None:
             return
         core = self.runtimes["core"]
-        crashes = core.restarts - self._watch_baseline
+        crashes = core.crashes - self._watch_baseline  # a restart you asked for isn't a crash
         if self.state["safe_mode"] or crashes >= CRASHES_FOR_ROLLBACK:
             why = "Core fell into safe mode" if self.state["safe_mode"] else f"Core crashed {crashes} times"
             self.log("release_auto_rollback", level="error", tag=watching["tag"], reason=why)

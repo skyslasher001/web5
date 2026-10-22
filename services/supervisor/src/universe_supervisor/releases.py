@@ -13,6 +13,7 @@ Applying is a fast-forward merge between two tags; rolling back adds revert comm
 rewritten). State is a JSON file written atomically, like the rest of the supervisor's. Standard library only.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -78,6 +79,8 @@ class Releases:
                 [exe, "-C", str(self.repo), *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",  # not the ANSI code page on Windows (-I ignores PYTHONUTF8); same as Core's
+                errors="replace",
                 timeout=timeout,
                 env=env,
                 check=False,
@@ -131,7 +134,8 @@ class Releases:
             head = self.head()
             if head != base_commit:
                 raise ReleaseError("The code moved on since Forge started: ask Forge to redo the fix")
-            diff = self._git("diff", "--no-color", f"{base_commit}..{head_commit}")
+            # --text, as Core's Worktree.diff: a "binary" file can't hide its content (and the hashes agree).
+            diff = self._git("diff", "--no-color", "--text", f"{base_commit}..{head_commit}")
             if hashlib.sha256(diff.encode("utf-8")).hexdigest() != diff_sha:
                 raise ReleaseError("The change isn't the one you approved (its hash differs)")
             # --no-renames: list both sides of a rename, so renaming a protected file to an unprotected path
@@ -144,6 +148,9 @@ class Releases:
             touched = [p for p in paths if protected(p, self.patterns)]
             if touched:
                 raise ReleaseError(f"It changes protected core ({', '.join(touched)}): apply those by hand")
+            summary = self._git("diff", "--summary", "--no-renames", f"{base_commit}..{head_commit}")
+            if " mode 120000 " in summary or "=> 120000" in summary:
+                raise ReleaseError("It adds or changes a symbolic link: Forge changes never do")
             n = len(self.data["releases"]) + 1
             tag = f"universe/release-{n}"
             self._git("merge", "--ff-only", "-q", head_commit)
@@ -178,7 +185,17 @@ class Releases:
                 raise ReleaseError(f"{tag} is already rolled back")
             if self._git("status", "--porcelain", "--untracked-files=no").strip():
                 raise ReleaseError("The checkout has uncommitted changes: commit or stash them first")
-            self._git("revert", "--no-edit", f"{release['previous']}..{release['commit']}")
+            try:
+                self._git("revert", "--no-edit", f"{release['previous']}..{release['commit']}")
+            except ReleaseError:
+                # A conflict (you changed the same lines since): leave the checkout as it was, and stop the
+                # watch so it doesn't retry every tick; the owner rolls back by hand.
+                with contextlib.suppress(ReleaseError):
+                    self._git("revert", "--abort")
+                release["status"] = "rollback_failed"
+                release["rollback_reason"] = f"{reason}; the revert conflicted, so nothing was changed"
+                self._save()
+                raise
             release["status"] = "rolled_back"
             release["rollback_reason"] = reason
             release["rolled_back_at"] = time.time()

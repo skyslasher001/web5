@@ -16,7 +16,7 @@ export interface SupervisorRelease {
   proposal_id: string | null;
   title: string;
   created_at: number;
-  status: 'watching' | 'good' | 'rolled_back';
+  status: 'watching' | 'good' | 'rolled_back' | 'rollback_failed';
   current: boolean;
 }
 

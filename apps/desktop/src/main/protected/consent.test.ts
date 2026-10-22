@@ -124,3 +124,20 @@ describe('mediaAllowed', () => {
     expect(mediaAllowed(dev, true, ours)).toBe(false);
   });
 });
+
+describe('review 2026-10-21', () => {
+  it('asks again after the kill switch or a new page', async () => {
+    for (const via of ['killswitch', 'window'] as const) {
+      const { consent, confirm } = make({ confirm: [true, true] });
+      await consent.request(true, 'hud');
+      consent.revoke(via);
+      await consent.request(true, 'hud');
+      expect(confirm).toHaveBeenCalledTimes(2); // the dialog came back
+    }
+    const { consent, confirm } = make({ confirm: [true] });
+    await consent.request(true, 'hud');
+    await consent.request(false, 'hud'); // you turned it off yourself: no new dialog needed this launch
+    await consent.request(true, 'hud');
+    expect(confirm).toHaveBeenCalledTimes(1);
+  });
+});

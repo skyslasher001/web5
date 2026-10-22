@@ -472,7 +472,15 @@ function startCommandBarAndTray(): void {
       hotkey: () => commandBar?.status.accelerator ?? '',
       extraItems: () => [
         ...(consent.mic
-          ? [{ label: 'Microphone on: turn it off', click: () => void consent.request(false, 'tray') }]
+          ? [
+              {
+                label: 'Microphone on: turn it off',
+                // From outside the page: don't rely on it to stop its stream. A reload ends every capture.
+                click: () => {
+                  if (consent.revoke('tray') && win && !win.isDestroyed()) win.webContents.reload();
+                },
+              },
+            ]
           : []),
         killSwitch.engaged
           ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }

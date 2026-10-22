@@ -168,3 +168,24 @@ def test_a_refused_over_cap_begin_leaves_no_orphan_worktree(forge: Forge) -> Non
         forge.start_proposal(title="over", issue_id=None, task_id="orphan_over")
     worktrees = forge.root / "worktrees"
     assert len(list(worktrees.iterdir())) == DAILY_CAP  # the refused begin cleaned up its own worktree
+
+
+def test_verification_links_never_enter_a_proposal(forge: Forge) -> None:
+    """Review 2026-10-21: checks() links the repo's .venv and node_modules into the worktree; `.venv/` in
+    .gitignore matches only directories, so `git add -A` committed the links and applying the proposal replaced
+    the owner's real .venv with a dangling link."""
+    repo = forge.require_repo()
+    (repo / ".gitignore").write_text(".venv/\nnode_modules/\n", encoding="utf-8")
+    (repo / ".venv").mkdir()
+    (repo / "node_modules").mkdir()
+    _proposal, tree = forge.start_proposal(title="Fix add", issue_id=None, task_id="t-links")
+    tree.write("calc/__init__.py", FIXED)
+    (tree.path / ".venv").symlink_to(repo / ".venv", target_is_directory=True)  # what checks() does
+    (tree.path / "node_modules").symlink_to(repo / "node_modules", target_is_directory=True)
+    first = tree.commit("Fix add")
+    assert [f.path for f in tree.changes()] == ["calc/__init__.py"]
+    assert tree.commit("Nothing new") == first  # only the untracked links are left: nothing to commit, no error
+    # Forge itself can't smuggle in a symlink either: a link anywhere else is refused.
+    (tree.path / "calc" / "link").symlink_to(repo / "calc" / "__init__.py")
+    with pytest.raises(ForgeError, match="symbolic link"):
+        tree.commit("Add a link")

@@ -48,6 +48,7 @@ class ServiceRuntime:
     health_failures: int = 0
     crash_streak: int = 0
     restarts: int = 0
+    crashes: int = 0  # crashes and failed boots only (not restarts you asked for)
     last_exit_code: int | None = None
     last_error: str | None = None
     start_reason: str = "boot"

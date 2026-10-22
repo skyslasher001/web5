@@ -2,8 +2,8 @@
 
 Delivered 2026-10-19. Design: [ADR-0016](adr/0016-phase-7-voice.md). Protected part:
 [docs/proposals/phase-7-consent.md](proposals/phase-7-consent.md) (microphone consent, applied 2026-10-21 in
-`df2af16`). Reviewed 2026-10-21; two consent fixes from the review are in
-[review-fixes-protected](proposals/review-fixes-protected.md).
+`df2af16`). Reviewed 2026-10-21; the review's two consent fixes
+([review-fixes-protected](proposals/review-fixes-protected.md)) are applied (2026-10-22).
 
 You can talk to UNIVERSE and it talks back, all on this computer: speech-to-text, a voice for every agent, a
 wake phrase, push-to-talk, continuous mode, barge-in, voice navigation, approvals by voice, dictation, and voice
@@ -157,9 +157,6 @@ sentence. The Voice panel measures every answer from your actual last word, that
 
 ## Known limitations
 
-- **Until the review-fixes patch is applied,** the dialog's "yes" lasts the whole launch, even after the kill
-  switch or a reload. The tray's "turn it off" also relies on the page to stop its stream (the kill switch
-  doesn't).
 - **Echo cancellation is Chromium's.** If your speakers are loud and your mic close, its own voice can trigger
   barge-in; a headset avoids it. To verify on your hardware.
 - **Whisper tiny.en** mishears rare names now and then ("Prin" for "Prynne"); base.en is better and slower.
