@@ -2,9 +2,10 @@
 import type { CoreEvent } from '@universe/shared-types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CoreApi } from '../../lib/api';
-import { texturesToEvict } from './helpers';
+import { flyOnce, itemPosition, resetRig, rig, texturesToEvict } from './helpers';
 import { enterTarget } from './interaction';
-import { SceneLoader, useScene } from './sceneData';
+import { useLayout } from './layoutController';
+import { emptyScene, SceneLoader, useScene } from './sceneData';
 import { shouldAutoSelect } from './useConstellation';
 
 function page(ids: string[], serverTime: string, next: string | null = null) {
@@ -105,5 +106,54 @@ describe('photo planet textures', () => {
     const order = ['a', 'b', 'c', 'd', 'e'];
     expect(texturesToEvict(order, new Set(['a']), 3)).toEqual(['b', 'c']);
     expect(texturesToEvict(order, new Set(), 5)).toEqual([]);
+  });
+});
+
+describe('flying to a selection', () => {
+  const placed = (sceneVersion: number) =>
+    useLayout.setState({
+      current: {
+        positions: new Float32Array([4, 5, 6]),
+        galaxyCentres: new Float32Array(0),
+        galaxyRadii: new Float32Array(0),
+        extent: 300,
+        kind: 'project',
+        sceneVersion,
+      },
+    });
+
+  it('waits for the layout of the current scene, then flies once per selection and layout', () => {
+    const scene = { ...emptyScene(), n: 1, ids: ['a'], index: new Map([['a', 0]]) };
+    useScene.setState({ scene, version: 2 });
+    placed(1); // the layout still belongs to the previous scene version: the item isn't placed yet
+    const flown = { current: '' };
+    const flights: number[][] = [];
+    const fly = () => {
+      const p = itemPosition(0);
+      if (p) flights.push(p.toArray());
+      return p !== null;
+    };
+    flyOnce(flown, 'a:project', fly);
+    expect(flights).toEqual([]);
+    placed(2); // the matching layout arrives
+    flyOnce(flown, 'a:project', fly);
+    expect(flights).toEqual([[4, 5, 6]]);
+    useScene.setState({ version: 3 });
+    placed(3); // a data refresh publishes a new layout: the camera stays where you are
+    flyOnce(flown, 'a:project', fly);
+    expect(flights).toHaveLength(1);
+    flyOnce(flown, null, fly); // deselected: selecting it again flies again
+    flyOnce(flown, 'a:project', fly);
+    expect(flights).toHaveLength(2);
+  });
+});
+
+describe('the camera API', () => {
+  it('goes back to its idle defaults when a scene unmounts', () => {
+    rig.state = () => ({ position: [1, 2, 3], target: [4, 5, 6], flying: true, lastFlight: null });
+    rig.zoom = () => ({ fraction: 0.2, galaxy: 3 });
+    resetRig();
+    expect(rig.state()).toEqual({ position: [0, 0, 0], target: [0, 0, 0], flying: false, lastFlight: null });
+    expect(rig.zoom()).toEqual({ fraction: 1, galaxy: -1 });
   });
 });

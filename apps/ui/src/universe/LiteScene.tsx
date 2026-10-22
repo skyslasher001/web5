@@ -10,7 +10,7 @@ import { hueHex } from '../lib/colors';
 import { ITEM_TYPES } from '../lib/itemTypes';
 import { useProjects } from '../lib/queries';
 import { useUniverse } from '../state/store';
-import { appearance, rig } from './scene/helpers';
+import { appearance, resetRig, rig } from './scene/helpers';
 import { useInteraction } from './scene/interaction';
 import { useLayout } from './scene/layoutController';
 import { useScene } from './scene/sceneData';
@@ -120,9 +120,7 @@ export default function LiteScene() {
     return () => {
       renderer.kill();
       sigma.current = null;
-      rig.zoomBy = () => {};
-      rig.zoomTo = () => {};
-      rig.zoom = () => ({ fraction: 1, galaxy: -1 });
+      resetRig();
     };
   }, []);
 

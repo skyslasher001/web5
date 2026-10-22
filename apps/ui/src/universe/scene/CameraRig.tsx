@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { Plane, Raycaster, Vector2, Vector3, type PerspectiveCamera } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { useUniverse } from '../../state/store';
-import { flightDuration, itemPosition, rig } from './helpers';
+import { flightDuration, flyOnce, itemPosition, resetRig, rig } from './helpers';
 import { easeInOutCubic, STILL, useInteraction } from './interaction';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
@@ -160,11 +160,7 @@ export function CameraRig() {
       gl.domElement.removeEventListener('wheel', onWheel);
       c.dispose();
       controls.current = null;
-      rig.flyTo = () => {};
-      rig.home = () => {};
-      rig.zoomBy = () => {};
-      rig.zoomTo = () => {};
-      rig.zoom = () => ({ fraction: 1, galaxy: -1 });
+      resetRig();
     };
   }, [camera, gl]);
 
@@ -192,27 +188,37 @@ export function CameraRig() {
     rig.home();
   }, [kind]);
 
-  // The selection effects follow the layout's kind and whether one exists yet, never its identity: a data
-  // refresh (or a Semantic poll) publishes a new layout object and must not yank the camera back.
-  const hasLayout = layout !== null;
+  // The selection effects re-run when a layout for a newer scene arrives (a just-selected item may only be
+  // placed then), but fly once per selection and layout kind: a data refresh (or a Semantic poll) publishes
+  // a new layout object and must not yank the camera back.
+  const sceneVersion = layout?.sceneVersion;
+  const flownGalaxy = useRef('');
+  const flownItem = useRef('');
 
   // Fly to a selected galaxy (Galaxy zoom).
   useEffect(() => {
-    if (!selectedProject || view !== 'universe' || selectedItem) return;
-    const current = useLayout.getState().current;
-    const g = useScene.getState().scene.galaxyIds.indexOf(selectedProject);
-    if (!current || g < 0) return;
-    const c = current.galaxyCentres;
-    rig.flyTo(new Vector3(c[g * 3], c[g * 3 + 1], c[g * 3 + 2]), Math.max(30, current.galaxyRadii[g]! * 2.8));
-  }, [selectedProject, view, selectedItem, kind, hasLayout]);
+    const key = selectedProject && view === 'universe' && !selectedItem ? `${selectedProject}:${kind}` : null;
+    flyOnce(flownGalaxy, key, () => {
+      const current = useLayout.getState().current;
+      const { scene, version } = useScene.getState();
+      const g = scene.galaxyIds.indexOf(selectedProject ?? '');
+      if (!current || current.sceneVersion !== version || g < 0 || g >= current.galaxyRadii.length) return false;
+      const c = current.galaxyCentres;
+      rig.flyTo(new Vector3(c[g * 3], c[g * 3 + 1], c[g * 3 + 2]), Math.max(30, current.galaxyRadii[g]! * 2.8));
+      return true;
+    });
+  }, [selectedProject, view, selectedItem, kind, sceneVersion]);
 
   // Fly to a selected item (System zoom: the item and its neighbours), again when the layout changes.
   useEffect(() => {
-    if (!selectedItem || view !== 'universe') return;
-    const index = useScene.getState().scene.index.get(selectedItem);
-    const position = index === undefined ? null : itemPosition(index);
-    if (position) rig.flyTo(position, 16);
-  }, [selectedItem, view, kind, hasLayout]);
+    const key = selectedItem && view === 'universe' ? `${selectedItem}:${kind}` : null;
+    flyOnce(flownItem, key, () => {
+      const index = useScene.getState().scene.index.get(selectedItem ?? '');
+      const position = index === undefined ? null : itemPosition(index);
+      if (position) rig.flyTo(position, 16);
+      return position !== null;
+    });
+  }, [selectedItem, view, kind, sceneVersion]);
 
   // Search results: frame the constellation when the results change. A refresh that returns the same
   // results doesn't move the camera (it would undo flying to the one you picked with Enter).

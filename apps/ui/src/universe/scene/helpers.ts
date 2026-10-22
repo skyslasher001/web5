@@ -111,24 +111,47 @@ export function itemPosition(index: number): Vector3 | null {
   return new Vector3(p[index * 3], p[index * 3 + 1], p[index * 3 + 2]);
 }
 
+/**
+ * A camera flight to a selection, once per `key` (the selection and the layout kind; null when nothing is
+ * selected). `fly` returns false while the target isn't placed yet (its layout is still computing), so the
+ * run after the matching layout arrives flies; a later data refresh with the same key leaves the camera be.
+ */
+export function flyOnce(flown: { current: string }, key: string | null, fly: () => boolean): void {
+  if (key === null) {
+    flown.current = '';
+    return;
+  }
+  if (flown.current === key) return;
+  if (fly()) flown.current = key;
+}
+
+function idleRig() {
+  return {
+    flyTo: (_target: Vector3, _distance: number): void => {},
+    home: (): void => {},
+    /** Smooth zoom by a distance factor (> 1 out, < 1 in), toward the centre of the view. */
+    zoomBy: (_factor: number): void => {},
+    /** Smooth zoom to a point on the 0–1 log scale (0 = closest). */
+    zoomTo: (_fraction: number): void => {},
+    /** Where the zoom is on the 0–1 log scale, and the galaxy zoomed into (its index, -1 none). */
+    zoom: (): { fraction: number; galaxy: number } => ({ fraction: 1, galaxy: -1 }),
+    state: () => ({
+      position: [0, 0, 0] as number[],
+      target: [0, 0, 0] as number[],
+      flying: false,
+      /** The last finished flight: planned and actual duration (ms). */
+      lastFlight: null as { planned: number; actual: number } | null,
+    }),
+  };
+}
+
 /** Imperative camera API, filled in by CameraRig (and read by the minimap and end-to-end tests). */
-export const rig = {
-  flyTo: (_target: Vector3, _distance: number): void => {},
-  home: (): void => {},
-  /** Smooth zoom by a distance factor (> 1 out, < 1 in), toward the centre of the view. */
-  zoomBy: (_factor: number): void => {},
-  /** Smooth zoom to a point on the 0–1 log scale (0 = closest). */
-  zoomTo: (_fraction: number): void => {},
-  /** Where the zoom is on the 0–1 log scale, and the galaxy zoomed into (its index, -1 none). */
-  zoom: (): { fraction: number; galaxy: number } => ({ fraction: 1, galaxy: -1 }),
-  state: () => ({
-    position: [0, 0, 0] as number[],
-    target: [0, 0, 0] as number[],
-    flying: false,
-    /** The last finished flight: planned and actual duration (ms). */
-    lastFlight: null as { planned: number; actual: number } | null,
-  }),
-};
+export const rig = idleRig();
+
+/** A scene unmounted: nothing may keep calling into its disposed camera. */
+export function resetRig(): void {
+  Object.assign(rig, idleRig());
+}
 
 /** Universe → Galaxy → System (an item and its neighbours) → Item (its viewer is open) (SPEC §7). */
 export type ZoomLevel = 'Universe' | 'Galaxy' | 'System' | 'Item';
