@@ -11,7 +11,7 @@
 // rendering (what CI has), which measures the CPU fallback, not your GPU.
 import { _electron as electron } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -23,6 +23,15 @@ const tmp = mkdtempSync(join(tmpdir(), 'universe-bench-'));
 const given = process.argv.slice(2).find((a) => !a.startsWith('--'));
 const vault = given ? resolve(given) : join(tmp, 'vault');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The scratch data, profile and (unless you passed one) vault go when the run ends, however it ends.
+process.on('exit', () => {
+  try {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  } catch (err) {
+    console.warn(`Could not remove ${tmp}: ${err.message}`);
+  }
+});
+process.on('SIGINT', () => process.exit(130));
 
 if (!existsSync(join(vault, '.universe', 'universe.db'))) {
   console.log(`Seeding 50,000 items into ${vault} …`);
