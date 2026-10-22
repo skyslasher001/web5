@@ -2,7 +2,16 @@
 import type { CoreEvent } from '@universe/shared-types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CoreApi } from '../../lib/api';
-import { flyOnce, itemPosition, resetRig, rig, texturesToEvict } from './helpers';
+import {
+  flyOnce,
+  itemPosition,
+  resetRig,
+  rig,
+  texturesToEvict,
+  THUMB_RETRY_MS,
+  thumbnailDue,
+  thumbnailFailed,
+} from './helpers';
 import { enterTarget } from './interaction';
 import { useLayout } from './layoutController';
 import { emptyScene, SceneLoader, useScene } from './sceneData';
@@ -174,6 +183,18 @@ describe('photo planet textures', () => {
     const order = ['a', 'b', 'c', 'd', 'e'];
     expect(texturesToEvict(order, new Set(['a']), 3)).toEqual(['b', 'c']);
     expect(texturesToEvict(order, new Set(), 5)).toEqual([]);
+  });
+
+  it('try a missing thumbnail again later (it may still be generating), backing off', () => {
+    const first = thumbnailFailed(undefined, 1_000);
+    expect(thumbnailDue(first, 1_000 + THUMB_RETRY_MS - 1)).toBe(false);
+    expect(thumbnailDue(first, 1_000 + THUMB_RETRY_MS)).toBe(true);
+    const second = thumbnailFailed(first, 100_000);
+    expect(thumbnailDue(second, 100_000 + THUMB_RETRY_MS)).toBe(false);
+    expect(thumbnailDue(second, 100_000 + 2 * THUMB_RETRY_MS)).toBe(true);
+    let many = second;
+    for (let k = 0; k < 20; k++) many = thumbnailFailed(many, 0);
+    expect(many.retryAt).toBeLessThanOrEqual(10 * 60_000); // never gives up for good
   });
 });
 

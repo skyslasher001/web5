@@ -4,7 +4,13 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import { SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import { useApi } from '../../lib/api-context';
-import { nearestInFront, texturesToEvict } from './helpers';
+import {
+  nearestInFront,
+  texturesToEvict,
+  thumbnailDue,
+  thumbnailFailed,
+  type ThumbFailure,
+} from './helpers';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
 import { TYPE_CODE } from './types';
@@ -23,7 +29,7 @@ export function PhotoPlanets({ max = 16 }: { max?: number }) {
   const api = useApi();
   const { camera } = useThree();
   const [planets, setPlanets] = useState<Planet[]>([]);
-  const cache = useRef(new Map<string, Texture | 'missing' | 'loading'>());
+  const cache = useRef(new Map<string, Texture | ThumbFailure | 'loading'>());
   const last = useRef(0);
   const forward = useRef(new Vector3());
   const alive = useRef(true);
@@ -57,7 +63,11 @@ export function PhotoPlanets({ max = 16 }: { max?: number }) {
         next.push({ index, id, texture: cached });
         cache.current.delete(id); // most recently shown goes to the end of the eviction order
         cache.current.set(id, cached);
-      } else if (cached === undefined) {
+      } else if (cached === undefined || (cached !== 'loading' && thumbnailDue(cached, now))) {
+        // Missing thumbnails are asked for again later: the pipeline may not have made it yet.
+        const failed = () => {
+          if (alive.current) cache.current.set(id, thumbnailFailed(cached, performance.now()));
+        };
         cache.current.set(id, 'loading');
         api
           .thumbnail(id)
@@ -74,11 +84,11 @@ export function PhotoPlanets({ max = 16 }: { max?: number }) {
               undefined,
               () => {
                 URL.revokeObjectURL(url);
-                cache.current.set(id, 'missing'); // an unreadable thumbnail: it stays a point
+                failed(); // an unreadable thumbnail: it stays a point for now
               },
             );
           })
-          .catch(() => cache.current.set(id, 'missing')); // no thumbnail (yet): it stays a point
+          .catch(failed); // no thumbnail (yet): it stays a point for now
       }
     }
     // Keep GPU memory bounded while flying past thousands of photos.

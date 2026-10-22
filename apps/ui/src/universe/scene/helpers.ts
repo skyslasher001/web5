@@ -187,6 +187,26 @@ export function texturesToEvict(order: string[], onScreen: Set<string>, max = MA
   return out;
 }
 
+/** A photo whose thumbnail didn't load (not made yet, Core restarting): when to ask again. */
+export interface ThumbFailure {
+  failures: number;
+  retryAt: number;
+}
+
+export const THUMB_RETRY_MS = 30_000;
+const THUMB_RETRY_MAX_MS = 10 * 60_000;
+
+/** Another failed thumbnail: wait twice as long each time, up to ten minutes. */
+export function thumbnailFailed(prev: ThumbFailure | undefined, now: number): ThumbFailure {
+  const failures = (prev?.failures ?? 0) + 1;
+  const wait = Math.min(THUMB_RETRY_MAX_MS, THUMB_RETRY_MS * 2 ** Math.min(failures - 1, 10));
+  return { failures, retryAt: now + wait };
+}
+
+export function thumbnailDue(failure: ThumbFailure, now: number): boolean {
+  return now >= failure.retryAt;
+}
+
 const adjacency = new WeakMap<SceneData, Map<number, number[]>>();
 
 /**
