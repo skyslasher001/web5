@@ -1,5 +1,6 @@
 import type { CoreEvent } from '@universe/shared-types';
 import { describe, expect, it } from 'vitest';
+import { applyProbeTarget } from './store';
 import {
   applyAgentEvent,
   applyChatEvent,
@@ -269,5 +270,18 @@ describe('agent engine activity lines', () => {
       ev('chat.message', { ...stored('m1', 'assistant', 'Done.'), task_id: 't9' }),
     ]);
     expect(state.messages[0]!.taskId).toBe('t9');
+  });
+});
+
+describe('a Core restart', () => {
+  it('clears agent activity, steps and probe targets: those tasks will never finish', () => {
+    const restart = ev('service.started', { service: 'core', pid: 2 }, 'system');
+    const busy = { core: 'thinking' as const, librarian: 'replying' as const };
+    expect(applyAgentEvent(busy, restart)).toEqual({});
+    expect(applyStepEvent({ core: 'Thinking…' }, restart)).toEqual({});
+    expect(applyProbeTarget({ librarian: { kind: 'item', id: 'i1' } }, restart)).toEqual({});
+    // Another service starting changes nothing.
+    const other = ev('service.started', { service: 'voice' }, 'system');
+    expect(applyAgentEvent(busy, other)).toBe(busy);
   });
 });

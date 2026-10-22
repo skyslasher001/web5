@@ -24,6 +24,7 @@ import {
   applyAgentEvent,
   applyChatEvent,
   applyStepEvent,
+  coreRestarted,
   describeEvent,
   pushActivity,
   type ActivityItem,
@@ -389,6 +390,7 @@ function saveNumber(key: string, value: number): void {
 
 /** `agent.step` names what a tool works on; a finished task's probe returns to the Core. */
 export function applyProbeTarget(targets: Record<string, ProbeTarget>, event: CoreEvent) {
+  if (coreRestarted(event)) return {};
   const p = event.payload as { agent_id?: string; target?: ProbeTarget };
   if (!p.agent_id) return targets;
   if (event.type === 'agent.step' && p.target && (p.target.kind === 'item' || p.target.kind === 'project')) {

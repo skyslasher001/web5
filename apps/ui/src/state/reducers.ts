@@ -103,9 +103,14 @@ function placeholder(id: string, ts: string): ChatMessage {
   };
 }
 
+/** Core (re)started: every task it was running is gone, so nothing it reported can still be in flight. */
+export function coreRestarted(event: CoreEvent): boolean {
+  return event.type === 'service.started' && (event.payload as Payload).service === 'core';
+}
+
 export function applyChatEvent(state: ChatState, event: CoreEvent): ChatState {
   const p = event.payload as Payload;
-  if (event.type === 'service.started' && p.service === 'core') {
+  if (coreRestarted(event)) {
     // Core restarted: any reply that was streaming will never finish.
     const messages = state.messages.map((m) =>
       m.status === 'streaming'
@@ -174,6 +179,7 @@ export function applyChatEvent(state: ChatState, event: CoreEvent): ChatState {
 }
 
 export function applyAgentEvent(agents: Record<string, AgentActivity>, event: CoreEvent) {
+  if (coreRestarted(event)) return {};
   const p = event.payload as Payload;
   const agent = str(p.agent_id) || (event.actor.startsWith('agent:') ? event.actor.slice(6) : '');
   if (!agent) return agents;
@@ -214,6 +220,7 @@ export function stepLabel(kind: string, tool: string | null, decision: string | 
 }
 
 export function applyStepEvent(steps: Record<string, string>, event: CoreEvent): Record<string, string> {
+  if (coreRestarted(event)) return {};
   const p = event.payload as Payload;
   const agent = str(p.agent_id);
   if (!agent) return steps;
