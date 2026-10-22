@@ -256,7 +256,8 @@ This repo (`web5`) is the monorepo root (Phase 1). The Bolt landing page was rem
 │  ├─ ARCHITECTURE.md  PHASE-0.md
 │  ├─ adr/                         # NNNN-title.md
 │  └─ guides/                      # user guide, agent-authoring guide, plugin guide
-├─ scripts/                        # dev.mjs (one-command start), seed.py, bench/, hardware-report.ps1, restore-lkg.ps1
+├─ scripts/                        # dev.mjs + dev-lib.mjs (one-command start), seed_vault.py, seed_universe.py,
+│                                  #   universe_bench.mjs, gen-types.mjs, export_handoff.py, hardware-report.ps1
 ├─ protected-core.txt              # [protected] glob manifest of paths Forge may never modify
 ├─ SPEC.md  AGENTS.md  CLAUDE.md  README.md  .env.example
 ├─ package.json  pnpm-workspace.yaml  pnpm-lock.yaml
@@ -618,7 +619,7 @@ Goal: Forge can fix and upgrade almost anything, yet **cannot** lock you out, de
 | **Tests are never weakened** | The Sentinel test-integrity check (AST/diff based) rejects any proposal that deletes or renames tests, adds `skip`/`xfail`/`.only`/`.skip`, loosens assertions, lowers coverage or perf thresholds, or edits eval expectations. The repro test must **fail on base and pass on head**, verified by running both. |
 | **Vault data is never deleted or rewritten** | Forge has no vault tools at all. Verification runs against a disposable copy of the seed dataset. Schema migrations need an up+down pair tested on a snapshot copy, a verified restic backup and your approval. Migrations are classed `high` risk automatically. |
 | **Nothing breaks permanently** | Pre-apply restic snapshot plus a git tag for each release. The supervisor watches for a window (default 30 min or 200 requests): crash loops, error-rate jump > 2×, health-check failure or perf regression > 20 % trigger an **automatic rollback** to LKG. One-click rollback to any prior release lives in the UI (it goes through the supervisor). |
-| **You can never be locked out** | Safe mode (two failed boots → LKG, agents disabled) is served by protected Electron-main code and needs nothing from Core. App lock, consent and the kill switch are protected. `scripts/restore-lkg.ps1` works with the app closed. |
+| **You can never be locked out** | Safe mode (two failed boots → LKG, agents disabled) is served by protected Electron-main code and needs nothing from Core. App lock, consent and the kill switch are protected. *Planned, not built yet:* a `scripts/restore-lkg.ps1` that works with the app closed. Until then, safe mode (and System → Releases rollback through the supervisor) is the way back; with the app closed, revert the release commits by hand with git. |
 | **Independent review** | Critic (code quality) and Sentinel (safety/privacy/permission impact) are separate agents with separate prompts, and Sentinel's verdict is mostly deterministic: new dependencies (license allowlist + advisories), new network calls or egress rules, permission-tier changes, new file-system paths, new capture or consent code paths. Sentinel's YAML and code are protected. |
 | **No spam** | ≤ 5 proposals/day (protected setting), batched into a daily digest, duplicates suppressed by error fingerprint. |
 | **Everything is on the record** | Every Forge step is written to the audit log by Core's protected audit writer (Forge can't write to `audit.db`). Proposals keep the diff, test report, reviews and decision forever. |
@@ -650,7 +651,7 @@ Every tool call passes `policy.check(agent, tool, args, task)`:
 4. **Budget and limits:** steps, tokens, wall time and money are checked *before* each LLM call. Loop detection fires on the same tool + args hash 3× in a row.
 5. **Kill switch / offline:** checked on every call. When engaged, everything is denied immediately.
 
-*Phase 3 as built (ADR-0011):* the engine lives in `protected/policy.py` (with `permissions.py`, `budget.py`, `killswitch.py`) and runs the checks in this order: kill switch → tier gate → rules (most specific first, the strictest wins ties) → taint → defaults. MCP tools default to *ask*. The loop itself is unprotected (`services/agents/runtime.py`) and asks the policy through a `Policy` protocol, so a missing policy module means no tools at all, never unchecked tools.
+*Phase 3 as built (ADR-0011):* the engine lives in `protected/policy.py` (with `permissions.py`, `budget.py`, `killswitch.py`) and runs the checks in this order: kill switch → tier gate → rules (most specific first, the strictest wins ties) → taint → defaults. MCP tools default to *ask*. The loop itself is unprotected (`services/agents/src/universe_agents/runtime.py`) and asks the policy through a `Policy` protocol, so a missing policy module means no tools at all, never unchecked tools.
 
 ### 7.4 Releases, last-known-good and safe mode
 
