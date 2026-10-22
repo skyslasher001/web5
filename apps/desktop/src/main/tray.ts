@@ -14,9 +14,9 @@ export function createTray(actions: {
   show: () => void;
   quit: () => void;
   hotkey: () => string;
-  /** More items (the kill switch), rebuilt each time the menu opens. */
+  /** More items (the mic, the kill switch): call rebuild() whenever what they show changes. */
   extraItems?: () => MenuItemConstructorOptions[];
-}): Tray {
+}): { tray: Tray; rebuild: () => void } {
   const tray = new Tray(icon());
   tray.setToolTip('UNIVERSE');
   const rebuild = () =>
@@ -39,6 +39,7 @@ export function createTray(actions: {
     );
   rebuild();
   tray.on('click', actions.show);
+  // Only macOS sends 'right-click' once a context menu is set, so callers also rebuild on every state change.
   tray.on('right-click', rebuild);
-  return tray;
+  return { tray, rebuild };
 }

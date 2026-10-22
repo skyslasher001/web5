@@ -10,7 +10,6 @@ import {
   protocol,
   session,
   shell,
-  type Tray,
 } from 'electron';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -320,6 +319,7 @@ function registerIpc(): void {
     }
     const status = commandBar?.register(accelerator) ?? noHotkey();
     if (status.registered) saveSettings(settingsFile(), { commandBarHotkey: accelerator });
+    tray?.rebuild(); // the Quick search item shows the shortcut
     return status;
   });
   ipcMain.on(CH.showCommandBar, (_e, mode: unknown) =>
@@ -388,7 +388,8 @@ const consent = new MicConsent({
   killSwitchEngaged: () => killSwitch.engaged,
   onChange: (state) => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.consentEvent, state);
-    tray?.setToolTip(state.mic ? 'UNIVERSE · microphone on' : 'UNIVERSE'); // main's own indicator
+    tray?.tray.setToolTip(state.mic ? 'UNIVERSE · microphone on' : 'UNIVERSE'); // main's own indicator
+    tray?.rebuild(); // shows or hides "Microphone on: turn it off"
   },
   record: async (mic, via) => {
     const response = await net.fetch(`${coreUrl}/api/v1/consent`, {
@@ -427,12 +428,13 @@ const killSwitch = new KillSwitchControl({
     for (const w of BrowserWindow.getAllWindows()) {
       w.webContents.send(CH.killSwitchEvent, { available: true, engaged });
     }
+    tray?.rebuild(); // swaps "Kill switch: stop all agents" for "Release kill switch…"
   },
   log: (event, fields) => log.warn(event, fields),
 });
 
 let commandBar: CommandBar | null = null;
-let tray: Tray | null = null;
+let tray: ReturnType<typeof createTray> | null = null;
 
 function saveClipboard() {
   return captureClipboard(clipboardSource(clipboard), coreUrl, sessionToken, (input, init) =>
@@ -570,7 +572,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     quitting = true;
     commandBar?.dispose();
-    tray?.destroy();
+    tray?.tray.destroy();
     void supervisor.stop().finally(() => app.quit());
   });
   app.on('window-all-closed', () => app.quit());
