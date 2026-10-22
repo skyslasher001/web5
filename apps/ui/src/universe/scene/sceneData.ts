@@ -198,6 +198,9 @@ export class SceneLoader {
   private dirtyItems = false;
   private dirtyLinks = false;
   private busy = false;
+  /** Bumped by every full load: an older load still reading pages stops writing. */
+  private loadSeq = 0;
+  private loading = false;
 
   constructor(private readonly api: CoreApi) {}
 
@@ -207,26 +210,49 @@ export class SceneLoader {
     if (this.rows.size) this.publish();
   }
 
-  /** Full load, showing the first page as soon as it arrives (progressive streaming). */
+  /**
+   * Full load. The first one shows each page as soon as it arrives (progressive streaming); a reload (after
+   * a reconnect) reads into a new map and swaps it in when complete, so the universe never shrinks meanwhile.
+   */
   async load(): Promise<void> {
+    const seq = ++this.loadSeq;
+    const current = () => seq === this.loadSeq;
+    const streaming = this.rows.size === 0;
+    this.loading = true;
     useScene.setState({ loading: true, error: null });
     try {
       let cursor: string | null = null;
-      this.rows.clear();
+      let since: string | null = null;
+      const rows = new Map<string, SceneRow>();
+      if (streaming) this.rows = rows;
       const linksPromise = this.api.universeLinks();
+      linksPromise.catch(() => {}); // awaited below; an error before then is reported by the items call
       do {
         const page: UniverseItems = await this.api.universeItems({ cursor });
-        for (const row of rowsOf(page)) this.rows.set(row.id, row);
-        this.since ??= page.server_time;
+        if (!current()) return;
+        for (const row of rowsOf(page)) rows.set(row.id, row);
+        since ??= page.server_time;
         cursor = page.next_cursor ?? null;
-        useScene.setState({ loaded: this.rows.size, total: page.total });
-        if (!cursor) this.links = await linksPromise;
-        this.publish();
+        useScene.setState(streaming ? { loaded: rows.size, total: page.total } : { total: page.total });
+        if (!cursor) {
+          const links = await linksPromise;
+          if (!current()) return;
+          this.links = links;
+        }
+        if (streaming || !cursor) {
+          this.rows = rows;
+          this.publish();
+        }
       } while (cursor);
+      this.since = since;
     } catch (err) {
-      useScene.setState({ error: err instanceof Error ? err.message : String(err) });
+      if (current()) useScene.setState({ error: err instanceof Error ? err.message : String(err) });
     } finally {
-      useScene.setState({ loading: false });
+      if (current()) {
+        this.loading = false;
+        useScene.setState({ loading: false });
+        this.schedule(); // events that arrived meanwhile (or a retry of a failed first load)
+      }
     }
   }
 
@@ -247,7 +273,13 @@ export class SceneLoader {
   }
 
   private async refresh(): Promise<void> {
-    if (this.busy || this.since === null) return;
+    if (this.busy || this.loading) return; // a full load is running; it schedules the rest when done
+    if (this.since === null) {
+      // The first load failed (Core was restarting): load everything now that Core is talking again.
+      this.dirtyItems = this.dirtyLinks = false;
+      void this.load();
+      return;
+    }
     this.busy = true;
     const items = this.dirtyItems;
     const links = this.dirtyLinks;

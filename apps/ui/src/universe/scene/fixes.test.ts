@@ -87,6 +87,74 @@ describe('incremental scene refresh', () => {
   });
 });
 
+describe('full scene loads (start and every reconnect)', () => {
+  const noLinks = async () => ({ ids: [], sources: [], targets: [], kinds: [], states: [] });
+
+  it('keep showing the whole scene while a reload reads its pages', async () => {
+    let reload = false;
+    const api = {
+      universeLinks: noLinks,
+      universeItems: async ({ cursor }: { cursor?: string | null }) =>
+        !reload ? page(['a', 'b', 'c'], 'T0') : cursor ? page(['c'], 'T1') : page(['a', 'b'], 'T1', '2'),
+    } as unknown as CoreApi;
+    const loader = new SceneLoader(api);
+    await loader.load();
+    expect(useScene.getState().scene.n).toBe(3);
+    const shown: number[] = [];
+    const stop = useScene.subscribe((s) => shown.push(s.scene.n));
+    reload = true;
+    await loader.load(); // Core came back
+    stop();
+    expect(Math.min(...shown)).toBe(3); // never shrank to the first page
+    expect(useScene.getState().scene.ids).toEqual(['a', 'b', 'c']);
+  });
+
+  it('let only the newest of two overlapping loads write the scene', async () => {
+    let release: () => void = () => {};
+    let loads = 0;
+    const api = {
+      universeLinks: noLinks,
+      universeItems: async ({ cursor }: { cursor?: string | null }) => {
+        if (cursor === 'old-2') {
+          await new Promise<void>((r) => (release = r));
+          return page(['gone'], 'T0');
+        }
+        loads++;
+        return loads === 1 ? page(['a'], 'T0', 'old-2') : page(['x'], 'T1');
+      },
+    } as unknown as CoreApi;
+    const loader = new SceneLoader(api);
+    const first = loader.load();
+    await new Promise((r) => setTimeout(r, 0)); // the first load waits on its second page
+    await loader.load(); // a reconnect starts another one, which finishes first
+    release();
+    await first;
+    expect(useScene.getState().scene.ids).toEqual(['x']);
+    expect(useScene.getState().loading).toBe(false);
+  });
+
+  it('retry a first load that failed when the next event arrives', async () => {
+    vi.useFakeTimers();
+    let up = false;
+    const api = {
+      universeLinks: noLinks,
+      universeItems: async () => {
+        if (!up) throw new Error('Core is restarting');
+        return page(['a'], 'T0');
+      },
+    } as unknown as CoreApi;
+    useScene.setState({ scene: emptyScene() });
+    const loader = new SceneLoader(api);
+    await loader.load();
+    expect(useScene.getState().error).toBe('Core is restarting');
+    up = true;
+    loader.onEvent(event('item.created'));
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(useScene.getState().scene.ids).toEqual(['a']);
+    expect(useScene.getState().error).toBeNull();
+  });
+});
+
 describe('search in the universe', () => {
   it('flies Enter only to results that answer what is typed now', () => {
     expect(enterTarget({ results: [7, 3], resultsFor: 'python' }, 'python ')).toBe(7);
