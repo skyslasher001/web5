@@ -54,7 +54,17 @@ export class CommandBar {
       if (!win.webContents.isDevToolsOpened()) win.hide();
     });
     win.on('closed', () => {
-      this.win = null;
+      if (this.win === win) this.win = null;
+    });
+    // A crashed or failed page would leave a blank bar: drop the window, so the next show() makes a new one.
+    const discard = (event: string, details: Record<string, unknown>) => {
+      this.opts.log.warn('command_bar_window_lost', { event, ...details });
+      if (this.win === win) this.win = null;
+      if (!win.isDestroyed()) win.destroy();
+    };
+    win.webContents.on('render-process-gone', (_event, details) => discard('render-process-gone', { ...details }));
+    win.webContents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
+      if (isMainFrame && code !== -3) discard('did-fail-load', { code, description }); // -3: aborted, not failed
     });
     void win.loadURL(this.opts.url);
     this.win = win;
@@ -92,8 +102,10 @@ export class CommandBar {
   }
 
   /** Register the global shortcut. A failure (another app owns it) is reported, never fatal. */
+  /** The new shortcut is registered before the old one is released, so a failure keeps the one that works. */
   register(accelerator: string): HotkeyStatus {
-    if (this.hotkey.registered && this.hotkey.accelerator) globalShortcut.unregister(this.hotkey.accelerator);
+    const previous = this.hotkey;
+    if (previous.registered && previous.accelerator === accelerator) return previous;
     let registered = false;
     let error: string | null = null;
     try {
@@ -102,9 +114,15 @@ export class CommandBar {
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
-    this.hotkey = { accelerator, registered, error };
     this.opts.log[registered ? 'info' : 'warn']('command_bar_hotkey', { accelerator, registered, error });
-    return this.hotkey;
+    const attempt = { accelerator, registered, error };
+    if (!registered && previous.registered) {
+      // Report the failed attempt, but keep the working shortcut as the status.
+      return { ...attempt, error: `${error} ${previous.accelerator} still works.` };
+    }
+    if (registered && previous.registered && previous.accelerator) globalShortcut.unregister(previous.accelerator);
+    this.hotkey = attempt;
+    return attempt;
   }
 
   get status(): HotkeyStatus {
