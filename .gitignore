@@ -33,3 +33,6 @@ test-results/
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Assistant scratch worktrees (isolated copies of this repo)
+.claude/worktrees/

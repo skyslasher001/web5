@@ -13,6 +13,7 @@ export default tseslint.config(
       'packages/shared-types/src/events.ts',
       '.dev/**',
       '.venv/**',
+      '.claude/**',
       'playwright-report/**',
       'test-results/**',
     ],

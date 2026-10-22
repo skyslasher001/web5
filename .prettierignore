@@ -14,3 +14,4 @@ playwright-report/
 test-results/
 services/
 tests/**/*.py
+.claude/
