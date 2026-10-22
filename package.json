@@ -12,7 +12,8 @@
     "start": "pnpm build && node scripts/dev.mjs --prod",
     "build": "pnpm --filter @universe/design-tokens build && pnpm --filter @universe/ui build && pnpm --filter @universe/desktop build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint --max-warnings=0 . && prettier --check .",
+    "check:generated": "node packages/design-tokens/build.mjs --check && node scripts/gen-types.mjs --check",
     "format": "prettier --write .",
     "test": "pnpm test:py && pnpm test:js",
     "test:py": "uv run pytest",
@@ -20,7 +21,7 @@
     "test:e2e": "playwright test",
     "gen:types": "node scripts/gen-types.mjs",
     "tokens": "node packages/design-tokens/build.mjs",
-    "check": "pnpm lint && pnpm typecheck && uv run ruff check && uv run ruff format --check && uv run pyright && pnpm test",
+    "check": "pnpm lint && pnpm typecheck && pnpm check:generated && uv run ruff check && uv run ruff format --check && uv run pyright && pnpm test",
     "bench:universe": "node scripts/universe_bench.mjs",
     "handoff": "uv run python scripts/export_handoff.py"
   },

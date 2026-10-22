@@ -38,7 +38,7 @@ UNIVERSE is a local-first Windows desktop "digital brain": Electron + React UI, 
 | --- | --- |
 | Install | `uv sync` and `pnpm install` (pnpm 12: `npm i -g pnpm@12.11.2`) |
 | Run the app | `pnpm dev` (on Linux as root: `pnpm dev -- --no-sandbox`) |
-| Everything CI checks | `pnpm check` |
+| Everything CI checks before its build | `pnpm check` (lint with no warnings, format, types, generated files up to date, Python and JS tests); CI then runs `pnpm build` and the e2e tests, which `pnpm check` leaves out (see Electron e2e) |
 | Python tests / lint / types | `uv run pytest` · `uv run ruff check` · `uv run ruff format --check` · `uv run pyright` |
 | Test against a real Ollama | runs inside `uv run pytest` when `ollama` is on `PATH` or `UNIVERSE_TEST_OLLAMA` points at it; skipped otherwise |
 | JS tests / lint / types | `pnpm exec vitest run` · `pnpm exec eslint .` · `pnpm exec prettier --check .` · `pnpm -r typecheck` |

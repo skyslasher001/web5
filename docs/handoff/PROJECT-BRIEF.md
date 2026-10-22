@@ -460,7 +460,7 @@ SPEC §25, the remaining phases:
 | --- | --- |
 | Install | `uv sync` and `pnpm install` (pnpm 12) |
 | Run the app | `pnpm dev` (Linux as root: `pnpm dev -- --no-sandbox`) |
-| Everything CI checks | `pnpm check` |
+| Everything CI checks before its build | `pnpm check` (then `pnpm build` and the e2e tests, which it leaves out) |
 | Python tests | `uv run pytest` (real-Ollama tests run when `ollama` is on `PATH`) |
 | JS tests | `pnpm exec vitest run` |
 | Electron e2e | `pnpm build && pnpm test:e2e` (no display: `xvfb-run -a pnpm test:e2e`) |

@@ -56,7 +56,7 @@ Optional: `uv run pre-commit install` to run the same lint, format and type chec
 | `pnpm build` | Design tokens, UI bundle, Electron main/preload |
 | `pnpm test` | Python tests (pytest) + JS unit tests (Vitest) |
 | `pnpm test:e2e` | Electron end-to-end tests with Playwright (`pnpm build` first) |
-| `pnpm check` | Everything CI runs: lint, format, types, tests |
+| `pnpm check` | What CI runs before its build: lint (no warnings), format, types, generated files up to date, Python and JS tests. CI then runs `pnpm build` and the e2e tests: run those yourself (`pnpm build && pnpm test:e2e`) |
 | `pnpm gen:types` | Regenerate `packages/shared-types` from the backend's OpenAPI schema |
 | `pnpm tokens` | Regenerate CSS/TS from `packages/design-tokens/tokens.json` |
 | `pnpm bench:universe` | Seeds 50k items and measures frame rates per quality preset and layout against the SPEC budget (`pnpm build` first) |
@@ -67,13 +67,17 @@ Optional: `uv run pre-commit install` to run the same lint, format and type chec
 ```
 apps/desktop      Electron main + preload (supervisor launcher, safe-mode page, app:// protocol)
 apps/ui           React HUD + 3D universe
-services/core     FastAPI: API, WebSocket hub, event bus, chat, vault runtime, agent engine, memory, MCP, audit log
+services/core     FastAPI: API, WebSocket hub, event bus, chat, vault runtime, agent engine, memory, MCP, audit log, Forge
+services/vault    the vault: ingest, job queue, pipeline stages, search, LanceDB vectors, links, backups
 services/agents   agent loop, tool interface, tool-calling provider, model router
 services/models   hardware detection, model recommendations, Ollama client
+services/research web search providers, page fetch + extraction, cache (the Researcher's tools)
+services/voice    voice process: speech-to-text, text-to-speech, wake phrase, voice sessions
 services/common   config, ids, logging, error capture, egress gate, SQLite helpers
-services/supervisor  stdlib-only watchdog: restarts, last-known-good, safe mode
-agents/           agent YAML + prompts (Core, Navigator, Librarian, Scribe, Critic)
+services/supervisor  stdlib-only watchdog: restarts, last-known-good, safe mode, Forge releases
+agents/           agent YAML + prompts (Core, Navigator, Librarian, Scribe, Critic, Researcher; Forge, Sentinel)
 packages/         design tokens, shared types
+scripts/          dev start, seeders, benchmark, type generation, handoff exporter, hardware report
 tests/            unit, integration, protected-core guards, Electron e2e
 ```
 
