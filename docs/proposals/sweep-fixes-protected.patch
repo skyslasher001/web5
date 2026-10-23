@@ -1,0 +1,1295 @@
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index 2f1ac65..8e7399e 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -34,7 +34,12 @@ import { isAllowedNavigation } from './navigation';
+ import { corePortFrom, envValue, resolvePaths } from './paths';
+ import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
+ import { MicConsent, mediaAllowed } from './protected/consent';
+-import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
++import {
++  KILL_SWITCH_HOTKEY,
++  KillSwitchControl,
++  readKillSwitchFile,
++  watchKillSwitchFile,
++} from './protected/killswitch';
+ import { ForgeControl } from './protected/forge';
+ import { SupervisorProcess } from './protected/supervisor';
+ import { createTray } from './tray';
+@@ -556,6 +561,10 @@ if (!app.requestSingleInstanceLock()) {
+       dev: Boolean(devUiUrl),
+       core_port: corePort,
+     });
++    // Kill switch (protected/killswitch.ts): resend an engage the restarting supervisor missed, and follow an
++    // engage Core wrote itself (its POST /killswitch) so capture stops here too.
++    supervisor.on('ready', () => void killSwitch.resync());
++    watchKillSwitchFile(join(paths.dataDir, 'killswitch.json'), (engaged) => killSwitch.observe(engaged));
+     supervisor.start();
+     createWindow();
+     const killHotkey = globalShortcut.register(KILL_SWITCH_HOTKEY, () => void killSwitch.set(true, 'hotkey'));
+diff --git a/apps/desktop/src/main/protected/killswitch.test.ts b/apps/desktop/src/main/protected/killswitch.test.ts
+index a2cfa27..690ee30 100644
+--- a/apps/desktop/src/main/protected/killswitch.test.ts
++++ b/apps/desktop/src/main/protected/killswitch.test.ts
+@@ -1,5 +1,13 @@
++import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
+ import { describe, expect, it, vi } from 'vitest';
+-import { KillSwitchControl, parseKillSwitchFile } from './killswitch';
++import {
++  KillSwitchControl,
++  parseKillSwitchFile,
++  peekKillSwitchFile,
++  watchKillSwitchFile,
++} from './killswitch';
+ 
+ function control(overrides: Partial<ConstructorParameters<typeof KillSwitchControl>[0]> = {}) {
+   const calls: string[] = [];
+@@ -38,6 +46,59 @@ describe('kill switch', () => {
+     expect(confirmed.calls).toEqual(['supervisor:false', 'changed:false']);
+   });
+ 
++  it('sends an engage again when the supervisor comes back', async () => {
++    // Sweep 2026-10-22: the call threw while the supervisor restarted, so the state was never written and the
++    // restarted supervisor booted Core with the kill switch off.
++    let up = false;
++    const sent: boolean[] = [];
++    const { ks } = control({
++      setOnSupervisor: vi.fn(async (engaged: boolean) => {
++        if (!up) throw new Error('The supervisor is not running');
++        sent.push(engaged);
++        return { engaged, core_acked: true };
++      }),
++    });
++    const result = await ks.set(true, 'hotkey');
++    expect(result).toEqual({ engaged: true, core_acked: false });
++    expect(ks.engaged).toBe(true);
++    up = true;
++    await ks.resync(); // the supervisor's 'ready'
++    expect(sent).toEqual([true]);
++    await ks.resync(); // nothing left to send
++    expect(sent).toEqual([true]);
++  });
++
++  it('follows an engage written by Core and stops capture', () => {
++    // Sweep 2026-10-22: Core's POST /killswitch never reached Electron, so the mic stayed on.
++    const { ks, calls } = control();
++    ks.observe(null); // unreadable mid-replace: not an engage by itself
++    ks.observe(false);
++    expect(calls).toEqual([]);
++    ks.observe(true);
++    expect(calls).toEqual(['capture-stopped', 'changed:true']);
++    expect(ks.engaged).toBe(true);
++    ks.observe(true);
++    ks.observe(false); // releasing never follows the file: only the native dialog releases
++    expect(calls).toEqual(['capture-stopped', 'changed:true']);
++    expect(ks.engaged).toBe(true);
++  });
++
++  it('watches the state file', async () => {
++    const dir = mkdtempSync(join(tmpdir(), 'ks-'));
++    const path = join(dir, 'killswitch.json');
++    const seen: (boolean | null)[] = [];
++    expect(peekKillSwitchFile(path)).toBe(false);
++    writeFileSync(path, '{garbage');
++    expect(peekKillSwitchFile(path)).toBe(null);
++    writeFileSync(path, '{"engaged":true,"via":"hud"}');
++    const stop = watchKillSwitchFile(path, (v) => seen.push(v), 20);
++    await new Promise((r) => setTimeout(r, 100));
++    stop();
++    expect(seen.length).toBeGreaterThan(0);
++    expect(seen.every((v) => v === true)).toBe(true);
++    rmSync(dir, { recursive: true, force: true });
++  });
++
+   it('reads the state file fail-safe', () => {
+     expect(parseKillSwitchFile(null)).toBe(false); // no file: never engaged
+     expect(parseKillSwitchFile('{"engaged":true}')).toBe(true);
+diff --git a/apps/desktop/src/main/protected/killswitch.ts b/apps/desktop/src/main/protected/killswitch.ts
+index 0336ca6..4433627 100644
+--- a/apps/desktop/src/main/protected/killswitch.ts
++++ b/apps/desktop/src/main/protected/killswitch.ts
+@@ -32,8 +32,40 @@ export function readKillSwitchFile(path: string): boolean {
+   return parseKillSwitchFile(text);
+ }
+ 
++/**
++ * For watching the state file: true only for a clean read that says engaged, null when it can't be read. (A
++ * read during the supervisor's atomic replace can fail on Windows; that must not engage by itself here. At
++ * launch, readKillSwitchFile still treats an unreadable file as engaged.)
++ */
++export function peekKillSwitchFile(path: string): boolean | null {
++  let text: string;
++  try {
++    text = readFileSync(path, 'utf8');
++  } catch (err) {
++    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? false : null;
++  }
++  try {
++    return (JSON.parse(text) as { engaged?: unknown }).engaged === true;
++  } catch {
++    return null;
++  }
++}
++
++/** Poll the state file and hand each reading to `onRead` (KillSwitchControl.observe). Returns a stop function. */
++export function watchKillSwitchFile(
++  path: string,
++  onRead: (engaged: boolean | null) => void,
++  intervalMs = 1000,
++): () => void {
++  const timer = setInterval(() => onRead(peekKillSwitchFile(path)), intervalMs);
++  timer.unref?.();
++  return () => clearInterval(timer);
++}
++
+ export class KillSwitchControl {
+   engaged: boolean;
++  /** An engage the supervisor never received (it was restarting): resent by resync(). */
++  private pending = false;
+ 
+   constructor(
+     private readonly opts: {
+@@ -59,12 +91,43 @@ export class KillSwitchControl {
+     }
+     // Reflect an engage at once, even if the supervisor is slow: the indicator must never lag behind.
+     if (engaged) this.update(true);
+-    const result = await this.opts.setOnSupervisor(engaged);
++    let result: KillSwitchResult;
++    try {
++      result = await this.opts.setOnSupervisor(engaged);
++    } catch (err) {
++      // The supervisor is restarting (sweep 2026-10-22): an engage stays engaged here and is sent again when
++      // it's back (resync), so the state file is written and Core boots engaged. A failed release stays engaged.
++      if (engaged) this.pending = true;
++      this.opts.log('killswitch_unsent', {
++        engaged,
++        via,
++        error: err instanceof Error ? err.message : String(err),
++      });
++      return { engaged: this.engaged, core_acked: false };
++    }
++    if (result.engaged === engaged) this.pending = false;
+     this.update(result.engaged);
+     this.opts.log('killswitch', { engaged: result.engaged, via, core_acked: result.core_acked });
+     return result;
+   }
+ 
++  /** The supervisor (re)started: send an engage it never received. */
++  async resync(): Promise<void> {
++    if (!this.pending || !this.engaged) return;
++    await this.set(true, 'resync');
++  }
++
++  /**
++   * The state file changed outside Electron (Core's own POST /killswitch, sweep 2026-10-22): an engage there
++   * stops capture here too. Only an engage is followed; releasing always goes through the native dialog.
++   */
++  observe(fileEngaged: boolean | null): void {
++    if (fileEngaged !== true || this.engaged) return;
++    this.opts.stopCapture();
++    this.update(true);
++    this.opts.log('killswitch', { engaged: true, via: 'state-file', core_acked: true });
++  }
++
+   private update(engaged: boolean): void {
+     if (engaged === this.engaged) return;
+     this.engaged = engaged;
+diff --git a/services/core/src/universe_core/forge.py b/services/core/src/universe_core/forge.py
+index 231d07b..d91d373 100644
+--- a/services/core/src/universe_core/forge.py
++++ b/services/core/src/universe_core/forge.py
+@@ -14,6 +14,7 @@ import hashlib
+ import json
+ import math
+ import os
++import re
+ import shutil
+ import sqlite3
+ import subprocess
+@@ -37,6 +38,9 @@ IssueStatus = Literal["open", "working", "proposed", "fixed", "ignored"]
+ ProposalStatus = Literal["draft", "verifying", "failed", "ready", "approved", "applied", "rolled_back", "rejected"]
+ 
+ 
++# Characters git quotes in a path even with core.quotePath=false (as Sentinel's QUOTED_NAME).
++QUOTED_NAME = re.compile(r'["\\\x00-\x1f\x7f]')
++
+ # Links verification makes in a worktree (forge_verify): never part of a proposal.
+ VERIFY_LINKS = (":(exclude).venv", ":(exclude,glob)**/node_modules", ":(exclude)node_modules")
+ 
+@@ -139,7 +143,9 @@ def git(repo: Path, *args: str, timeout: float = 120.0) -> str:
+         raise ForgeError("git is not installed")
+     try:
+         done = subprocess.run(
+-            [exe, "-C", str(repo), *args],
++            # quotePath=false: a non-ASCII name stays a plain path (git would print "tests/\303\274/x.py", which no
++            # path rule matches). The supervisor runs git the same way, so the diff hashes agree.
++            [exe, "-C", str(repo), "-c", "core.quotePath=false", *args],
+             capture_output=True,
+             text=True,
+             encoding="utf-8",  # git output is UTF-8; Windows' default (cp1252) can't decode it (same as the supervisor)
+@@ -170,6 +176,8 @@ class Worktree:
+         clean = rel.replace("\\", "/").strip()
+         if not clean or clean.startswith("/") or (len(clean) > 1 and clean[1] == ":"):
+             raise ForgeError(f"'{rel}': use a path relative to the repository root")
++        if QUOTED_NAME.search(clean):  # git quotes these even with quotePath=false: no review rule would match
++            raise ForgeError(f"'{rel}': file names can't contain quotes or control characters")
+         target = (self.path / clean).resolve()
+         root = self.path.resolve()
+         if target != root and root not in target.parents:
+@@ -212,12 +220,17 @@ class Worktree:
+         return git(self.path, "rev-parse", "HEAD").strip()
+ 
+     def changes(self) -> list[ProposalFile]:
+-        out = git(self.path, "diff", "--name-status", f"{self.base}..HEAD")
++        # -z: names come out raw, never quoted or escaped (a quoted name matched no protected or test rule).
++        fields = git(self.path, "diff", "--name-status", "-z", f"{self.base}..HEAD").split("\x00")
+         files = []
+-        for line in out.splitlines():
+-            parts = line.split("\t")
+-            if len(parts) >= 2:
+-                files.append(ProposalFile(path=parts[-1], status=parts[0][:1]))
++        i = 0
++        while i < len(fields) and fields[i]:
++            status = fields[i]
++            names = 2 if status[:1] in ("R", "C") else 1  # a rename or copy lists the old name, then the new
++            if i + names >= len(fields):
++                break
++            files.append(ProposalFile(path=fields[i + names], status=status[:1]))
++            i += names + 1
+         return files
+ 
+     def diff(self) -> str:
+diff --git a/services/core/src/universe_core/forge_tools.py b/services/core/src/universe_core/forge_tools.py
+index e81fc28..42d91b8 100644
+--- a/services/core/src/universe_core/forge_tools.py
++++ b/services/core/src/universe_core/forge_tools.py
+@@ -167,9 +167,15 @@ def forge_tools(ctx: "CoreContext") -> list[Tool]:
+         tree = f.worktree(proposal.id)
+         f.update(proposal.id, status="verifying", repro_test=args.repro_test)
+ 
++        killswitch = getattr(ctx.safety, "killswitch", None)
++
++        def stopped() -> bool:
++            # Cancelling this task doesn't stop the thread below: the checks poll the kill switch themselves.
++            return bool(killswitch is not None and killswitch.engaged)
++
+         def verify() -> Report:
+             head = tree.commit(f"Forge: {proposal.title}")
+-            verifier = Verifier(f.require_repo())
++            verifier = Verifier(f.require_repo(), stop=stopped)
+             report = Report()
+             report.repro = verifier.repro(
+                 f.base_checkout(proposal.id, proposal.base_commit), tree.path, args.repro_test
+diff --git a/services/core/src/universe_core/forge_verify.py b/services/core/src/universe_core/forge_verify.py
+index 7870453..a81fbad 100644
+--- a/services/core/src/universe_core/forge_verify.py
++++ b/services/core/src/universe_core/forge_verify.py
+@@ -7,18 +7,23 @@ offline, proxies pointed at a dead port, a temporary home. That limits accidents
+ containers (ADR-0014, flagged).
+ """
+ 
++import contextlib
+ import os
+ import shutil
++import signal
+ import subprocess
+ import sys
+ import tempfile
+ import time
++from collections.abc import Callable
+ from dataclasses import asdict, dataclass, field
+ from pathlib import Path
+ from typing import Any
+ 
+ TAIL = 4000  # characters of output kept per check
+ DEAD_PROXY = "http://127.0.0.1:9"
++POLL_S = 0.25  # how often a running check looks at `stop` (the kill switch)
++STOPPED = "stopped: the kill switch is engaged"
+ 
+ 
+ @dataclass
+@@ -84,26 +89,65 @@ def scrubbed_env(tree: Path, home: Path) -> dict[str, str]:
+     return env
+ 
+ 
+-def run(name: str, command: list[str], cwd: Path, env: dict[str, str], timeout: float) -> CheckResult:
++def _kill_tree(proc: "subprocess.Popen[str]") -> None:
++    """End a check and everything it started (a test run's own subprocesses too)."""
++    if os.name == "nt":
++        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
++    else:
++        with contextlib.suppress(OSError):
++            os.killpg(proc.pid, signal.SIGKILL)  # the check runs in its own session (start_new_session below)
++    with contextlib.suppress(OSError):
++        proc.kill()
++
++
++def run(
++    name: str,
++    command: list[str],
++    cwd: Path,
++    env: dict[str, str],
++    timeout: float,
++    stop: Callable[[], bool] | None = None,
++) -> CheckResult:
++    """Run one check. `stop` (the kill switch) is polled while it runs: when it says so, the check and its whole
++    process tree are killed at once instead of running on to the timeout (sweep 2026-10-22)."""
+     started = time.monotonic()
++    if stop is not None and stop():
++        return CheckResult(name, command, False, 0.0, STOPPED)
+     try:
+-        done = subprocess.run(
++        proc = subprocess.Popen(
+             command,
+             cwd=cwd,
+             env=env,
+-            capture_output=True,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
+             text=True,
+             encoding="utf-8",
+             errors="replace",
+-            timeout=timeout,
+-            check=False,
++            start_new_session=os.name != "nt",
++            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+         )
+-        ok, output = done.returncode == 0, (done.stdout + done.stderr)
+-    except subprocess.TimeoutExpired as exc:
+-        ok, output = False, f"timed out after {timeout:.0f} s\n{exc.stdout or ''}"
+     except OSError as exc:
+-        ok, output = False, f"could not run: {exc}"
+-    return CheckResult(name, command, ok, round(time.monotonic() - started, 2), str(output)[-TAIL:])
++        return CheckResult(name, command, False, round(time.monotonic() - started, 2), f"could not run: {exc}")
++    deadline = started + timeout
++    why: str | None = None
++    while True:
++        try:
++            out, err = proc.communicate(timeout=POLL_S)
++            break
++        except subprocess.TimeoutExpired:
++            if stop is not None and stop():
++                why = STOPPED
++            elif time.monotonic() >= deadline:
++                why = f"timed out after {timeout:.0f} s"
++            if why is not None:
++                _kill_tree(proc)
++                out, err = proc.communicate()
++                break
++    output = (out or "") + (err or "")
++    if why is not None:
++        output = f"{why}\n{output}"
++    ok = why is None and proc.returncode == 0
++    return CheckResult(name, command, ok, round(time.monotonic() - started, 2), output[-TAIL:])
+ 
+ 
+ def link_node_modules(repo: Path, tree: Path) -> None:
+@@ -121,13 +165,26 @@ def link_node_modules(repo: Path, tree: Path) -> None:
+ 
+ 
+ class Verifier:
+-    def __init__(self, repo: Path, *, python: str | None = None, timeout_s: float = 900.0) -> None:
++    def __init__(
++        self,
++        repo: Path,
++        *,
++        python: str | None = None,
++        timeout_s: float = 900.0,
++        stop: Callable[[], bool] | None = None,
++    ) -> None:
+         self.repo = repo
+         self.python = python or sys.executable
+         self.timeout_s = timeout_s
++        self.stop = stop or (lambda: False)  # the kill switch: checked before and during every step
++
++    def _run(self, name: str, command: list[str], cwd: Path, env: dict[str, str], timeout: float) -> CheckResult:
++        return run(name, command, cwd, env, timeout, stop=self.stop)
+ 
+     def repro(self, base: Path, head: Path, test: str) -> dict[str, Any]:
+         """Copy the repro test into the base checkout and run it in both: it must fail there and pass here."""
++        if self.stop():
++            return {"test": test, "fails_on_base": False, "passes_on_head": False, "error": STOPPED}
+         rel = test.split("::", 1)[0]
+         source = head / rel
+         if not source.is_file():
+@@ -137,9 +194,11 @@ class Verifier:
+         shutil.copyfile(source, dest)
+         command = [self.python, "-m", "pytest", "-q", "-p", "no:cacheprovider", test]
+         with tempfile.TemporaryDirectory(prefix="forge-home-") as home:
+-            on_base = run("repro on base", command, base, scrubbed_env(base, Path(home)), self.timeout_s)
+-            on_head = run("repro with the patch", command, head, scrubbed_env(head, Path(home)), self.timeout_s)
++            on_base = self._run("repro on base", command, base, scrubbed_env(base, Path(home)), self.timeout_s)
++            on_head = self._run("repro with the patch", command, head, scrubbed_env(head, Path(home)), self.timeout_s)
+         dest.unlink(missing_ok=True)  # the base checkout stays pristine
++        if self.stop():  # a stopped run "fails" on base: it must never count as a reproduction
++            return {"test": test, "fails_on_base": False, "passes_on_head": False, "error": STOPPED}
+         return {
+             "test": test,
+             "fails_on_base": not on_base.ok,
+@@ -149,8 +208,8 @@ class Verifier:
+         }
+ 
+     def checks(self, head: Path, changed: list[str]) -> list[CheckResult]:
+-        """Lint and types on what changed, then the test suites. JS checks only when JS changed."""
+-        results: list[CheckResult] = []
++        """Lint and types on what changed, then the test suites. JS checks only when JS changed. Once the kill
++        switch is engaged, nothing more runs: the result ends with a failed "stopped" check."""
+         py = [f for f in changed if f.endswith(".py") and (head / f).is_file()]
+         js = [f for f in changed if f.endswith((".ts", ".tsx", ".js", ".mjs")) and (head / f).is_file()]
+         venv = self.repo / ".venv"
+@@ -161,31 +220,31 @@ class Verifier:
+                 subprocess.run(
+                     ["cmd", "/c", "mklink", "/J", str(head / ".venv"), str(venv)], capture_output=True, check=False
+                 )
++        steps: list[tuple[str, list[str], float]] = []
++        if py and _has_module(self.python, "ruff"):
++            steps.append(("ruff check", [self.python, "-m", "ruff", "check", *py], 300))
++            steps.append(("ruff format", [self.python, "-m", "ruff", "format", "--check", *py], 300))
++        if py and _has_module(self.python, "pyright") and (head / "pyproject.toml").is_file():
++            steps.append(("pyright", [self.python, "-m", "pyright", *py], 600))
++        tests_dir = "tests" if (head / "tests").is_dir() else "."
++        steps.append(
++            ("pytest (full suite)", [self.python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-x", tests_dir],
++             self.timeout_s)
++        )  # fmt: skip
++        if js and (self.repo / "node_modules").is_dir():
++            link_node_modules(self.repo, head)
++            pnpm = shutil.which("pnpm") or "pnpm"
++            steps.append(("eslint", [pnpm, "exec", "eslint", *js], 600))
++            steps.append(("vitest", [pnpm, "exec", "vitest", "run"], 900))
++            steps.append(("typecheck", [pnpm, "-r", "typecheck"], 900))
++        results: list[CheckResult] = []
+         with tempfile.TemporaryDirectory(prefix="forge-home-") as home:
+             env = scrubbed_env(head, Path(home))
+-            if py and _has_module(self.python, "ruff"):
+-                results.append(run("ruff check", [self.python, "-m", "ruff", "check", *py], head, env, 300))
+-                results.append(
+-                    run("ruff format", [self.python, "-m", "ruff", "format", "--check", *py], head, env, 300)
+-                )
+-            if py and _has_module(self.python, "pyright") and (head / "pyproject.toml").is_file():
+-                results.append(run("pyright", [self.python, "-m", "pyright", *py], head, env, 600))
+-            tests_dir = "tests" if (head / "tests").is_dir() else "."
+-            results.append(
+-                run(
+-                    "pytest (full suite)",
+-                    [self.python, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-x", tests_dir],
+-                    head,
+-                    env,
+-                    self.timeout_s,
+-                )
+-            )
+-            if js and (self.repo / "node_modules").is_dir():
+-                link_node_modules(self.repo, head)
+-                pnpm = shutil.which("pnpm") or "pnpm"
+-                results.append(run("eslint", [pnpm, "exec", "eslint", *js], head, env, 600))
+-                results.append(run("vitest", [pnpm, "exec", "vitest", "run"], head, env, 900))
+-                results.append(run("typecheck", [pnpm, "-r", "typecheck"], head, env, 900))
++            for name, command, timeout in steps:
++                if self.stop():
++                    results.append(CheckResult("stopped", [], False, 0.0, STOPPED))
++                    break
++                results.append(self._run(name, command, head, env, timeout))
+         return results
+ 
+ 
+diff --git a/services/core/src/universe_core/protected/sentinel.py b/services/core/src/universe_core/protected/sentinel.py
+index 402830f..a1b6efa 100644
+--- a/services/core/src/universe_core/protected/sentinel.py
++++ b/services/core/src/universe_core/protected/sentinel.py
+@@ -2,10 +2,12 @@
+ 
+ A proposal reaches the owner only if this passes. It reads the diff, not the model's description of it:
+ 
+-- **block**: touches protected core; deletes, skips or weakens a test (fewer assertions, `skip`/`xfail`/`.only`);
+-  changes how the tests or linters run (conftest, pytest/ruff/pyright/eslint/vitest config); hides content from
+-  this review (binary or NUL-byte changes to text, symbolic links); adds network code outside the egress gate;
+-  raises an agent's permission tier; addresses the reviewers.
++- **block**: touches protected core; deletes, skips or weakens a test (fewer assertions, a changed assertion,
++  `skip`/`xfail`/`.only`, an added `return`/`pass` in an existing test); changes how the tests or linters run
++  (conftest, pytest/ruff/pyright/eslint/vitest config); hides content from this review (binary or NUL-byte
++  changes to text, symbolic links, file names git has to quote); adds network code or a dynamic import outside
++  the egress gate (only the top-level `tests/` folder is exempt); raises an agent's permission tier; addresses
++  the reviewers.
+ - **high risk** (allowed, flagged): dependency or lockfile changes, database migrations, new subprocess or
+   dynamic-code calls, consent and capture code, agent tool lists.
+ - **medium**: large diffs (over 200 changed lines).
+@@ -14,7 +16,8 @@ Standard library only, deterministic, no model calls.
+ """
+ 
+ import re
+-from dataclasses import asdict, dataclass
++from collections import Counter
++from dataclasses import asdict, dataclass, field
+ from datetime import UTC, datetime
+ from fnmatch import fnmatchcase
+ from typing import Any
+@@ -26,12 +29,20 @@ SKIPS = re.compile(
+ )
+ ASSERTS = re.compile(r"\bassert\b|\bexpect\(|\bpytest\.raises\(|\bself\.assert\w+\(")
+ TEST_DEF = re.compile(r"^\s*(async\s+)?def\s+test_\w+|^\s*(it|test)\(")
++# A function (Python def, or a JS it()/test()), and whether it is a test: to tell an early exit in a test.
++DEF_LINE = re.compile(r"\s*(?:async\s+)?def\s+(?P<name>\w+)|\s*(?P<js>it|test)\(")
++EARLY_EXIT = re.compile(r"^\s*(?:return\b|pass\s*$)")
++# Characters git quotes in a path even with core.quotePath=false: such a name isn't matched against the rules.
++QUOTED_NAME = re.compile(r'["\\\x00-\x1f\x7f]')
+ # Aligned with (and wider than) tests/protected/test_invariants.HTTP_CLIENT_MODULES so Sentinel's block list is
+ # never weaker than the project's own egress invariant: every stdlib/third-party client the project bans, plus
+ # the JS clients, plus a raw non-loopback URL.
+ NETWORK = re.compile(
+     r"\b(?:import|from)\s+(?:httpx|requests|aiohttp|urllib3|socket|smtplib|ftplib|telnetlib|websockets?)\b|"
+     r"\burllib\.request\b|\bhttp\.client\b|\basyncio\.open_connection\b|"
++    # The same modules imported by name from their package, and dynamic imports that could hide any of them.
++    r"\bfrom\s+urllib\s+import\b[^#]*\brequest\b|\bfrom\s+http\s+import\b[^#]*\bclient\b|"
++    r"\bfrom\s+asyncio\s+import\b[^#]*\bopen_connection\b|\bimport_module\b|\b__import__\(|"
+     r"\bfetch\(|XMLHttpRequest|new\s+WebSocket\(|\bEventSource\(|\baxios\b|"
+     r"\b(?:https?|net)\.(?:get|request)\(|navigator\.sendBeacon|"
+     r"https?://(?!127\.0\.0\.1|localhost)"
+@@ -48,7 +59,8 @@ INJECTION = re.compile(
+ # conftest.py hook or `addopts = -k repro` made a failing suite pass).
+ TEST_CONFIG = re.compile(
+     r"(^|/)(conftest\.py|pytest\.ini|tox\.ini|setup\.cfg|pyrightconfig\.json|ruff\.toml|\.ruff\.toml|"
+-    r"(vitest|vite|playwright|eslint)\.config\.[cm]?[jt]s|\.eslintrc[^/]*|\.prettierrc[^/]*)$"
++    r"(vitest|vite|playwright|eslint)\.config\.[cm]?[jt]s|\.eslintrc[^/]*|\.prettierrc[^/]*)$",
++    re.I,  # Windows: "Conftest.py" is the same file
+ )
+ PYPROJECT_TOOLS = re.compile(r"\[tool\.(pytest|pyright|ruff|coverage)|\baddopts\b|\btestpaths\b|\bpython_files\b")
+ DEPENDENCY_FILES = re.compile(r"(^|/)(pyproject\.toml|package\.json|uv\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt)$")
+@@ -65,7 +77,10 @@ class Finding:
+ 
+ 
+ def _matches(rel: str, patterns: list[str]) -> bool:
+-    for pattern in patterns:
++    # Case-folded, like Core's ProtectedPaths: on Windows "Services/Supervisor/x.py" is the protected file.
++    rel = rel.casefold()
++    for raw in patterns:
++        pattern = raw.casefold()
+         if pattern.endswith("/**") and (rel == pattern[:-3] or rel.startswith(pattern[:-2])):
+             return True
+         if fnmatchcase(rel, pattern.replace("**", "*")):
+@@ -73,55 +88,109 @@ def _matches(rel: str, patterns: list[str]) -> bool:
+     return False
+ 
+ 
+-def _hidden(diff: str) -> dict[str, str]:
+-    """file → why its content can't be reviewed line by line: a binary diff or a symbolic link."""
+-    out: dict[str, str] = {}
+-    current: str | None = None
+-    for line in diff.splitlines():
+-        if line.startswith("diff --git "):
+-            parts = line.split(" b/", 1)
+-            current = parts[1] if len(parts) == 2 else None
+-        elif current is None:
+-            continue
+-        elif line.startswith("Binary files ") or line == "GIT binary patch":
+-            out[current] = "a binary change: its content can't be reviewed"
+-        elif re.match(r"(new file |new |deleted file )?mode 120000", line):
+-            out[current] = "a symbolic link"
+-        elif line.startswith("+") and not line.startswith("+++") and "\x00" in line:
+-            out[current] = "a NUL byte in a text file hides it from line-by-line review"
+-    return out
++@dataclass
++class _FileDiff:
++    added: list[str] = field(default_factory=list)
++    removed: list[str] = field(default_factory=list)
++    hidden: str | None = None  # why its content can't be reviewed line by line
++    early_exits: int = 0  # added `return`/`pass` lines inside a test function that was already there
++
+ 
++def _diff_path(line: str) -> str:
++    """The file a `diff --git a/X b/X` header names. Read as the same name twice, so a name containing " b/" is
++    still read whole; a rename (a/old b/new) falls back to the split. A name git had to quote stays quoted."""
++    rest = line[len("diff --git ") :]
++    half = (len(rest) - 1) // 2
++    if rest.startswith("a/") and rest[half : half + 3] == " b/" and rest[2:half] == rest[half + 3 :]:
++        return rest[2:half]
++    parts = rest.split(" b/", 1)
++    return parts[1] if len(parts) == 2 else rest
++
++
++def _parse(diff: str) -> dict[str, _FileDiff]:
++    """file → its added and removed lines, from a unified diff. `---`/`+++` are headers only between `diff --git`
++    and the first `@@` (an added line starting with "++" is content, not a header)."""
++    out: dict[str, _FileDiff] = {}
++    current: _FileDiff | None = None
++    in_header = False
++    scopes: list[tuple[int, bool, bool]] = []  # enclosing functions: (indent, is a test, added by this diff)
++
++    def enter(text: str, *, added: bool) -> None:
++        if not text.strip():
++            return
++        indent = len(text) - len(text.lstrip())
++        while scopes and scopes[-1][0] >= indent:
++            scopes.pop()
++        if m := DEF_LINE.match(text):
++            scopes.append((indent, bool(m.group("js") or m.group("name").startswith("test")), added))
+ 
+-def _hunks(diff: str) -> dict[str, tuple[list[str], list[str]]]:
+-    """file → (added lines, removed lines), from a unified diff."""
+-    out: dict[str, tuple[list[str], list[str]]] = {}
+-    current: str | None = None
+     for line in diff.splitlines():
+         if line.startswith("diff --git "):
+-            parts = line.split(" b/", 1)
+-            current = parts[1] if len(parts) == 2 else None
+-            if current is not None:
+-                out.setdefault(current, ([], []))
+-        elif current is None or line.startswith(("+++", "---")):
++            path = _diff_path(line)
++            current = out.setdefault(path, _FileDiff())
++            in_header, scopes = True, []
++            if '"' in line:
++                current.hidden = "a file name git had to quote: its content can't be matched to a path"
++            continue
++        if current is None:
++            continue
++        if line.startswith("@@"):
++            in_header, scopes = False, []
++            enter(line.split("@@", 2)[-1].lstrip(" ") if line.count("@@") >= 2 else "", added=False)
+             continue
+-        elif line.startswith("+"):
+-            out[current][0].append(line[1:])
++        if in_header:
++            if line.startswith("Binary files ") or line == "GIT binary patch":
++                current.hidden = "a binary change: its content can't be reviewed"
++            elif re.match(r"(new file |new |deleted file )?mode 120000", line):
++                current.hidden = "a symbolic link"
++            continue
++        if line.startswith("+"):
++            text = line[1:]
++            current.added.append(text)
++            if "\x00" in text:
++                current.hidden = "a NUL byte in a text file hides it from line-by-line review"
++            if EARLY_EXIT.match(text):
++                indent = len(text) - len(text.lstrip())
++                inner = [s for s in scopes if s[0] < indent]
++                if inner and inner[-1][1] and not inner[-1][2]:
++                    current.early_exits += 1
++            enter(text, added=True)
+         elif line.startswith("-"):
+-            out[current][1].append(line[1:])
++            current.removed.append(line[1:])
++        elif line.startswith(" "):
++            enter(line[1:], added=False)
+     return out
+ 
+ 
++def _changed_assertions(added: list[str], removed: list[str]) -> int:
++    """Removed assertion lines that don't come back unchanged (re-indenting or moving one is fine)."""
++    kept = Counter(a.strip() for a in added)
++    changed = 0
++    for r in removed:
++        if not ASSERTS.search(r):
++            continue
++        if kept[r.strip()] > 0:
++            kept[r.strip()] -= 1
++        else:
++            changed += 1
++    return changed
++
++
+ def review(*, diff: str, files: list[dict[str, str]], protected_patterns: list[str]) -> dict[str, Any]:
+     findings: list[Finding] = []
+     statuses = {f["path"]: f.get("status", "M") for f in files}
+-    hunks = _hunks(diff)
+-    for path, why in _hidden(diff).items():
+-        findings.append(Finding("unreviewable", "block", path, why))
++    parsed = _parse(diff)
++    for path, fd in parsed.items():
++        if fd.hidden:
++            findings.append(Finding("unreviewable", "block", path, fd.hidden))
+     changed_lines = 0
+-    for path in sorted(set(statuses) | set(hunks)):
+-        added, removed = hunks.get(path, ([], []))
++    for path in sorted(set(statuses) | set(parsed)):
++        fd = parsed.get(path, _FileDiff())
++        added, removed = fd.added, fd.removed
+         changed_lines += len(added) + len(removed)
+         status = statuses.get(path, "M")
++        if QUOTED_NAME.search(path) and not fd.hidden:
++            findings.append(Finding("unreviewable", "block", path, "a file name with quotes or control characters"))
+         if _matches(path, protected_patterns):
+             findings.append(Finding("protected-core", "block", path, "changes protected core"))
+         if TEST_FILE.search(path):
+@@ -145,12 +214,26 @@ def review(*, diff: str, files: list[dict[str, str]], protected_patterns: list[s
+                         "assertions-loosened", "block", path, f"{removed_asserts - added_asserts} fewer assertion(s)"
+                     )
+                 )
++            if changed := _changed_assertions(added, removed):
++                findings.append(Finding("assertion-changed", "block", path, f"changes {changed} existing assertion(s)"))
++            if fd.early_exits:
++                findings.append(
++                    Finding(
++                        "test-short-circuited",
++                        "block",
++                        path,
++                        f"adds {fd.early_exits} return/pass line(s) inside existing test(s)",
++                    )
++                )
+         if TEST_CONFIG.search(path):
+             findings.append(Finding("test-config", "block", path, "changes how the tests or linters run"))
+         if path.endswith("pyproject.toml") and any(PYPROJECT_TOOLS.search(a) for a in added + removed):
+             findings.append(Finding("test-config", "block", path, "changes test, type-check or lint settings"))
+-        if path != EGRESS_MODULE and not TEST_FILE.search(path) and any(NETWORK.search(a) for a in added):
+-            findings.append(Finding("network", "block", path, "adds network code outside the egress gate"))
++        # Only the top-level tests/ folder is exempt: a tests/ folder or a test_*.py helper inside a package ships.
++        if path != EGRESS_MODULE and not path.startswith("tests/") and any(NETWORK.search(a) for a in added):
++            findings.append(
++                Finding("network", "block", path, "adds network code (or a dynamic import) outside the egress gate")
++            )
+         if any(INJECTION.search(a) for a in added):
+             findings.append(Finding("addresses-reviewers", "block", path, "contains text aimed at the reviewers"))
+         if DEPENDENCY_FILES.search(path):
+@@ -159,7 +242,7 @@ def review(*, diff: str, files: list[dict[str, str]], protected_patterns: list[s
+             )
+         if "/migrations/" in f"/{path}":
+             findings.append(Finding("migration", "high", path, "a schema migration: needs a verified backup first"))
+-        if not TEST_FILE.search(path) and any(PROCESS.search(a) for a in added):
++        if not path.startswith("tests/") and any(PROCESS.search(a) for a in added):
+             findings.append(Finding("process", "high", path, "adds subprocess or dynamic-code calls"))
+         if any(CAPTURE.search(a) for a in added):
+             findings.append(Finding("capture", "high", path, "touches consent or capture code"))
+diff --git a/services/supervisor/src/universe_supervisor/lkg.py b/services/supervisor/src/universe_supervisor/lkg.py
+index 06fd740..f2fbfad 100644
+--- a/services/supervisor/src/universe_supervisor/lkg.py
++++ b/services/supervisor/src/universe_supervisor/lkg.py
+@@ -4,7 +4,8 @@ import shutil
+ import subprocess
+ from pathlib import Path
+ 
+-PYTHON_PACKAGES = ("core", "common", "agents", "models")
++# Always on the path (even if the LKG commit predates one of them); any other services/*/src is added too.
++PYTHON_PACKAGES = ("core", "common", "agents", "models", "vault", "research", "voice")
+ 
+ 
+ def _git(repo: Path, *args: str, timeout: float = 30.0) -> str | None:
+@@ -38,4 +39,9 @@ def prepare_worktree(repo: Path, path: Path, commit: str) -> bool:
+ 
+ 
+ def lkg_pythonpath(worktree: Path) -> list[str]:
+-    return [str(worktree / "services" / name / "src") for name in PYTHON_PACKAGES]
++    """Every service package's source in the LKG worktree, so safe mode imports none of the current code (sweep
++    2026-10-22: vault, research and voice came from the current checkout's editable installs). The supervisor
++    itself isn't on it: it never runs from the LKG copy."""
++    found = {p.parent.name for p in (worktree / "services").glob("*/src") if p.is_dir()}
++    names = sorted({*PYTHON_PACKAGES, *found} - {"supervisor"}, key=lambda n: (n not in PYTHON_PACKAGES, n))
++    return [str(worktree / "services" / name / "src") for name in names]
+diff --git a/services/supervisor/src/universe_supervisor/releases.py b/services/supervisor/src/universe_supervisor/releases.py
+index fbca3b9..6dd882e 100644
+--- a/services/supervisor/src/universe_supervisor/releases.py
++++ b/services/supervisor/src/universe_supervisor/releases.py
+@@ -17,6 +17,7 @@ import contextlib
+ import hashlib
+ import json
+ import os
++import re
+ import shutil
+ import subprocess
+ import threading
+@@ -27,6 +28,8 @@ from typing import Any
+ 
+ MANIFEST = "protected-core.txt"
+ WATCH_S = 30 * 60.0  # ARCHITECTURE §7.2: watch for 30 minutes after applying
++# Characters git quotes in a path even with core.quotePath=false. Forge refuses to write such names.
++QUOTED_NAME = re.compile(r'["\\\x00-\x1f\x7f]')
+ 
+ 
+ class ReleaseError(Exception):
+@@ -39,7 +42,10 @@ def _patterns(text: str) -> list[str]:
+ 
+ 
+ def protected(rel: str, patterns: list[str]) -> bool:
+-    for pattern in patterns:
++    # Case-folded, as in Core: on Windows "Services/Supervisor/x.py" is the protected file (sweep 2026-10-22).
++    rel = rel.casefold()
++    for raw in patterns:
++        pattern = raw.casefold()
+         if pattern.endswith("/**") and (rel == pattern[:-3] or rel.startswith(pattern[:-2])):
+             return True
+         if fnmatchcase(rel, pattern.replace("**", "*")):
+@@ -76,7 +82,8 @@ class Releases:
+                    GIT_COMMITTER_NAME="UNIVERSE", GIT_COMMITTER_EMAIL="supervisor@universe.local")  # fmt: skip
+         try:
+             done = subprocess.run(
+-                [exe, "-C", str(self.repo), *args],
++                # quotePath=false: non-ASCII names stay plain paths, as in Core (so the diff hashes agree).
++                [exe, "-C", str(self.repo), "-c", "core.quotePath=false", *args],
+                 capture_output=True,
+                 text=True,
+                 encoding="utf-8",  # not the ANSI code page on Windows (-I ignores PYTHONUTF8); same as Core's
+@@ -94,6 +101,20 @@ class Releases:
+     def head(self) -> str:
+         return self._git("rev-parse", "HEAD").strip()
+ 
++    def _next_release_number(self) -> int:
++        """One past every release number in use, in releases.json or in the repository's tags: if releases.json
++        is lost or corrupt, the count alone would pick a number whose tag already exists."""
++        used = [0, len(self.data["releases"])]
++        for line in self._git("tag", "--list", "universe/release-*", "universe/pre-release-*").splitlines():
++            number = line.strip().rsplit("-", 1)[-1]
++            if number.isdigit():
++                used.append(int(number))
++        for r in self.data["releases"]:
++            number = str(r.get("tag", "")).rsplit("-", 1)[-1]
++            if number.isdigit():
++                used.append(int(number))
++        return max(used) + 1
++
+     # ---------- state ----------
+ 
+     def _save(self) -> None:
+@@ -140,24 +161,33 @@ class Releases:
+                 raise ReleaseError("The change isn't the one you approved (its hash differs)")
+             # --no-renames: list both sides of a rename, so renaming a protected file to an unprotected path
+             # can't slip the protected source past this gate (git's rename detection would show only the dest).
+-            paths = [
+-                p
+-                for p in self._git("diff", "--name-only", "--no-renames", f"{base_commit}..{head_commit}").splitlines()
+-                if p
+-            ]
++            # -z: the names exactly as stored, never quoted ("services/supervisor/\303\274.py" matched no glob).
++            names = self._git("diff", "--name-only", "-z", "--no-renames", f"{base_commit}..{head_commit}")
++            paths = [p for p in names.split("\x00") if p]
++            odd = [p for p in paths if QUOTED_NAME.search(p)]
++            if odd:
++                raise ReleaseError(f"A file name has quotes or control characters ({odd[0]!r}): Forge's never do")
+             touched = [p for p in paths if protected(p, self.patterns)]
+             if touched:
+                 raise ReleaseError(f"It changes protected core ({', '.join(touched)}): apply those by hand")
+             summary = self._git("diff", "--summary", "--no-renames", f"{base_commit}..{head_commit}")
+             if " mode 120000 " in summary or "=> 120000" in summary:
+                 raise ReleaseError("It adds or changes a symbolic link: Forge changes never do")
+-            n = len(self.data["releases"]) + 1
+-            tag = f"universe/release-{n}"
+-            self._git("merge", "--ff-only", "-q", head_commit)
+-            # Tag after the merge succeeds: a failed ff-merge then leaves no dangling pre-release-n tag that
+-            # would block retrying release n. `head` (the prior HEAD) is still what rollback reverts to.
+-            self._git("tag", f"universe/pre-release-{n}", head)
+-            self._git("tag", tag, head_commit)
++            n = self._next_release_number()
++            tag, pre = f"universe/release-{n}", f"universe/pre-release-{n}"
++            # Tag first, then merge (sweep 2026-10-22): a tag that can't be made then stops the apply before the
++            # code changes, never after it. A failed merge removes the tags again, so release n can be retried.
++            made: list[str] = []
++            try:
++                for name, commit in ((pre, head), (tag, head_commit)):
++                    self._git("tag", name, commit)
++                    made.append(name)
++                self._git("merge", "--ff-only", "-q", head_commit)
++            except ReleaseError:
++                for name in made:  # only the tags made here: never an older release's
++                    with contextlib.suppress(ReleaseError):
++                        self._git("tag", "-d", name)
++                raise
+             release = {
+                 "tag": tag,
+                 "commit": head_commit,
+@@ -175,8 +205,9 @@ class Releases:
+ 
+     # ---------- rollback ----------
+ 
+-    def rollback(self, tag: str, reason: str) -> dict[str, Any]:
+-        """Undo a release with revert commits (anything committed after it stays)."""
++    def rollback(self, tag: str, reason: str, *, automatic: bool = False) -> dict[str, Any]:
++        """Undo a release with revert commits (anything committed after it stays). `automatic`: the watch asks;
++        if it can't be done, the release is marked rollback_failed so the watch stops instead of retrying."""
+         with self._lock:
+             release = next((r for r in self.data["releases"] if r["tag"] == tag), None)
+             if release is None:
+@@ -184,6 +215,12 @@ class Releases:
+             if release["status"] == "rolled_back":
+                 raise ReleaseError(f"{tag} is already rolled back")
+             if self._git("status", "--porcelain", "--untracked-files=no").strip():
++                if automatic:  # sweep 2026-10-22: it stayed "watching" and the watch retried every 0.2 s tick
++                    release["status"] = "rollback_failed"
++                    release["rollback_reason"] = (
++                        f"{reason}; the checkout has uncommitted changes, so nothing was changed"
++                    )
++                    self._save()
+                 raise ReleaseError("The checkout has uncommitted changes: commit or stash them first")
+             try:
+                 self._git("revert", "--no-edit", f"{release['previous']}..{release['commit']}")
+diff --git a/services/supervisor/src/universe_supervisor/supervisor.py b/services/supervisor/src/universe_supervisor/supervisor.py
+index c8c7dc6..1315b12 100644
+--- a/services/supervisor/src/universe_supervisor/supervisor.py
++++ b/services/supervisor/src/universe_supervisor/supervisor.py
+@@ -347,10 +347,12 @@ class Supervisor:
+             self._watch_baseline = self.runtimes["core"].crashes
+             return {"ok": True, "release": release}
+ 
+-    def rollback_release(self, tag: str, reason: str = "rolled back by you") -> dict[str, Any]:
++    def rollback_release(
++        self, tag: str, reason: str = "rolled back by you", *, automatic: bool = False
++    ) -> dict[str, Any]:
+         with self.lock:
+             try:
+-                release = self.releases.rollback(tag, reason)
++                release = self.releases.rollback(tag, reason, automatic=automatic)
+             except ReleaseError as exc:
+                 self.log("rollback_refused", level="warning", tag=tag, error=str(exc))
+                 return {"ok": False, "error": str(exc)}
+@@ -370,7 +372,7 @@ class Supervisor:
+         if self.state["safe_mode"] or crashes >= CRASHES_FOR_ROLLBACK:
+             why = "Core fell into safe mode" if self.state["safe_mode"] else f"Core crashed {crashes} times"
+             self.log("release_auto_rollback", level="error", tag=watching["tag"], reason=why)
+-            self.rollback_release(watching["tag"], f"automatic: {why} after the change")
++            self.rollback_release(watching["tag"], f"automatic: {why} after the change", automatic=True)
+         elif time.time() >= watching["watch_until"] and core.state == "healthy":
+             self.releases.settle(watching["tag"])
+             self.log("release_settled", tag=watching["tag"])
+diff --git a/tests/protected/test_invariants.py b/tests/protected/test_invariants.py
+index 6f936c5..aede0ea 100644
+--- a/tests/protected/test_invariants.py
++++ b/tests/protected/test_invariants.py
+@@ -20,6 +20,19 @@ def _imports(path: Path) -> set[str]:
+             names.update(alias.name for alias in node.names)
+         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+             names.add(node.module)
++            # `from urllib import request` imports the module urllib.request (sweep 2026-10-22).
++            names.update(f"{node.module}.{alias.name}" for alias in node.names)
++        elif (
++            isinstance(node, ast.Call)
++            and (
++                (isinstance(node.func, ast.Name) and node.func.id in ("__import__", "import_module"))
++                or (isinstance(node.func, ast.Attribute) and node.func.attr == "import_module")
++            )
++            and node.args
++            and isinstance(node.args[0], ast.Constant)
++            and isinstance(node.args[0].value, str)
++        ):
++            names.add(node.args[0].value)  # importlib.import_module("httpx"), __import__("socket")
+     return names
+ 
+ 
+@@ -42,7 +55,9 @@ def test_supervisor_starts_without_site_packages() -> None:
+     assert "UNIVERSE_SUPERVISOR_TOKEN" in result.stderr
+ 
+ 
+-HTTP_CLIENT_MODULES = {"httpx", "requests", "aiohttp", "urllib.request", "http.client", "urllib3", "socket"}
++HTTP_CLIENT_MODULES = {
++    "httpx", "requests", "aiohttp", "urllib.request", "http.client", "urllib3", "socket", "asyncio.open_connection",
++}  # fmt: skip
+ EGRESS_EXEMPT = {
+     "services/common/src/universe_common/egress.py": {"httpx"},  # the gate itself
+     "services/supervisor/src/universe_supervisor/health.py": {"urllib.request"},  # loopback-only health checks
+@@ -50,19 +65,44 @@ EGRESS_EXEMPT = {
+ TYPE_ONLY = {"httpx"}  # importing httpx for exception and type names is fine; creating clients is not
+ 
+ 
+-def test_no_http_clients_outside_the_egress_gate() -> None:
+-    for path in SERVICES.rglob("*.py"):
+-        rel = path.relative_to(REPO).as_posix()
+-        if "/tests/" in rel:
+-            continue
++def _egress_violations(root: Path) -> list[str]:
++    """Every file under `root` that reaches the network without the egress gate. No folder is exempt: a tests/
++    folder inside a package ships with it (sweep 2026-10-22); the project's own tests/ is outside services/."""
++    found: list[str] = []
++    for path in root.rglob("*.py"):
++        rel = path.relative_to(REPO if root.is_relative_to(REPO) else root).as_posix()
+         exempt = EGRESS_EXEMPT.get(rel, set())
+         for name in _imports(path):
+-            if name in HTTP_CLIENT_MODULES and name not in exempt:
+-                assert name in TYPE_ONLY, f"{rel} imports {name}; outbound HTTP must go through the egress gate"
++            if name in HTTP_CLIENT_MODULES and name not in exempt and name not in TYPE_ONLY:
++                found.append(f"{rel} imports {name}; outbound HTTP must go through the egress gate")
+         if rel not in EGRESS_EXEMPT:
+             source = path.read_text(encoding="utf-8")
+             for call in ("httpx.AsyncClient(", "httpx.Client(", "httpx.get(", "httpx.post(", "httpx.stream("):
+-                assert call not in source, f"{rel} creates an HTTP client directly ({call})"
++                if call in source:
++                    found.append(f"{rel} creates an HTTP client directly ({call})")
++    return found
++
++
++def test_no_http_clients_outside_the_egress_gate() -> None:
++    assert _egress_violations(SERVICES) == []
++
++
++def test_the_egress_invariant_sees_every_import_form(tmp_path: Path) -> None:
++    # Sweep 2026-10-22: these forms, and anything under a tests/ folder inside a package, got through.
++    sources = {
++        "a.py": "from urllib import request\n",
++        "b.py": "from http import client\n",
++        "c.py": "from asyncio import open_connection\n",
++        "d.py": "import importlib\nm = importlib.import_module('requests')\n",
++        "e.py": "s = __import__('socket')\n",
++        "pkg/tests/f.py": "import socket\n",
++    }
++    for rel, text in sources.items():
++        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
++        (tmp_path / rel).write_text(text, encoding="utf-8")
++    (tmp_path / "ok.py").write_text("from urllib import parse\nimport httpx\n", encoding="utf-8")
++    flagged = {v.split(" ", 1)[0] for v in _egress_violations(tmp_path)}
++    assert flagged == set(sources)
+ 
+ 
+ def test_protected_manifest_covers_the_protected_core() -> None:
+diff --git a/tests/protected/test_releases.py b/tests/protected/test_releases.py
+index f58d9f2..5045817 100644
+--- a/tests/protected/test_releases.py
++++ b/tests/protected/test_releases.py
+@@ -12,7 +12,8 @@ from universe_supervisor.releases import ReleaseError, Releases
+ 
+ 
+ def sh(repo: Path, *args: str) -> str:
+-    env_args = ["-c", "user.name=T", "-c", "user.email=t@example.com"]
++    # quotePath=false, as the supervisor and Core run git: the hashes of a diff with a non-ASCII name agree.
++    env_args = ["-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "core.quotePath=false"]
+     return subprocess.run(["git", *env_args, "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout
+ 
+ 
+@@ -294,3 +295,101 @@ def test_a_change_that_isnt_utf8_is_still_read(repo: Path, tmp_path: Path) -> No
+         "diff_sha": hashlib.sha256(diff.encode()).hexdigest(), "title": "latin-1",
+     }  # fmt: skip
+     assert releases.apply(**proposal)["status"] == "watching"
++
++
++def test_names_git_quotes_or_spells_in_another_case_are_still_protected(repo: Path, tmp_path: Path) -> None:
++    # Sweep 2026-10-22: git printed "services/supervisor/\303\274.py" (quoted), which matched no glob; and on
++    # Windows "Services/Supervisor/run.py" is the protected file itself.
++    for n, rel in enumerate(("Services/Supervisor/run.py", "services/supervisor/ü.py")):
++        releases = Releases(repo, tmp_path / f"releases-{n}.json")
++        proposal = forge_branch(repo, f"forge/p{n}", {rel: "print('patched')\n"})
++        with pytest.raises(ReleaseError, match="protected core"):
++            releases.apply(**proposal)
++        assert head(repo) == proposal["base_commit"], rel
++    # A name git quotes whatever its settings is refused outright (Forge can't write one).
++    releases = Releases(repo, tmp_path / "releases-q.json")
++    proposal = forge_branch(repo, "forge/pq", {'calc/we"ird.py': "X = 1\n"})
++    with pytest.raises(ReleaseError, match="quotes or control characters"):
++        releases.apply(**proposal)
++    assert head(repo) == proposal["base_commit"]
++
++
++def test_a_lost_releases_file_doesnt_reuse_a_tag(repo: Path, tmp_path: Path) -> None:
++    # Sweep 2026-10-22: the number was len(releases)+1. With releases.json lost, release 1's tag already existed,
++    # and `git tag` failed after the merge: the change was applied but not recorded or watched.
++    first = Releases(repo, tmp_path / "releases.json").apply(**forge_branch(repo))
++    (tmp_path / "releases.json").unlink()
++    releases = Releases(repo, tmp_path / "releases.json")
++    proposal = forge_branch(repo, "forge/p2", {"calc/extra.py": "X = 1\n"})
++    release = releases.apply(**proposal)
++    assert release["tag"] == "universe/release-2" and release["status"] == "watching"
++    assert releases.watching() is not None and head(repo) == proposal["head_commit"]
++    assert sh(repo, "rev-list", "-n1", first["tag"]).strip() == first["commit"]  # the old tag is untouched
++
++
++def test_a_failed_merge_leaves_no_tags_behind(repo: Path, tmp_path: Path) -> None:
++    releases = Releases(repo, tmp_path / "releases.json")
++    proposal = forge_branch(repo)
++    # The fast-forward can't happen: an untracked file of yours is where the change adds one.
++    (repo / "tests" / "test_add.py").write_text("# the owner's own untracked file\n", encoding="utf-8")
++    with pytest.raises(ReleaseError, match="merge"):
++        releases.apply(**proposal)
++    assert sh(repo, "tag", "--list", "universe/*") == "" and head(repo) == proposal["base_commit"]
++    (repo / "tests" / "test_add.py").unlink()
++    assert releases.apply(**proposal)["tag"] == "universe/release-1"  # and release 1 can be retried
++
++
++def test_an_automatic_rollback_on_a_dirty_checkout_stops_the_watch(repo: Path, tmp_path: Path) -> None:
++    # Sweep 2026-10-22: the dirty-checkout refusal came before the conflict handling, so the release stayed
++    # "watching" and the supervisor's watch retried the rollback every 0.2 s tick, for ever.
++    releases = Releases(repo, tmp_path / "releases.json")
++    release = releases.apply(**forge_branch(repo))
++    (repo / "README.md").write_text("the owner's unsaved work\n", encoding="utf-8")
++    sh(repo, "add", "README.md")
++    with pytest.raises(ReleaseError, match="uncommitted"):
++        releases.rollback(release["tag"], "automatic: Core crashed 2 times after the change", automatic=True)
++    saved = Releases(repo, tmp_path / "releases.json").list()[0]
++    assert saved["status"] == "rollback_failed" and "uncommitted" in saved["rollback_reason"]
++    assert releases.watching() is None
++    assert (repo / "README.md").read_text() == "the owner's unsaved work\n"  # nothing of yours is touched
++    # A rollback you ask for on a dirty checkout changes nothing either; commit or stash, then ask again.
++    other = Releases(repo, tmp_path / "other.json")
++    other.data["releases"].append({**release, "status": "watching"})
++    with pytest.raises(ReleaseError, match="uncommitted"):
++        other.rollback(release["tag"], "rolled back by you")
++    assert other.watching() is not None
++
++
++@pytest.mark.slow
++def test_the_watch_stops_when_it_cant_roll_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    from tests.integration.test_supervisor import core
++
++    repo = make_repo(tmp_path)
++    h = _supervisor(tmp_path, monkeypatch, repo)
++    try:
++        h.run_until(lambda s: core(s)["state"] == "healthy")
++        assert h.sup.apply_release(forge_branch(repo))["ok"]
++        (repo / "README.md").write_text("the owner's unsaved work\n", encoding="utf-8")
++        sh(repo, "add", "README.md")
++        h.set_mode("crash")
++        h.run_until(lambda _s: h.sup.releases.list()[0]["status"] == "rollback_failed", timeout=30)
++        for _ in range(10):
++            with h.sup.lock:
++                h.sup.tick()
++        refusals = (h.config.log_dir / "supervisor.jsonl").read_text(encoding="utf-8").count('"rollback_refused"')
++        assert refusals == 1  # tried once, then the watch stopped
++    finally:
++        h.sup.shutdown()
++
++
++def test_safe_mode_runs_every_service_package_from_the_lkg_copy(tmp_path: Path) -> None:
++    # Sweep 2026-10-22: only core, common, agents and models were on the path, so safe mode imported the vault,
++    # research and voice code of the broken current checkout.
++    from universe_supervisor.lkg import lkg_pythonpath
++
++    for name in ("core", "vault", "research", "voice", "newthing", "supervisor"):
++        (tmp_path / "services" / name / "src").mkdir(parents=True)
++    path = lkg_pythonpath(tmp_path)
++    for name in ("core", "common", "agents", "models", "vault", "research", "voice", "newthing"):
++        assert str(tmp_path / "services" / name / "src") in path, name
++    assert str(tmp_path / "services" / "supervisor" / "src") not in path
+diff --git a/tests/protected/test_sentinel.py b/tests/protected/test_sentinel.py
+index 267ab90..6db1554 100644
+--- a/tests/protected/test_sentinel.py
++++ b/tests/protected/test_sentinel.py
+@@ -121,3 +121,72 @@ def test_content_hidden_from_the_review_is_blocked() -> None:
+     for diff, path in ((binary, "calc/x.py"), (link, "calc/env"), (nul, "calc/x.py")):
+         result = review(diff=diff, files=[{"path": path, "status": "M"}], protected_patterns=PATTERNS)
+         assert result["verdict"] == "block" and "unreviewable" in rules(result), diff
++
++
++def test_file_names_git_quotes_or_changes_case_cant_slip_past() -> None:
++    # Sweep 2026-10-22: git quotes a non-ASCII name ("tests/\303\274/conftest.py"), and the header split on " b/"
++    # then lost the file, so none of its lines were reviewed. Windows also treats "Services/..." as "services/...".
++    quoted = '"tests/\\303\\274/conftest.py"'
++    diff = (
++        'diff --git "a/tests/\\303\\274/conftest.py" "b/tests/\\303\\274/conftest.py"\n'
++        "new file mode 100644\nindex 0000000..1111111\n--- /dev/null\n"
++        '+++ "b/tests/\\303\\274/conftest.py"\n@@ -0,0 +1 @@\n+import httpx\n'
++    )
++    result = review(diff=diff, files=[{"path": quoted, "status": "A"}], protected_patterns=PATTERNS)
++    assert result["verdict"] == "block" and "unreviewable" in rules(result)
++    unquoted = check("tests/ü/conftest.py", ["x = 1"], status="A")
++    assert unquoted["verdict"] == "block" and "test-config" in rules(unquoted)
++    spaced = check("calc b/x.py", ["import httpx"])  # a name containing " b/" is still read whole
++    assert spaced["verdict"] == "block" and {f["file"] for f in spaced["findings"]} == {"calc b/x.py"}
++    for path in ("Services/Supervisor/run.py", "AGENTS/forge.yaml", "Tests/Protected/test_x.py"):
++        result = check(path, ["x = 1"])
++        assert result["verdict"] == "block" and "protected-core" in rules(result), path
++
++
++def test_every_way_of_importing_a_network_client_is_blocked() -> None:
++    # Sweep 2026-10-22: these forms of the banned imports got through.
++    for line in (
++        "from urllib import request",
++        "from urllib import parse, request as r",
++        "from http import client",
++        "from asyncio import open_connection",
++        "mod = importlib.import_module('ht' + 'tpx')",
++        "from importlib import import_module",
++        "sock = __import__('socket')",
++    ):
++        assert check("services/core/src/universe_core/x.py", [line])["verdict"] == "block", line
++    assert check("services/core/src/universe_core/x.py", ["from urllib import parse"])["verdict"] == "pass"
++    # Only the top-level tests/ folder is exempt, not a tests/ folder (or test_*.py helper) inside a package.
++    for path in ("services/core/src/universe_core/tests/helpers.py", "services/vault/src/universe_vault/test_net.py"):
++        assert check(path, ["import httpx"])["verdict"] == "block", path
++    assert check("tests/integration/test_x.py", ["import httpx"])["verdict"] == "pass"
++
++
++def test_added_lines_that_look_like_file_headers_are_still_reviewed() -> None:
++    # Sweep 2026-10-22: an added line starting with "++" is "+++…" in the diff and was skipped as a header.
++    sneaky = check("calc/__init__.py", ["++__import__('httpx').get('https://example.com')"])
++    assert sneaky["verdict"] == "block" and "network" in rules(sneaky)
++    removed = check("tests/test_x.py", ["    x = 1"], ["--assert_total(100)", "    assert total < 100"])
++    assert "assertions-loosened" in rules(removed)
++
++
++def test_a_changed_assertion_or_an_early_return_in_a_test_is_blocked() -> None:
++    # Sweep 2026-10-22: only assertion counts were compared, so these weakened a test without changing the count.
++    loosened = check("tests/test_x.py", ["    assert x == 42 or True"], ["    assert x == 42"])
++    assert loosened["verdict"] == "block" and "assertion-changed" in rules(loosened)
++    early = (
++        "diff --git a/tests/test_x.py b/tests/test_x.py\n--- a/tests/test_x.py\n+++ b/tests/test_x.py\n"
++        "@@ -1,3 +1,4 @@\n def test_limits() -> None:\n+    return\n     assert total() < 100\n"
++        "@@ -10,2 +11,3 @@ def test_other() -> None:\n     x = 1\n+    pass\n     assert x\n"
++    )
++    result = review(diff=early, files=[{"path": "tests/test_x.py", "status": "M"}], protected_patterns=PATTERNS)
++    assert result["verdict"] == "block" and "test-short-circuited" in rules(result)
++    assert any(f["detail"].startswith("adds 2 ") for f in result["findings"] if f["rule"] == "test-short-circuited")
++    # Still allowed: moving an assertion (re-indented, same text), and a brand-new test with a helper that returns.
++    moved = check("tests/test_x.py", ["        assert x == 42"], ["    assert x == 42"])
++    assert moved["verdict"] == "pass"
++    new_test = check(
++        "tests/test_x.py",
++        ["def test_new() -> None:", "    def helper() -> int:", "        return 1", "    assert helper() == 1"],
++    )
++    assert new_test["verdict"] == "pass", new_test
+diff --git a/tests/unit/test_forge_core.py b/tests/unit/test_forge_core.py
+index 2caed8e..17ae762 100644
+--- a/tests/unit/test_forge_core.py
++++ b/tests/unit/test_forge_core.py
+@@ -189,3 +189,69 @@ def test_verification_links_never_enter_a_proposal(forge: Forge) -> None:
+     (tree.path / "calc" / "link").symlink_to(repo / "calc" / "__init__.py")
+     with pytest.raises(ForgeError, match="symbolic link"):
+         tree.commit("Add a link")
++
++
++def test_names_git_would_quote_are_reviewed_as_real_paths(forge: Forge) -> None:
++    """Sweep 2026-10-22: git quoted non-ASCII names ("tests/\\303\\274/conftest.py"), so the changed-files list and
++    the diff header named no real path: neither the protected check nor Sentinel saw them."""
++    from universe_core.protected.sentinel import review
++
++    _proposal, tree = forge.start_proposal(title="Unicode names", issue_id=None, task_id="t-quoted")
++    tree.write("tests/ü/conftest.py", "import pytest\n")
++    # Files the test run itself leaves in the worktree are committed too, protected or not.
++    (tree.path / "services" / "supervisor" / "ü.py").write_text("print('patched')\n", encoding="utf-8")
++    tree.commit("Unicode names")
++    paths = sorted(f.path for f in tree.changes())
++    assert paths == ["services/supervisor/ü.py", "tests/ü/conftest.py"]
++    assert forge.protected().matches("services/supervisor/ü.py")
++    result = review(diff=tree.diff(), files=[f.model_dump() for f in tree.changes()],
++                    protected_patterns=forge.protected().patterns)  # fmt: skip
++    blocked = {(f["rule"], f["file"]) for f in result["findings"]}
++    assert {("protected-core", "services/supervisor/ü.py"), ("test-config", "tests/ü/conftest.py")} <= blocked
++    for bad in ('calc/a"b.py', "calc/a\tb.py", "calc/a\nb.py"):  # git quotes these whatever its settings
++        with pytest.raises(ForgeError, match="quotes or control characters"):
++            tree.write(bad, "x = 1\n")
++
++
++def test_a_running_check_stops_when_asked(tmp_path: Path) -> None:
++    """Sweep 2026-10-22: the kill switch didn't stop a running verification (subprocess.run ran to its 15-minute
++    timeout). A check stops, with its whole process tree, as soon as `stop` says so; the next steps don't run."""
++    import os
++    import sys
++    import threading
++    import time
++
++    from universe_core import forge_verify
++
++    pid_file = tmp_path / "grandchild.pid"
++    script = (
++        "import subprocess, sys, time\n"
++        f"p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\n"
++        f"open({str(pid_file)!r}, 'w').write(str(p.pid))\n"
++        "time.sleep(120)\n"
++    )
++    flag = threading.Event()
++    threading.Timer(1.0, flag.set).start()
++    started = time.monotonic()
++    result = forge_verify.run("slow", [sys.executable, "-c", script], tmp_path, dict(os.environ), 600, stop=flag.is_set)
++    assert time.monotonic() - started < 15
++    assert not result.ok and "stopped" in result.output
++    grandchild = int(pid_file.read_text())
++    deadline = time.monotonic() + 5
++    while time.monotonic() < deadline:
++        try:
++            os.kill(grandchild, 0)
++        except ProcessLookupError:
++            break
++        time.sleep(0.1)
++    else:
++        pytest.fail("the check's child process outlived the stop")
++    # With stop already set, the verifier runs nothing more.
++    verifier = Verifier(tmp_path, stop=lambda: True)
++    (tmp_path / "head").mkdir()
++    (tmp_path / "head" / "test_x.py").write_text("def test_x() -> None:\n    assert True\n", encoding="utf-8")
++    (tmp_path / "base").mkdir()
++    repro = verifier.repro(tmp_path / "base", tmp_path / "head", "test_x.py")
++    assert repro["fails_on_base"] is False and repro["passes_on_head"] is False and "stopped" in repro["error"]
++    checks = verifier.checks(tmp_path / "head", ["test_x.py"])
++    assert [c.name for c in checks] == ["stopped"] and not checks[0].ok

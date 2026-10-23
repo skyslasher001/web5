@@ -14,6 +14,8 @@ The details live in the files it links to. Written 2026-10-14; updated 2026-10-1
 >     are built, delivered and reviewed (2026-10-21), and wait for the owner's approval. The Phase 5 and Phase 7
 >     protected-core patches are applied, and so are the review's protected-core fixes (2026-10-22,
 >     [review-fixes-protected](../proposals/review-fixes-protected.md)). Forge changes can now be approved.
+>   - A full sweep of every file (2026-10-22/23) fixed 50 bugs on the branch, each with a regression test. Ten
+>     protected-core fixes wait for the owner as [sweep-fixes-protected](../proposals/sweep-fixes-protected.md).
 >   - The SearXNG sidecar is an opt-in proposal gated on a container runtime.
 >   - Next is Phase 8 (vision).
 > - **Where the code is:** the private GitHub repo `skyslasher001/web5`, branch
@@ -125,16 +127,15 @@ How that maps onto the build ([`docs/VISION-neural-universe.md`](../VISION-neura
 | 7 Voice | **Delivered 2026-10-19, reviewed 2026-10-21, consent patch applied**; waiting for approval | Run the app for 10 minutes by voice alone: every command, navigation, question, approval, memo and dictation is reachable by voice and covered by tests (fakes in CI, real Whisper/Kokoro/Silero round trips with `UNIVERSE_TEST_VOICE_MODELS`); the 10-minute session itself needs the owner's mic | [PHASE-7](../PHASE-7.md), [ADR-0016](../adr/0016-phase-7-voice.md), [proposal](../proposals/phase-7-consent.md) |
 | 8 Vision | Next | "Look at this error" returns a correct explanation and a handoff to Forge or Builder | SPEC §25 |
 
-**Test suites after the Phase 5–7 review** (2026-10-21, branch `470ba3d` with the Phase 5 and 7 patches applied;
-all green; Electron tests under `xvfb-run`):
-- **pytest:** 359 passed, 8 skipped (7 real-voice-model tests that need `UNIVERSE_TEST_VOICE_MODELS`, which pass
-  7 of 7 with the models; 1 Windows-only).
-- **Vitest:** 187, including the desktop suite's 51. The 50k-layout timing test can miss its limit when another
-  heavy job runs on the same machine; it passes when run alone.
-- **Playwright Electron:** app + safe-mode suites 16 of 16, including the full Phase 5 loop and the Phase 7 consent
-  test; universe suite 9 of 9 (Phase 4).
-- **With the review-fixes patch applied** (2026-10-22, on the branch): pytest 368 passed, 8 skipped (9 new); Vitest 188 (desktop 52);
-  e2e 16 of 16.
+**Test suites after the full sweep** (2026-10-23, branch `745bfe2`; all green; Electron tests under `xvfb-run`):
+- **pytest:** 407 passed, 8 skipped (7 real-voice-model tests that need `UNIVERSE_TEST_VOICE_MODELS`, which pass
+  7 of 7 with the models; 1 Windows-only). Where `ollama` is on PATH the real-model tests run too; on a slow
+  machine with a cold model the chat test's 60 s reply deadline can run out.
+- **Vitest:** 218 (ui, desktop, scripts and design-tokens projects).
+- **Playwright Electron:** 25 of 25 (app, safe-mode and the 50k universe suite).
+- **Static:** eslint `--max-warnings=0`, prettier, typecheck, ruff, ruff format, pyright and both generated-file
+  checks clean (`pnpm check` now runs all of them).
+- **With the sweep-fixes patch applied:** see the proposal's "What was run".
 
 ## 4. What exists today
 
@@ -349,25 +350,32 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
 ## 9. Open items
 
 **Waiting on the owner**
-1. Apply [`docs/proposals/test-policy-clock.patch`](../proposals/test-policy-clock.md): one protected test
+1. Apply [`docs/proposals/sweep-fixes-protected.patch`](../proposals/sweep-fixes-protected.md): 10 protected-core
+   fixes (Sentinel blind spots, releases, safe mode, the kill switch). Until then, read a Forge proposal's file
+   list yourself before approving it.
+2. Apply [`docs/proposals/test-policy-clock.patch`](../proposals/test-policy-clock.md): one protected test
    assumed the machine had been up over a minute, and failed right after a boot.
-2. Approve Phases 5, 6 and 7; install the voice models (Voice tab) and run the Phase 7 demo script on their own
+3. Approve Phases 5, 6 and 7; install the voice models (Voice tab) and run the Phase 7 demo script on their own
    hardware (latency, echo cancellation).
-3. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
+4. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
    hardware, 30 FPS at 10k in Lite on minimum hardware.
-4. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
+5. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-5. Fix GitHub Actions. Jobs never get a runner (they end in 2–3 s with no logs); a re-run after the 2026-10-21
+6. Fix GitHub Actions. Jobs never get a runner (they end in 2–3 s with no logs); a re-run after the 2026-10-21
    billing fix failed the same way. **Nothing has run on Windows yet.**
-6. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
+7. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
-7. Push the `pre-universe` tag (the build environment couldn't push tags):
+8. Push the `pre-universe` tag (the build environment couldn't push tags):
    `git tag -a pre-universe e39257b -m "Bolt landing page" && git push origin pre-universe`.
-8. Share the DevMind repository if its pieces should be reused.
-9. On their PC, try real models: `nomic-embed-text` for meaning search, and a tool-calling model such as
+9. Share the DevMind repository if its pieces should be reused.
+10. On their PC, try real models: `nomic-embed-text` for meaning search, and a tool-calling model such as
    `qwen3:8b` for agents. Tune search relevance with `scripts/seed_vault.py bench`.
 
 **Known limitations** (the newest first; each phase doc has the full list)
+- **Uploads (found in the 2026-10-22 sweep):** FastAPI reads a multipart upload to temporary files before the
+  session-token check runs, so a local program without the token can make Core spool a large body to disk
+  before it is refused. Fixing it means parsing `/capture/files` by hand after auth (it changes the API schema);
+  left for a decision.
 - **Voice (Phase 7):**
   - Echo cancellation (Chromium's) and latency are unverified on the owner's hardware.
   - Whisper tiny.en mishears rare names; base.en is better and slower; vault names aren't yet given as hints.
