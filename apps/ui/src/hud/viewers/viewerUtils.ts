@@ -1,5 +1,6 @@
 // Helpers the item viewers share: the file as a blob URL (media and PDFs need the session token, so a plain
 // src can't load them) and safe Markdown.
+import type { ProjectGoal } from '@universe/shared-types';
 import DOMPurify from 'dompurify';
 import { Marked, type TokenizerAndRendererExtension } from 'marked';
 import { useEffect, useState } from 'react';
@@ -40,6 +41,45 @@ export function useFileUrl(id: string): { url: string | null; blob: Blob | null;
   return state.id === id
     ? { url: state.url, blob: state.blob, error: state.error }
     : { url: null, blob: null, error: null };
+}
+
+/**
+ * Quick edits to a galaxy's goals (tick, tick, add). Each edit builds on the previous one, not on the
+ * project as last fetched (it only changes after a save lands and the list refetches), and the saves go
+ * out one after another, so none overwrites another. `settled` runs once every save has finished.
+ */
+export class GoalQueue {
+  private latest: ProjectGoal[] | null = null;
+  private inFlight = 0;
+  private chain: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly send: (goals: ProjectGoal[]) => Promise<unknown>,
+    private readonly settled: () => void,
+  ) {}
+
+  /** No save is waiting or in flight. */
+  get idle(): boolean {
+    return this.inFlight === 0;
+  }
+
+  /** Apply `change` and queue its save; returns the goals to show now. */
+  edit(fetched: ProjectGoal[], change: (goals: ProjectGoal[]) => ProjectGoal[]): ProjectGoal[] {
+    const next = change(this.latest ?? fetched);
+    this.latest = next;
+    this.inFlight++;
+    this.chain = this.chain
+      .then(async () => {
+        await this.send(next);
+      })
+      .catch(() => {}) // `send` reports its own failure; the next save still goes out
+      .finally(() => {
+        if (--this.inFlight > 0) return;
+        this.latest = null;
+        this.settled();
+      });
+    return next;
+  }
 }
 
 /** The editor's draft once a save of `sent` lands: kept only if the owner typed more meanwhile. */

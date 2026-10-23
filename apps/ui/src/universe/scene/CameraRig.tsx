@@ -202,9 +202,13 @@ export function CameraRig() {
       const current = useLayout.getState().current;
       const { scene, version } = useScene.getState();
       const g = scene.galaxyIds.indexOf(selectedProject ?? '');
-      if (!current || current.sceneVersion !== version || g < 0 || g >= current.galaxyRadii.length) return false;
+      if (!current || current.sceneVersion !== version || g < 0 || g >= current.galaxyRadii.length)
+        return false;
       const c = current.galaxyCentres;
-      rig.flyTo(new Vector3(c[g * 3], c[g * 3 + 1], c[g * 3 + 2]), Math.max(30, current.galaxyRadii[g]! * 2.8));
+      rig.flyTo(
+        new Vector3(c[g * 3], c[g * 3 + 1], c[g * 3 + 2]),
+        Math.max(30, current.galaxyRadii[g]! * 2.8),
+      );
       return true;
     });
   }, [selectedProject, view, selectedItem, kind, sceneVersion]);

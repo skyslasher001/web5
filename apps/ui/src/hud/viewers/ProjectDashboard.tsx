@@ -12,6 +12,7 @@ import { ITEM_TYPES } from '../../lib/itemTypes';
 import { useUniverse } from '../../state/store';
 import { useScene } from '../../universe/scene/sceneData';
 import { Button, inputClass, SectionTitle } from '../ui';
+import { GoalQueue } from './viewerUtils';
 
 const STATUSES = ['active', 'paused', 'done', 'archived'] as const;
 
@@ -19,33 +20,42 @@ function Goals({ project }: { project: Project }) {
   const api = useApi();
   const client = useQueryClient();
   const [text, setText] = useState('');
-  const save = (goals: ProjectGoal[]) =>
-    attempt(
-      'Update goals',
-      api
-        .patchProject(project.id, { goals })
-        .then(() => client.invalidateQueries({ queryKey: ['projects'] })),
+  // While saves are in flight the edited goals show; the refetched project takes over once they land.
+  const [edited, setEdited] = useState<ProjectGoal[] | null>(null);
+  const queue = useMemo(() => {
+    const q: GoalQueue = new GoalQueue(
+      (goals) => {
+        const sent = api.patchProject(project.id, { goals });
+        attempt('Update goals', sent);
+        return sent;
+      },
+      () => {
+        void client.invalidateQueries({ queryKey: ['projects'] }).finally(() => {
+          if (q.idle) setEdited(null); // unless another edit started meanwhile
+        });
+      },
     );
+    return q;
+  }, [api, client, project.id]);
+  const goals = edited ?? project.goals;
+  const edit = (change: (goals: ProjectGoal[]) => ProjectGoal[]) =>
+    setEdited(queue.edit(project.goals, change));
   return (
     <section className="space-y-2" data-testid="goals">
       <SectionTitle>Goals and tasks</SectionTitle>
-      {project.goals.length === 0 && <p className="text-xs text-ink-3">None yet: add the first below.</p>}
+      {goals.length === 0 && <p className="text-xs text-ink-3">None yet: add the first below.</p>}
       <ul className="space-y-1">
-        {project.goals.map((g, k) => (
+        {goals.map((g, k) => (
           <li key={`${k}-${g.text}`} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={g.done}
               aria-label={g.text}
-              onChange={() => save(project.goals.map((x, j) => (j === k ? { ...x, done: !x.done } : x)))}
+              onChange={() => edit((all) => all.map((x, j) => (j === k ? { ...x, done: !x.done } : x)))}
               className="accent-[var(--color-accent)]"
             />
             <span className={`flex-1 ${g.done ? 'text-ink-3 line-through' : 'text-ink-1'}`}>{g.text}</span>
-            <button
-              type="button"
-              title="Remove"
-              onClick={() => save(project.goals.filter((_, j) => j !== k))}
-            >
+            <button type="button" title="Remove" onClick={() => edit((all) => all.filter((_, j) => j !== k))}>
               <X className="size-3.5 text-ink-3 hover:text-danger" aria-label="Remove" />
             </button>
           </li>
@@ -57,7 +67,8 @@ function Goals({ project }: { project: Project }) {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && text.trim()) {
-              save([...project.goals, { text: text.trim(), done: false }]);
+              const goal = { text: text.trim(), done: false };
+              edit((all) => [...all, goal]);
               setText('');
             }
           }}
@@ -68,7 +79,8 @@ function Goals({ project }: { project: Project }) {
         <Button
           onClick={() => {
             if (!text.trim()) return;
-            save([...project.goals, { text: text.trim(), done: false }]);
+            const goal = { text: text.trim(), done: false };
+            edit((all) => [...all, goal]);
             setText('');
           }}
         >

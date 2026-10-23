@@ -80,7 +80,9 @@ export function webglRenderer(): string | null {
     const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
     if (gl) {
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+      name = ext
+        ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL))
+        : String(gl.getParameter(gl.RENDERER));
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
   } catch {

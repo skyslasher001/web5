@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftAfterSave, keepAttribute, markdownToHtml } from './viewerUtils';
+import { draftAfterSave, GoalQueue, keepAttribute, markdownToHtml } from './viewerUtils';
 
 describe('wikilinks in Markdown', () => {
   it('become links the viewer follows, with an optional label', () => {
@@ -51,5 +51,42 @@ describe('sanitizing a note', () => {
     expect(keepAttribute('a', 'href', 'https://example.com')).toBe(true); // a click, not a load
     expect(keepAttribute('p', 'style', 'color: rgb(1, 2, 3)')).toBe(true);
     expect(keepAttribute('p', 'title', 'https://example.com')).toBe(true);
+  });
+});
+
+describe("editing a galaxy's goals", () => {
+  it('builds each quick edit on the last one, saving them in order', async () => {
+    const sent: string[][] = [];
+    let settled = 0;
+    const queue = new GoalQueue(
+      async (goals) => {
+        await new Promise((r) => setTimeout(r, 5));
+        sent.push(goals.map((g) => g.text));
+      },
+      () => settled++,
+    );
+    const server = [{ text: 'a', done: false }]; // the project as fetched: it doesn't change until a refetch
+    queue.edit(server, (g) => [...g, { text: 'b', done: false }]);
+    const shown = queue.edit(server, (g) => [...g, { text: 'c', done: false }]); // typed before the save landed
+    expect(shown.map((g) => g.text)).toEqual(['a', 'b', 'c']);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(sent).toEqual([
+      ['a', 'b'],
+      ['a', 'b', 'c'],
+    ]);
+    expect(settled).toBe(1);
+    // Once settled, the next edit starts from the project as fetched again.
+    expect(queue.edit([{ text: 'z', done: true }], (g) => g).map((g) => g.text)).toEqual(['z']);
+  });
+
+  it('settles after a failed save, so the fetched goals show again', async () => {
+    let settled = 0;
+    const queue = new GoalQueue(
+      () => Promise.reject(new Error('Core is restarting')),
+      () => settled++,
+    );
+    queue.edit([], (g) => [...g, { text: 'a', done: false }]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(1);
   });
 });

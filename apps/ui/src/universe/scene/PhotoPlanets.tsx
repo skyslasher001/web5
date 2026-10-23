@@ -4,13 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef, useState } from 'react';
 import { SRGBColorSpace, Texture, TextureLoader, Vector3 } from 'three';
 import { useApi } from '../../lib/api-context';
-import {
-  nearestInFront,
-  texturesToEvict,
-  thumbnailDue,
-  thumbnailFailed,
-  type ThumbFailure,
-} from './helpers';
+import { nearestInFront, texturesToEvict, thumbnailDue, thumbnailFailed, type ThumbFailure } from './helpers';
 import { useLayout } from './layoutController';
 import { useScene } from './sceneData';
 import { TYPE_CODE } from './types';
