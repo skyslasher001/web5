@@ -94,8 +94,11 @@ def _heartbeat(db_path: Path, job_id: str, worker_id: str, done: threading.Event
     conn = connect(db_path)
     try:
         while not done.wait(HEARTBEAT_S):
-            if not jobs.heartbeat(conn, job_id, worker_id):
-                return
+            try:
+                if not jobs.heartbeat(conn, job_id, worker_id):
+                    return
+            except sqlite3.OperationalError as exc:  # e.g. "database is locked": try again next beat
+                log.warning("heartbeat_failed", job_id=job_id, error=str(exc)[:200])
     finally:
         conn.close()
 

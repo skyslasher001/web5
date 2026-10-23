@@ -1,6 +1,7 @@
 """The SQLite job queue: priority, leases, retries with backoff, idempotency and the governor's switches."""
 
 import sqlite3
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pytest
 
 from universe_common.sqlite import connect
 from universe_core.db import Databases
-from universe_vault import governor, jobs
+from universe_vault import governor, jobs, worker
 
 
 @pytest.fixture
@@ -76,6 +77,45 @@ def test_idempotency_key_reuses_unfinished_work_only(conn: sqlite3.Connection) -
     jobs.complete(conn, job.id, "w1")
     second = jobs.enqueue(conn, "pipeline", idempotency_key="pipeline:x")
     assert second is not None and second != first
+
+
+def test_work_queued_while_the_same_job_runs_is_not_lost(conn: sqlite3.Connection) -> None:
+    """Regression: the idempotency key was cleared only when a job finished, so a save while the item's
+    pipeline job was leased was deduped into the running job, which had already read the old bytes: the index
+    stayed stale and the stages reset by the save stayed pending."""
+    first = jobs.enqueue(conn, "pipeline", idempotency_key="pipeline:x")
+    job = jobs.claim(conn, "w1")
+    assert job is not None and job.id == first
+    again = jobs.enqueue(conn, "pipeline", idempotency_key="pipeline:x")
+    assert again is not None and again != first
+    assert jobs.enqueue(conn, "pipeline", idempotency_key="pipeline:x") == again  # still deduped while queued
+    jobs.complete(conn, job.id, "w1")
+    follow_up = jobs.claim(conn, "w1")
+    assert follow_up is not None and follow_up.id == again
+
+
+def test_a_database_error_does_not_stop_the_lease_heartbeat(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: one `database is locked` in the heartbeat thread killed it, so a long job lost its lease
+    and was handed to a second worker while the first was still running it."""
+    calls: list[int] = []
+
+    def flaky_heartbeat(_conn: sqlite3.Connection, _job_id: str, _worker_id: str) -> bool:
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return len(calls) < 3
+
+    monkeypatch.setattr(worker, "HEARTBEAT_S", 0.01)
+    monkeypatch.setattr(worker.jobs, "heartbeat", flaky_heartbeat)
+    done = threading.Event()
+    beat = threading.Thread(target=worker._heartbeat, args=(tmp_path / "universe.db", "j", "w", done))
+    beat.start()
+    beat.join(timeout=5)
+    done.set()
+    assert not beat.is_alive()
+    assert len(calls) == 3  # kept beating after the error, stopped when the lease was gone
 
 
 def test_release_does_not_count_an_attempt(conn: sqlite3.Connection) -> None:

@@ -2,13 +2,16 @@
 search by keyword, by fragment and by meaning. Plus dedupe, versions, trash and real deletion."""
 
 import json
+import os
 import sqlite3
+import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pytest
+from watchdog.events import FileMovedEvent
 
 from tests.support import files
 from tests.support.fake_ollama import CAPTION, VISION_MODEL, FakeOllama, fake_embedding
@@ -24,6 +27,7 @@ from universe_vault.models import query_prefix
 from universe_vault.query import Project, parse
 from universe_vault.transcription import NO_STT, Transcriber
 from universe_vault.vectors import table_name
+from universe_vault.watch import VAULT, Watcher, _Handler
 from universe_vault.worker import EventSink, build_context, drain
 from universe_voice import longform
 from universe_voice.audio import STT_RATE, resample, write_wav
@@ -385,3 +389,160 @@ def test_formats_without_a_decoder_say_why(rig: Rig, tmp_path: Path, monkeypatch
     stage = {s.stage: s for s in store.stages(rig.conn, item_id)}["transcribe"]
     assert stage.status == "skipped" and "needs ffmpeg on PATH" in (stage.detail or "")
     assert _row(rig.conn, item_id)["pipeline_status"] == "done"
+
+
+# ---------- review fixes (2026-10-22): regressions ----------
+
+
+def _vault_file(rig: Rig, path: Path, event: str, **extra: Any) -> None:
+    """Queue what the vault watcher queues for a file event, then run it."""
+    jobs.enqueue(rig.conn, "vault_file", payload={"path": str(path), "event": event, **extra})
+    rig.run()
+
+
+def test_purging_a_trashed_item_never_deletes_a_newer_item_at_its_old_path(rig: Rig, tmp_path: Path) -> None:
+    """Regression: purge unlinked every versions.path of the item, but trash leaves the old version rows pointing
+    at the original location, which a new item with the same name takes: purging A deleted B's file."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "report.txt").write_text("First report about the lake", encoding="utf-8")
+    first = ingest.import_file(rig.conn, rig.vault, tmp_path / "a" / "report.txt", source_kind="drop")
+    rig.run()
+    old_path = _row(rig.conn, str(first.item_id))["path"]
+    assert purge.trash(rig.conn, rig.vault, str(first.item_id))
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "report.txt").write_text("Second report about the house", encoding="utf-8")
+    second = ingest.import_file(rig.conn, rig.vault, tmp_path / "b" / "report.txt", source_kind="drop")
+    assert second.path == old_path  # the name was free again
+    assert purge.purge(rig.conn, rig.vault, rig.ctx.vectors, str(first.item_id))
+    assert rig.vault.abs(old_path).read_text(encoding="utf-8") == "Second report about the house"
+
+
+def test_a_file_recreated_where_one_was_deleted_outside_the_app_is_indexed(rig: Rig) -> None:
+    """Regression: an item whose file was deleted outside the app kept its (UNIQUE) path, and find_by_path
+    returned trashed rows, so a new file at that path was never indexed and purging the old item deleted it."""
+    hand = rig.vault.root / "documents" / "hand-placed.txt"
+    hand.parent.mkdir(parents=True, exist_ok=True)
+    hand.write_text("Put here by hand", encoding="utf-8")
+    _vault_file(rig, hand, "changed")
+    old_id = rig.conn.execute("SELECT id FROM items").fetchone()["id"]
+    hand.unlink()
+    _vault_file(rig, hand, "deleted")
+    assert _row(rig.conn, old_id)["trashed_at"] is not None
+    with pytest.raises(purge.PurgeError, match="deleted outside"):
+        purge.restore(rig.conn, rig.vault, old_id)
+
+    hand.write_text("A new file with the same name", encoding="utf-8")
+    _vault_file(rig, hand, "changed")
+    live = rig.conn.execute("SELECT id, path FROM items WHERE trashed_at IS NULL").fetchall()
+    assert [r["path"] for r in live] == ["documents/hand-placed.txt"] and live[0]["id"] != old_id
+    assert rig.find("same name", semantic=False) == ["hand-placed"]
+    assert purge.purge(rig.conn, rig.vault, rig.ctx.vectors, old_id)
+    assert hand.read_text(encoding="utf-8") == "A new file with the same name"
+
+
+def test_two_imports_racing_for_one_name_never_overwrite_each_other(
+    rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: free_path picked a name, then os.replace put the copy there even if another importer had
+    taken the name meanwhile: its file was overwritten (and the cleanup could unlink a file it didn't own)."""
+    real_copy = ingest.shutil.copy2
+    raced: list[Path] = []
+
+    def copy_while_another_import_wins(src: Any, dst: Any, **kwargs: Any) -> Any:
+        if not raced:
+            winner = Path(dst).parent / "report.txt"  # the other importer takes the name first
+            winner.write_text("the other import's bytes", encoding="utf-8")
+            raced.append(winner)
+        return real_copy(src, dst, **kwargs)
+
+    monkeypatch.setattr(ingest.shutil, "copy2", copy_while_another_import_wins)
+    (tmp_path / "report.txt").write_text("this import's bytes", encoding="utf-8")
+    result = ingest.import_file(rig.conn, rig.vault, tmp_path / "report.txt", source_kind="drop")
+    assert raced and raced[0].read_text(encoding="utf-8") == "the other import's bytes"
+    assert result.path is not None and result.path.endswith("report (2).txt")
+    assert rig.vault.abs(result.path).read_text(encoding="utf-8") == "this import's bytes"
+    assert not [p for p in raced[0].parent.iterdir() if p.name.endswith(".part")]
+
+
+def test_renaming_a_file_inside_the_vault_keeps_the_item(rig: Rig, tmp_path: Path) -> None:
+    """Regression: the vault watcher turned a rename into delete + import, so the item lost its tags, links,
+    galaxies and history (the old one went to the trash, a new one was created)."""
+    (tmp_path / "plan.txt").write_text("The cabin plan", encoding="utf-8")
+    item_id = str(ingest.import_file(rig.conn, rig.vault, tmp_path / "plan.txt", source_kind="drop").item_id)
+    rig.run()
+    with transaction(rig.conn):
+        store.set_tags(rig.conn, item_id, ["cabin"], "user")
+    old = rig.vault.abs(_row(rig.conn, item_id)["path"])
+    new = old.with_name("cabin-plan.txt")
+    old.rename(new)
+
+    queued: list[tuple[str, dict[str, Any]]] = []
+    watcher = Watcher(rig.vault, lambda kind, payload: queued.append((kind, payload)), debounce_s=0)
+    _Handler(watcher, VAULT).on_moved(FileMovedEvent(str(old), str(new)))
+    watcher.settle(now=1e12)
+    watcher.settle(now=2e12)
+    for kind, payload in queued:
+        jobs.enqueue(rig.conn, kind, payload=payload)
+    rig.run()
+
+    assert rig.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+    row = _row(rig.conn, item_id)
+    assert row["trashed_at"] is None and row["path"] == rig.vault.rel(new)
+    item = store.get_item(rig.conn, rig.vault, item_id)
+    assert item is not None and item.tags == ["cabin"]
+    assert sidecar_path(new).exists() and not sidecar_path(old).exists()
+
+
+def test_new_versions_hash_and_copy_outside_the_write_transaction(
+    rig: Rig, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: add_version hashed and copied whole files inside BEGIN IMMEDIATE, holding the database's
+    write lock for as long as a large file takes to read."""
+    source = tmp_path / "watched" / "budget.txt"
+    source.parent.mkdir()
+    source.write_text("Budget v1", encoding="utf-8")
+    item_id = str(ingest.import_file(rig.conn, rig.vault, source, source_kind="drop").item_id)
+    note_id = ingest.create_note(rig.conn, rig.vault, "Draft one", title="Draft")
+    rig.run()
+    in_transaction: list[tuple[str, bool]] = []
+    real_hash, real_copy = ingest.sha256_file, ingest.shutil.copy2
+
+    def hash_spy(path: Path) -> str:
+        in_transaction.append(("hash", rig.conn.in_transaction))
+        return real_hash(path)
+
+    def copy_spy(src: Any, dst: Any, **kwargs: Any) -> Any:
+        in_transaction.append(("copy", rig.conn.in_transaction))
+        return real_copy(src, dst, **kwargs)
+
+    monkeypatch.setattr(ingest, "sha256_file", hash_spy)
+    monkeypatch.setattr(ingest.shutil, "copy2", copy_spy)
+    source.write_text("Budget v2, much longer", encoding="utf-8")
+    assert ingest.add_version(rig.conn, rig.vault, item_id, new_source=source, actor="system") == 2
+    note = rig.vault.abs(_row(rig.conn, note_id)["path"])
+    note.write_text(note.read_text(encoding="utf-8").replace("one", "two"), encoding="utf-8")
+    assert ingest.add_version(rig.conn, rig.vault, note_id, new_source=None, actor="user") == 2
+    assert {kind for kind, _ in in_transaction} == {"hash", "copy"}
+    assert not any(inside for _, inside in in_transaction), in_transaction
+    assert rig.vault.abs(_row(rig.conn, item_id)["path"]).read_text(encoding="utf-8") == "Budget v2, much longer"
+    versions = rig.conn.execute("SELECT path FROM versions WHERE item_id = ? ORDER BY n", (note_id,)).fetchall()
+    assert "two" in rig.vault.abs(versions[1]["path"]).read_text(encoding="utf-8")
+    assert ingest.add_version(rig.conn, rig.vault, note_id, new_source=None, actor="user") is None  # unchanged
+    assert not [p for p in rig.vault.version_dir(note_id).iterdir() if p.name.endswith(".part")]
+
+
+def test_opendocument_files_finish_with_extraction_skipped(rig: Rig, tmp_path: Path) -> None:
+    """Regression: .odt/.ods are typed document/spreadsheet but have no extractor, so they fell to the plain
+    text reader, looked binary and failed the extract stage on every run (the item never finished)."""
+    for name in ("letter.odt", "sheet.ods"):
+        with zipfile.ZipFile(tmp_path / name, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+            archive.writestr("content.xml", os.urandom(4096))
+        rig.import_path(tmp_path / name)
+    rig.run()
+    rows = rig.conn.execute("SELECT * FROM items").fetchall()
+    assert len(rows) == 2
+    for row in rows:
+        stage = {s.stage: s for s in store.stages(rig.conn, row["id"])}["extract"]
+        assert stage.status == "skipped" and "OpenDocument" in (stage.detail or ""), (row["path"], stage)
+        assert row["pipeline_status"] == "done"

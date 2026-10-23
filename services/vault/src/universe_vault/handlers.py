@@ -13,7 +13,7 @@ import numpy as np
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_vault import jobs, links, semantic, sidecar, store
-from universe_vault.ingest import add_version, deleted_outside, import_file, walk_folder
+from universe_vault.ingest import add_version, deleted_outside, import_file, moved_inside, walk_folder
 from universe_vault.jobs import Job
 from universe_vault.layout import Vault, sha256_file
 from universe_vault.media import OcrEngine, make_thumbnail
@@ -175,17 +175,30 @@ def _import_watched(ctx: WorkerContext, path: Path, folder_id: str, project_ids:
     return {"status": status, "item_id": item_id}
 
 
+def _deleted(ctx: WorkerContext, rel_path: str) -> str | None:
+    item_id = deleted_outside(ctx.conn, ctx.vault, rel_path)
+    if item_id:
+        ctx.emit("item.trashed", {"item_id": item_id, "reason": "deleted outside the app"}, subject_id=item_id)
+    return item_id
+
+
 def handle_vault_file(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     """A file inside the vault changed, appeared or disappeared outside the app (the vault watcher)."""
     path = Path(job.payload["path"])
     if not ctx.vault.contains(path) or ctx.vault.in_index(path):
         return {"status": "ignored"}
     rel_path = ctx.vault.rel(path)
-    if job.payload.get("event") == "deleted":
-        item_id = deleted_outside(ctx.conn, ctx.vault, rel_path)
-        if item_id:
-            ctx.emit("item.trashed", {"item_id": item_id, "reason": "deleted outside the app"}, subject_id=item_id)
-        return {"status": "trashed" if item_id else "ignored"}
+    event = job.payload.get("event")
+    if event == "moved":  # renamed or moved within the vault: `from` is where it was
+        source = Path(job.payload["from"])
+        if ctx.vault.contains(source) and not ctx.vault.in_index(source):
+            item_id = moved_inside(ctx.conn, ctx.vault, ctx.vault.rel(source), rel_path)
+            if item_id:
+                ctx.emit("item.updated", {"item_id": item_id, "path": rel_path}, subject_id=item_id)
+                return {"status": "moved", "item_id": item_id}
+            _deleted(ctx, ctx.vault.rel(source))  # not the same bytes: the old item goes, the new file comes in
+    if event == "deleted":
+        return {"status": "trashed" if _deleted(ctx, rel_path) else "ignored"}
     if not path.is_file():
         return {"status": "gone"}
     row = store.find_by_path(ctx.conn, rel_path)

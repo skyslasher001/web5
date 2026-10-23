@@ -76,7 +76,8 @@ def find_by_hash(conn: sqlite3.Connection, content_hash: str) -> sqlite3.Row | N
 
 
 def find_by_path(conn: sqlite3.Connection, rel_path: str) -> sqlite3.Row | None:
-    return conn.execute("SELECT * FROM items WHERE path = ?", (rel_path,)).fetchone()
+    """The live item at a vault path (a trashed item's path is in the trash folder; this skips it anyway)."""
+    return conn.execute("SELECT * FROM items WHERE path = ? AND trashed_at IS NULL", (rel_path,)).fetchone()
 
 
 def add_to_projects(conn: sqlite3.Connection, item_id: str, project_ids: Iterable[str], actor: str) -> list[str]:

@@ -47,10 +47,32 @@ class ExtractionError(RuntimeError):
     pass
 
 
+class UnsupportedFormat(ExtractionError):
+    """A known format there is no text extractor for yet: nothing to read, not a broken file."""
+
+
+NO_EXTRACTOR = {".odt": "OpenDocument text", ".ods": "OpenDocument spreadsheet", ".odp": "OpenDocument slides"}
+
+
 def clean(text: str) -> str:
     text = text.replace("\x00", "")
     lines = [_WS.sub(" ", line).strip() for line in text.split("\n")]
     return _BLANKS.sub("\n\n", "\n".join(lines)).strip()
+
+
+_UTF16_BOMS = (b"\xff\xfe", b"\xfe\xff")
+
+
+def _trim_cut_character(data: bytes) -> bytes:
+    """Bytes read up to a size limit can end in the middle of a character: drop that partial character."""
+    if data.startswith(_UTF16_BOMS):
+        return data[: len(data) - len(data) % 2]
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        if exc.reason == "unexpected end of data":
+            return data[: exc.start]
+    return data
 
 
 def _decode(data: bytes) -> str:
@@ -59,7 +81,7 @@ def _decode(data: bytes) -> str:
             text = data.decode(encoding)
         except UnicodeDecodeError:
             continue
-        if encoding == "utf-16" and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        if encoding == "utf-16" and not data.startswith(_UTF16_BOMS):
             continue
         return text
     return data.decode("cp1252", errors="replace")
@@ -67,7 +89,9 @@ def _decode(data: bytes) -> str:
 
 def looks_binary(data: bytes) -> bool:
     sample = data[:4096]
-    if b"\x00" in sample and not sample.startswith((b"\xff\xfe", b"\xfe\xff")):
+    if sample.startswith(_UTF16_BOMS):
+        return False  # UTF-16 text: every other byte of ASCII is a zero, so the ratio below doesn't apply
+    if b"\x00" in sample:
         return True
     printable = sum(32 <= b < 127 or b in (9, 10, 13) or b >= 128 for b in sample)
     return bool(sample) and printable / len(sample) < 0.85
@@ -134,8 +158,8 @@ def _plain(path: Path, ext: str) -> Extracted:
         data = fh.read(MAX_PLAIN_BYTES)
     if looks_binary(data):
         raise ExtractionError("file looks binary")
-    text = _decode(data)
     truncated = size > MAX_PLAIN_BYTES
+    text = _decode(_trim_cut_character(data) if truncated else data)
     if ext in (".html", ".htm"):
         result = _html(text)
         result.truncated = truncated
@@ -292,6 +316,8 @@ def _url_file(path: Path) -> Extracted:
 def extract_text(path: Path) -> Extracted:
     """Extract text from a file. Raises ExtractionError for unreadable or binary files."""
     ext = path.suffix.lower()
+    if ext in NO_EXTRACTOR:
+        raise UnsupportedFormat(f"no text extractor for {NO_EXTRACTOR[ext]} ({ext}) files yet")
     try:
         if ext == ".pdf":
             result = _pdf(path)

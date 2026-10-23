@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import keyring
@@ -197,6 +197,17 @@ def stage_databases(vault: Vault) -> Path:
     return staging
 
 
+def restic_path(path: str | Path, *, windows: bool = sys.platform == "win32") -> str:
+    """A path as restic stores it in a snapshot, for `--include`. Restic keeps a Windows drive as a top-level
+    folder: `C:\\Users\\sam\\Vault` is `/C/Users/sam/Vault` inside the snapshot."""
+    if not windows:
+        return PurePosixPath(path).as_posix()
+    win = PureWindowsPath(path)
+    drive = win.drive.rstrip(":")
+    rest = "/".join(win.parts[1:])
+    return f"/{drive}/{rest}" if drive else win.as_posix()
+
+
 def run_backup(conn: sqlite3.Connection, vault: Vault, restic: Restic, *, kind: str = "manual") -> dict[str, Any]:
     backup_id = uuid7()
     conn.execute(
@@ -233,7 +244,7 @@ def verify(conn: sqlite3.Connection, vault: Vault, restic: Restic) -> dict[str, 
         raise BackupError("There is no backup to test yet.")
     latest = max(snapshots, key=lambda s: s.get("time", ""))
     with tempfile.TemporaryDirectory(prefix="universe-restore-test-") as tmp:
-        staged = f"{vault.root.resolve().as_posix()}/{INDEX_DIR}/{STAGING}/universe.db"
+        staged = restic_path(vault.root.resolve() / INDEX_DIR / STAGING / "universe.db")
         restic.restore(latest["short_id"], Path(tmp), include=staged)
         restored = next(Path(tmp).rglob("universe.db"), None)
         if restored is None:

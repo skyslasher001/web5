@@ -6,7 +6,16 @@ from pathlib import Path
 import pytest
 
 from tests.support import files
-from universe_vault.extract import CHUNK_MAX, ExtractionError, Section, chunk_sections, extract_text
+from universe_vault import backup
+from universe_vault.extract import (
+    CHUNK_MAX,
+    MAX_PLAIN_BYTES,
+    ExtractionError,
+    Section,
+    chunk_sections,
+    extract_text,
+    looks_binary,
+)
 from universe_vault.filetypes import detect_type
 from universe_vault.layout import Vault, VaultPathError, safe_filename, slugify
 from universe_vault.query import Project, parse
@@ -140,6 +149,45 @@ def test_binary_files_are_refused(tmp_path: Path) -> None:
     (tmp_path / "blob.dat").write_bytes(bytes(range(256)) * 20)
     with pytest.raises(ExtractionError):
         extract_text(tmp_path / "blob.dat")
+
+
+def test_utf16_text_with_a_bom_is_not_binary(tmp_path: Path) -> None:
+    """Regression: UTF-16 with a BOM (Windows Notepad's "Unicode") failed the printable-bytes ratio, because
+    every other byte of ASCII text is a zero, and was refused as binary."""
+    data = "Grocery list: eggs, flour, sugar.\r\nCafé on Friday.\r\n".encode("utf-16")
+    assert data.startswith((b"\xff\xfe", b"\xfe\xff"))
+    assert not looks_binary(data)
+    assert not looks_binary(b"\xfe\xff" + "Big-endian too.".encode("utf-16-be"))
+    (tmp_path / "list.txt").write_bytes(data)
+    assert extract_text(tmp_path / "list.txt").sections[0].text == "Grocery list: eggs, flour, sugar.\nCafé on Friday."
+
+
+def test_truncating_a_large_text_file_never_splits_a_utf8_character(tmp_path: Path) -> None:
+    """Regression: reading the first MAX_PLAIN_BYTES could cut a multi-byte character in half; UTF-8 decoding
+    then failed and the whole file was read as cp1252 (every accented letter turned into mojibake)."""
+    head = "Café déjà vu\n".encode()
+    filler = b"a" * (MAX_PLAIN_BYTES - len(head) - 1)
+    (tmp_path / "big.txt").write_bytes(head + filler + "é".encode() + b" and the rest\n")
+    assert len(head + filler + "é".encode()) == MAX_PLAIN_BYTES + 1  # the cut is inside the é
+    result = extract_text(tmp_path / "big.txt")
+    assert result.truncated
+    assert result.sections[0].text.startswith("Café déjà vu")
+
+
+@pytest.mark.parametrize(
+    ("path", "windows", "expected"),
+    [
+        ("C:\\Users\\sam\\Vault/.universe/backup-staging/universe.db", True,
+         "/C/Users/sam/Vault/.universe/backup-staging/universe.db"),
+        ("d:/Data/vault", True, "/d/Data/vault"),
+        ("/home/sam/vault/.universe/backup-staging/universe.db", False,
+         "/home/sam/vault/.universe/backup-staging/universe.db"),
+    ],
+)  # fmt: skip
+def test_restic_paths_use_the_snapshot_form_on_windows(path: str, windows: bool, expected: str) -> None:
+    """Regression: the test restore passed `C:/Users/...` to `restic restore --include`, but restic stores a
+    Windows drive as a top-level folder (`/C/Users/...`), so nothing matched and verify always failed there."""
+    assert backup.restic_path(path, windows=windows) == expected
 
 
 def test_chunks_respect_size_and_pages() -> None:

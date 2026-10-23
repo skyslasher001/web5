@@ -14,7 +14,7 @@ from typing import Any
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_vault import jobs, links, store
-from universe_vault.extract import ExtractionError, chunk_sections, extract_text
+from universe_vault.extract import ExtractionError, UnsupportedFormat, chunk_sections, extract_text
 from universe_vault.filetypes import IMAGE_TYPES, TEXT_TYPES, TIME_BASED_TYPES
 from universe_vault.layout import Vault
 from universe_vault.metadata import extract as extract_metadata
@@ -91,7 +91,7 @@ def stage_extract(ctx: StageContext, row: sqlite3.Row) -> dict[str, Any]:
     try:
         result = extract_text(path)
     except ExtractionError as exc:
-        if row["type"] == "file":
+        if row["type"] == "file" or isinstance(exc, UnsupportedFormat):
             raise StageSkipped(str(exc)) from exc  # an unknown binary format: nothing to read, not a failure
         raise
     chunks = chunk_sections(result.sections)

@@ -15,7 +15,7 @@ from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_vault import links, store
 from universe_vault.jobs import iso, now_dt
-from universe_vault.layout import Vault, sidecar_path
+from universe_vault.layout import Vault, sha256_file, sidecar_path
 from universe_vault.vectors import VectorStore
 
 TRASH_DAYS = 30
@@ -80,15 +80,37 @@ def restore(conn: sqlite3.Connection, vault: Vault, item_id: str) -> bool:
     return True
 
 
+def _own_version_files(conn: sqlite3.Connection, vault: Vault, item_id: str) -> list[Path]:
+    """Files of an item's earlier versions that are still its own.
+
+    A version row can point at a path the item has left (it was trashed, or deleted outside the app) and that
+    another item now uses. Its version and trash folders are deleted whole; any other version file is deleted
+    only if no other item refers to that path and the file still holds that version's bytes.
+    """
+    own_dirs = (vault.version_dir(item_id).resolve(), (vault.trash / item_id).resolve())
+    own: list[Path] = []
+    rows = conn.execute("SELECT path, content_hash FROM versions WHERE item_id = ?", (item_id,)).fetchall()
+    for row in rows:
+        path = vault.abs(row["path"])
+        if any(d in path.parents for d in own_dirs) or not path.is_file():
+            continue
+        shared = conn.execute(
+            "SELECT 1 FROM items WHERE path = ? AND id != ?"
+            " UNION ALL SELECT 1 FROM versions WHERE path = ? AND item_id != ? LIMIT 1",
+            (row["path"], item_id, row["path"], item_id),
+        ).fetchone()
+        if shared is None and sha256_file(path) == row["content_hash"]:
+            own.append(path)
+    return own
+
+
 def purge(conn: sqlite3.Connection, vault: Vault, vectors: VectorStore, item_id: str) -> bool:
     """Delete an item everywhere. Returns False if it didn't exist."""
     row = store.get_row(conn, item_id)
     if row is None:
         return False
     original = vault.abs(row["path"])
-    version_paths = [
-        vault.abs(r["path"]) for r in conn.execute("SELECT path FROM versions WHERE item_id = ?", (item_id,))
-    ]
+    version_paths = _own_version_files(conn, vault, item_id)
     vectors.delete_item(item_id)
     for path in {original, sidecar_path(original), vault.thumb_path(item_id), *version_paths}:
         if path.exists() and path.is_file():

@@ -64,9 +64,11 @@ class _Handler(FileSystemEventHandler):
 
     def on_moved(self, event: FileSystemEvent) -> None:
         if not event.is_directory:
+            src, dest = Path(os.fsdecode(event.src_path)), Path(os.fsdecode(event.dest_path))
             if self.folder_id == VAULT:
-                self.watcher.deleted(Path(os.fsdecode(event.src_path)))
-            self.watcher.touch(Path(os.fsdecode(event.dest_path)), self.folder_id)
+                self.watcher.moved(src, dest)
+            else:
+                self.watcher.touch(dest, self.folder_id)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if not event.is_directory and self.folder_id == VAULT:
@@ -158,6 +160,20 @@ class Watcher:
         with self._lock:
             self._pending.pop(path, None)
         self._safe_enqueue("vault_file", {"path": str(path), "event": "deleted"})
+
+    def moved(self, src: Path, dest: Path) -> None:
+        """A rename or move inside the vault. A rename is atomic (the file is complete), so it isn't debounced;
+        the worker keeps the item if the bytes are the same (`ingest.moved_inside`)."""
+        if not self.vault.contains(dest) or not self._wanted(dest, VAULT):
+            self.deleted(src)  # moved out of the vault, into the index or to a temporary name
+            return
+        if not self._wanted(src, VAULT):  # a temporary file put in place (a safe save, an import): just a change
+            self.touch(dest, VAULT)
+            return
+        with self._lock:
+            self._pending.pop(src, None)
+            self._pending.pop(dest, None)
+        self._safe_enqueue("vault_file", {"path": str(dest), "event": "moved", "from": str(src)})
 
     def _settle_loop(self) -> None:
         while not self._stop.wait(0.5):

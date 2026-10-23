@@ -21,7 +21,7 @@ from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
 from universe_vault import jobs, store
 from universe_vault.filetypes import ItemType, detect_type, guess_mime
-from universe_vault.layout import SIDECAR_SUFFIX, Vault, sha256_file, slugify
+from universe_vault.layout import SIDECAR_SUFFIX, Vault, sha256_file, sidecar_path, slugify
 from universe_vault.metadata import captured_at, note_title
 from universe_vault.pipeline import initial_stages
 
@@ -136,6 +136,16 @@ def _insert_item(
     store.reindex_item(conn, item_id)
 
 
+def _copy_in(vault: Vault, src: Path, folder: Path, name: str) -> Path:
+    """Copy `src` to a free name in `folder` without ever overwriting a file (see Vault.place_new)."""
+    tmp = folder / f".{uuid7()}.part"
+    try:
+        shutil.copy2(src, tmp)
+        return vault.place_new(tmp, folder, name)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _keep_note_version(vault: Vault, item_id: str, n: int, src: Path) -> str:
     """Notes can be edited outside the app, so each version's bytes are kept under .universe/versions/."""
     dest = vault.version_dir(item_id) / f"{n}{src.suffix}"
@@ -188,10 +198,7 @@ def import_file(
     else:
         folder = vault.folder_for(item_type, when)
         folder.mkdir(parents=True, exist_ok=True)
-        dest = vault.free_path(folder, display_name)
-        tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
-        shutil.copy2(src, tmp)
-        os.replace(tmp, dest)
+        dest = _copy_in(vault, src, folder, display_name)
     rel_path = vault.rel(dest)
     title = Path(display_name).stem or display_name
     if item_type == "note":
@@ -259,51 +266,77 @@ def add_version(
       version under `.universe/versions/`; other files record the edit, but the editor already replaced
       the old bytes in place, so only the history entry remains.
     """
-    # The row is read and the version number taken inside the write transaction (BEGIN IMMEDIATE), so two
-    # writers, in this process or the worker's, can't both claim version n or both record the same change.
-    with transaction(conn):
-        row = store.get_row(conn, item_id)
-        if row is None or row["trashed_at"] is not None:
-            return None
-        current = vault.abs(row["path"])
-        source = new_source or current
-        content_hash = sha256_file(source)
+    row = store.get_row(conn, item_id)
+    if row is None or row["trashed_at"] is not None:
+        return None
+    current = vault.abs(row["path"])
+    # Hashing and copying (slow for big files) happen before the write transaction, on a staged copy of the
+    # bytes, so the database isn't locked meanwhile; the row is checked again inside the transaction.
+    staged: Path | None = None
+    created: Path | None = None
+    try:
+        if new_source is not None:
+            staged = current.parent / f".{uuid7()}.part"
+            shutil.copy2(new_source, staged)
+            content_hash = sha256_file(staged)
+        else:
+            content_hash = sha256_file(current)
+            if content_hash != row["content_hash"] and is_markdown(row):
+                staged = vault.version_dir(item_id) / f".{uuid7()}.part"
+                staged.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(current, staged)
+                content_hash = sha256_file(staged)
         if content_hash == row["content_hash"]:
             return None
-        n = int(row["current_version"]) + 1
-        note = note or "changed on disk"
-        if new_source is not None:
-            dest = vault.free_path(current.parent, current.name)
-            tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
-            shutil.copy2(source, tmp)
-            os.replace(tmp, dest)
-            rel_path = version_path = vault.rel(dest)
-            note = "source changed"
-        elif is_markdown(row):
-            version_path = _keep_note_version(vault, item_id, n, current)
-            rel_path = row["path"]
-        else:
-            rel_path = version_path = row["path"]
-            note = "edited in place outside the app (previous bytes not kept)"
-        size = vault.abs(rel_path).stat().st_size
-        conn.execute(
-            "INSERT INTO versions (id, item_id, n, path, content_hash, size_bytes, created_by, note, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (uuid7(), item_id, n, version_path, content_hash, size, actor, note, utcnow()),
-        )
-        conn.execute(
-            "UPDATE items SET path = ?, content_hash = ?, size_bytes = ?, current_version = ?, updated_at = ?"
-            " WHERE id = ?",
-            (rel_path, content_hash, size, n, utcnow(), item_id),
-        )
-        if is_markdown(row):
-            title = note_title(vault.abs(rel_path).read_text(encoding="utf-8", errors="replace")[:65536], row["title"])
-            conn.execute("UPDATE items SET title = ?, slug = ? WHERE id = ?", (title, slugify(title), item_id))
-        for stage, status, detail in initial_stages(row["type"]):
-            store.set_stage(conn, item_id, stage, status, detail=detail)
-        store.refresh_pipeline_status(conn, item_id)
-        store.reindex_item(conn, item_id)
-        _queue_pipeline(conn, item_id, interactive=False)
+        # The row is read again and the version number taken inside the write transaction (BEGIN IMMEDIATE),
+        # so two writers, in this process or the worker's, can't both claim version n or record the same change.
+        with transaction(conn):
+            row = store.get_row(conn, item_id)
+            if row is None or row["trashed_at"] is not None or content_hash == row["content_hash"]:
+                return None
+            current = vault.abs(row["path"])
+            n = int(row["current_version"]) + 1
+            note = note or "changed on disk"
+            if new_source is not None:
+                assert staged is not None
+                created = vault.place_new(staged, current.parent, current.name)
+                rel_path = version_path = vault.rel(created)
+                note = "source changed"
+            elif staged is not None:  # Markdown: every version's bytes are kept
+                dest = vault.version_dir(item_id) / f"{n}{current.suffix}"
+                os.replace(staged, dest)
+                version_path, rel_path = vault.rel(dest), row["path"]
+            else:
+                rel_path = version_path = row["path"]
+                note = "edited in place outside the app (previous bytes not kept)"
+            version_file = vault.abs(version_path)
+            size = version_file.stat().st_size
+            conn.execute(
+                "INSERT INTO versions (id, item_id, n, path, content_hash, size_bytes, created_by, note, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (uuid7(), item_id, n, version_path, content_hash, size, actor, note, utcnow()),
+            )
+            conn.execute(
+                "UPDATE items SET path = ?, content_hash = ?, size_bytes = ?, current_version = ?, updated_at = ?"
+                " WHERE id = ?",
+                (rel_path, content_hash, size, n, utcnow(), item_id),
+            )
+            if is_markdown(row):
+                text = version_file.read_text(encoding="utf-8", errors="replace")[:65536]
+                title = note_title(text, row["title"])
+                conn.execute("UPDATE items SET title = ?, slug = ? WHERE id = ?", (title, slugify(title), item_id))
+            for stage, status, detail in initial_stages(row["type"]):
+                store.set_stage(conn, item_id, stage, status, detail=detail)
+            store.refresh_pipeline_status(conn, item_id)
+            store.reindex_item(conn, item_id)
+            _queue_pipeline(conn, item_id, interactive=False)
+    except BaseException:
+        if created is not None:
+            created.unlink(missing_ok=True)  # only the file this call made
+        raise
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
     return n
 
 
@@ -370,16 +403,54 @@ def edit_note(
 
 
 def deleted_outside(conn: sqlite3.Connection, vault: Vault, rel_path: str) -> str | None:
-    """The file of an item was deleted outside the app: move the item to the trash (purged after 30 days)."""
+    """The file of an item was deleted outside the app: move the item to the trash (purged after 30 days).
+
+    Like `purge.trash`, the item's path moves to its trash folder (the old one is kept as `trashed_from`), so
+    a new file at that path is a new item, not this one.
+    """
     row = store.find_by_path(conn, rel_path)
-    if row is None or row["trashed_at"] is not None or vault.abs(rel_path).exists():
+    original = vault.abs(rel_path)
+    if row is None or row["trashed_at"] is not None or original.exists():
         return None
+    trashed = vault.trash / row["id"] / original.name
+    side = sidecar_path(original)
+    if side.exists():
+        trashed.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(side), str(sidecar_path(trashed)))
     with transaction(conn):
         conn.execute(
-            "UPDATE items SET trashed_at = ?, metadata = json_set(metadata, '$.deleted_outside_app', json('true')),"
-            " updated_at = ? WHERE id = ?",
-            (utcnow(), utcnow(), row["id"]),
+            "UPDATE items SET trashed_at = ?, path = ?, metadata = json_set(metadata, '$.deleted_outside_app',"
+            " json('true'), '$.trashed_from', ?), updated_at = ? WHERE id = ?",
+            (utcnow(), vault.rel(trashed), rel_path, utcnow(), row["id"]),
         )
+        store.reindex_item(conn, row["id"])
+    return row["id"]
+
+
+def moved_inside(conn: sqlite3.Connection, vault: Vault, old_rel: str, new_rel: str) -> str | None:
+    """An item's file was renamed or moved within the vault outside the app (Explorer, Obsidian): if it still
+    holds the same bytes, the item follows it, keeping its tags, links, galaxies and history. Returns the
+    item id, or None when it isn't such a move (the caller then treats it as a delete plus a new file)."""
+    row = store.find_by_path(conn, old_rel)
+    old, new = vault.abs(old_rel), vault.abs(new_rel)
+    if row is None or old.exists() or not new.is_file() or store.find_by_path(conn, new_rel) is not None:
+        return None
+    if sha256_file(new) != row["content_hash"]:
+        return None
+    if sidecar_path(old).exists() and not sidecar_path(new).exists():
+        shutil.move(str(sidecar_path(old)), str(sidecar_path(new)))
+    with transaction(conn):
+        again = store.get_row(conn, row["id"])
+        if again is None or again["trashed_at"] is not None or again["path"] != old_rel:
+            return None
+        title = again["title"]
+        if title == old.stem:  # named after its file: follow the new name
+            title = new.stem or title
+        conn.execute(
+            "UPDATE items SET path = ?, mime = ?, title = ?, slug = ?, updated_at = ? WHERE id = ?",
+            (new_rel, guess_mime(new_rel), title, slugify(title), utcnow(), row["id"]),
+        )
+        conn.execute("UPDATE versions SET path = ? WHERE item_id = ? AND path = ?", (new_rel, row["id"], old_rel))
         store.reindex_item(conn, row["id"])
     return row["id"]
 
@@ -425,10 +496,12 @@ def create_note(
     content = _frontmatter(fields) + body + "\n"
     folder = vault.folder_for(item_type, now)
     folder.mkdir(parents=True, exist_ok=True)
-    dest = vault.free_path(folder, f"{slugify(title, max_len=60)}.md")
-    tmp = dest.with_name(f".{dest.name}.{uuid7()}.part")
-    tmp.write_text(content, encoding="utf-8", newline="\n")
-    os.replace(tmp, dest)
+    tmp = folder / f".{uuid7()}.part"
+    try:
+        tmp.write_text(content, encoding="utf-8", newline="\n")
+        dest = vault.place_new(tmp, folder, f"{slugify(title, max_len=60)}.md")
+    finally:
+        tmp.unlink(missing_ok=True)
     rel_path = vault.rel(dest)
     content_hash = sha256_file(dest)
     try:

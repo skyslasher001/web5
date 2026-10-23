@@ -68,7 +68,7 @@ def enqueue(
     delay_s: float = 0.0,
     idempotency_key: str | None = None,
 ) -> str | None:
-    """Queue a job. With an `idempotency_key`, an identical unfinished job is reused (returns its id)."""
+    """Queue a job. With an `idempotency_key`, an identical job still waiting to run is reused (returns its id)."""
     now = now_dt()
     job_id = uuid7()
     cursor = conn.execute(
@@ -126,8 +126,11 @@ def claim(
     class_marks = ",".join("?" * len(classes))
     kind_clause = f" AND kind NOT IN ({','.join('?' * len(exclude_kinds))})" if exclude_kinds else ""
     row = conn.execute(
+        # The key goes on claim, not on finish: work queued while this job runs (a save after it read the file)
+        # must be a new job, not folded into one that has already started.
         "UPDATE jobs SET status = 'leased', lease_owner = ?, lease_expires_at = ?, attempts = attempts + 1,"  # noqa: S608
-        " updated_at = ? WHERE id = (SELECT id FROM jobs WHERE status = 'queued' AND run_after <= ?"
+        " idempotency_key = NULL, updated_at = ?"
+        " WHERE id = (SELECT id FROM jobs WHERE status = 'queued' AND run_after <= ?"
         f" AND priority_class IN ({class_marks}){kind_clause}"
         " ORDER BY CASE priority_class WHEN 'realtime' THEN 0 WHEN 'interactive' THEN 1 ELSE 2 END,"
         " priority DESC, run_after, id LIMIT 1) AND status = 'queued' RETURNING *",

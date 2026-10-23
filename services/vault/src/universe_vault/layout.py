@@ -1,8 +1,10 @@
 """Where things live on disk: `<vault>/<type>/<yyyy>/<mm>/<file>` plus the `.universe/` index (ADR-0003)."""
 
 import hashlib
+import os
 import re
 import unicodedata
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -118,14 +120,43 @@ class Vault:
 
     def free_path(self, folder: Path, name: str) -> Path:
         """`folder/name`, or `name (2).ext`, `name (3).ext`… if taken."""
+        return next(self._free_names(folder, name))
+
+    def _free_names(self, folder: Path, name: str) -> Iterator[Path]:
         name = safe_filename(name)
         candidate = folder / name
         stem, ext = candidate.stem, candidate.suffix
         n = 2
-        while candidate.exists() or candidate.with_name(candidate.name + SIDECAR_SUFFIX).exists():
+        while True:
+            if not (candidate.exists() or candidate.with_name(candidate.name + SIDECAR_SUFFIX).exists()):
+                yield candidate
             candidate = folder / f"{stem} ({n}){ext}"
             n += 1
-        return candidate
+
+    def place_new(self, tmp: Path, folder: Path, name: str) -> Path:
+        """Move the finished file `tmp` to a free name in `folder` (like free_path) and return it.
+
+        The name is claimed atomically, so two writers picking the same free name each get their own and
+        neither overwrites the other: a hard link fails if the name exists (and the file appears whole, so the
+        vault watcher never sees it half-copied). Where hard links aren't supported (FAT/exFAT drives) the
+        name is reserved with an exclusive create first, then `tmp` replaces that empty placeholder.
+        """
+        for candidate in self._free_names(folder, name):
+            try:
+                os.link(tmp, candidate)
+            except FileExistsError:
+                continue
+            except OSError:
+                try:
+                    with candidate.open("xb"):
+                        pass
+                except FileExistsError:
+                    continue
+                os.replace(tmp, candidate)
+                return candidate
+            tmp.unlink()
+            return candidate
+        raise AssertionError("unreachable")
 
     def thumb_path(self, item_id: str) -> Path:
         return self.thumbs / f"{item_id}.webp"
