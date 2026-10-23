@@ -1,0 +1,79 @@
+# PROTECTED (protected-core.txt). Runs every check on Linux and on Windows, the target platform.
+name: CI
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        run: npm install -g pnpm@12.11.2
+
+      - uses: astral-sh/setup-uv@v10
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked
+          pnpm install --frozen-lockfile
+
+      - name: Python lint, format, types
+        run: |
+          uv run ruff format --check
+          uv run ruff check
+          uv run pyright
+
+      - name: JS lint, format, types
+        run: |
+          pnpm exec prettier --check .
+          pnpm exec eslint --max-warnings=0 .
+          pnpm -r typecheck
+
+      - name: Generated files are up to date
+        run: |
+          node packages/design-tokens/build.mjs --check
+          node scripts/gen-types.mjs --check
+
+      - name: Python tests
+        run: uv run pytest
+
+      - name: JS unit tests
+        run: pnpm exec vitest run
+
+      - name: Build
+        run: pnpm build
+
+      - name: End-to-end (Electron, Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm exec playwright test
+
+      - name: End-to-end (Electron, Windows)
+        if: runner.os == 'Windows'
+        run: pnpm exec playwright test
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore

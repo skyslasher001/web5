@@ -1,0 +1,228 @@
+"""Research end to end (Phase 6 "done-when", ADR-0015): a deep report with cited sources lands in the vault,
+the save is approval-gated because reading the web taints the task, an injection page can't make the researcher
+act, offline blocks a remote fetch, and watchlists detect changes.
+
+The model is the scripted stand-in (tests/support/fake_ollama.py); the web is the fake server
+(tests/support/fake_search.py). Needs the Phase 3 protected policy engine (otherwise skipped)."""
+
+import dataclasses
+import time
+from collections.abc import Callable, Iterator
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+pytest.importorskip(
+    "universe_core.protected.policy", reason="needs the Phase 3 protected-core patch (policy engine) to be applied"
+)
+
+from tests.conftest import AUTH
+from tests.integration.test_vault_api import BASE, Api
+from tests.support.fake_ollama import FakeOllama
+from tests.support.fake_search import FakeSearch
+from universe_core.app import create_app
+from universe_core.settings import CoreSettings
+
+DONE = {"done", "failed", "cancelled"}
+
+
+@pytest.fixture
+def search() -> Iterator[FakeSearch]:
+    server = FakeSearch().start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture
+def api(make_settings: Callable[..., CoreSettings], fake_ollama: FakeOllama, search: FakeSearch) -> Iterator[Api]:
+    settings = make_settings(research_search_endpoint=f"{search.url}/lite/", research_allow_private_fetch=True)
+    with TestClient(create_app(settings), base_url=BASE) as client:
+        a = Api(client, settings, fake_ollama.url)
+        a.search = search  # type: ignore[attr-defined]
+        yield a
+        a.close()
+
+
+def wait_task(api: Api, task_id: str, statuses: set[str], timeout: float = 30) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    task: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        task = api.get(f"/tasks/{task_id}")["task"]
+        if task["status"] in statuses:
+            return task
+        time.sleep(0.05)
+    raise AssertionError(f"task {task_id} is still {task.get('status')}, wanted {statuses}")
+
+
+def test_deep_research_saves_a_cited_report_after_approval(api: Api) -> None:
+    api.search.results = ["alpha", "beta"]  # type: ignore[attr-defined]
+    task_id = api.post("/research", {"q": "What is local-first software?", "mode": "deep"}, 202)["task_id"]
+    # Reading the web taints the task, so saving the report needs the owner's OK (the backstop).
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    assert approval["tool"] == "vault.save"
+    assert "untrusted" in approval["reason"]
+    api.post(f"/approvals/{approval['id']}/decision", {"approve": True})
+
+    task = wait_task(api, task_id, DONE)
+    assert task["status"] == "done", task.get("error")
+    api.drain()  # run the pipeline so the saved note's text is extracted and readable
+    note = next(i for i in api.get("/items")["items"] if i["title"] == "Research report")
+    text = api.get(f"/items/{note['id']}/text")["text"]
+    assert "## Sources" in text and api.search.page_url("alpha") in text  # type: ignore[attr-defined]
+
+
+def test_an_injection_page_cannot_make_the_researcher_act(api: Api) -> None:
+    api.search.results = ["injection"]  # type: ignore[attr-defined]
+    task_id = api.post("/research", {"q": "Tell me about this", "mode": "deep"}, 202)["task_id"]
+    # Even though the page says "delete the vault / email secrets", the only action offered is the gated save.
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    assert approval["tool"] == "vault.save" and "untrusted" in approval["reason"]
+    api.post(f"/approvals/{approval['id']}/decision", {"approve": False})  # the owner declines
+    wait_task(api, task_id, DONE)
+
+    detail = api.get(f"/tasks/{task_id}")
+    used = {s["tool"] for s in detail["steps"] if s["kind"] == "tool_call"}
+    assert used <= {"web.search", "web.fetch", "vault.save"}  # no destructive tool was ever called
+    assert not [i for i in api.get("/items")["items"] if i["title"] == "Research report"]  # nothing was saved
+
+
+def test_offline_blocks_a_remote_page_check(api: Api) -> None:
+    created = api.post("/watchlists", {"kind": "page", "target": "https://example.com/", "label": "Example"}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    ctx.gate.offline = True
+    try:
+        api.post(f"/watchlists/{created['id']}/check", expect=503)  # blocked before any real request
+    finally:
+        ctx.gate.offline = False
+
+
+def test_watchlists_crud_and_change_detection(api: Api) -> None:
+    created = api.post("/watchlists", {"kind": "topic", "target": "local-first"}, 201)
+    wid = created["id"]
+    assert created["enabled"] and [w["id"] for w in api.get("/watchlists")] == [wid]
+
+    api.search.results = ["alpha"]  # type: ignore[attr-defined]
+    api.post(f"/watchlists/{wid}/check")  # first check sets the baseline, no hit
+    assert api.get(f"/watchlists/{wid}/hits") == []
+
+    api.search.results = ["alpha", "beta"]  # type: ignore[attr-defined] — the topic's results changed
+    api.post(f"/watchlists/{wid}/check")
+    [hit] = api.get(f"/watchlists/{wid}/hits")
+    assert "result" in hit["summary"]
+
+    assert api.client.patch(f"/api/v1/watchlists/{wid}", json={"enabled": False}, headers=AUTH).status_code == 200
+    assert not api.get("/watchlists")[0]["enabled"]
+    assert api.client.delete(f"/api/v1/watchlists/{wid}", headers=AUTH).status_code == 204
+    assert api.get("/watchlists") == []
+
+
+def test_sent_where_log_lists_outbound_requests(api: Api) -> None:
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    ctx.audit.append(
+        actor="agent:researcher",
+        action="net.request",
+        target_type="host",
+        target_id="lite.duckduckgo.com",
+        details={"purpose": "research:search", "scheme": "https", "path": "/lite/"},
+    )
+    entries = api.get("/research/requests")
+    assert entries[0]["host"] == "lite.duckduckgo.com" and entries[0]["purpose"] == "research:search"
+
+
+# ---------- review 2026-10-21: regressions ----------
+
+
+def test_saving_always_asks_even_before_any_page_was_read(api: Api) -> None:
+    """Search snippets don't taint a task; an injected snippet must still not get a note written unasked."""
+    from universe_agents.runtime import TaskState
+
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    save = ctx.tools.get("vault.save")
+    from universe_core.research_tools import SaveArgs
+
+    args = SaveArgs(title="x", text="y")
+    untainted = ctx.safety.check_tool(ctx.agents["researcher"], save, args, TaskState("t", "researcher"))
+    assert untainted.verdict == "ask" and "needs your OK" in untainted.reason
+    tainted = ctx.safety.check_tool(ctx.agents["researcher"], save, args, TaskState("t", "researcher", tainted=True))
+    assert tainted.verdict == "ask" and "untrusted" in tainted.reason
+
+
+def test_offline_research_is_a_plain_tool_error_not_a_crashed_task(api: Api) -> None:
+    from universe_agents.tools import ToolContext
+    from universe_core.research_tools import WebFetchArgs, WebSearchArgs
+
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    tc = ToolContext(task_id="t", agent_id="researcher", actor="agent:researcher", tainted=False)
+    search, fetch = ctx.tools.get("web.search"), ctx.tools.get("web.fetch")
+    settings = ctx.settings
+    # The real (remote) search endpoint: offline, the gate refuses it before any request is made.
+    ctx.settings = dataclasses.replace(settings, research_search_endpoint="https://lite.duckduckgo.com/lite/")
+    ctx.gate.offline = True
+    try:
+        found = api.client.portal.call(search.run, WebSearchArgs(query="never cached"), tc)  # type: ignore[union-attr]
+        read = api.client.portal.call(fetch.run, WebFetchArgs(urls=["https://example.com/"]), tc)  # type: ignore[union-attr]
+    finally:
+        ctx.gate.offline = False
+        ctx.settings = settings
+    assert found.error and "unreachable" in found.content
+    assert "unreachable" in read.content and "stop and tell the owner" in read.content
+
+
+def test_a_failing_page_watch_waits_for_its_interval(api: Api) -> None:
+    """A dead page used to be retried every 5-minute tick forever (last_checked_at never moved)."""
+    from universe_core.watchlists import WatchlistRunner
+
+    dead = f"{api.search.url}/no-such-page"  # type: ignore[attr-defined]
+    created = api.post("/watchlists", {"kind": "page", "target": dead, "interval_s": 86400}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    runner = WatchlistRunner(ctx)
+    api.client.portal.call(runner.check_due)  # type: ignore[union-attr]
+    [row] = [w for w in api.get("/watchlists") if w["id"] == created["id"]]
+    assert row["last_checked_at"] is not None and "check failed" in (row["last_summary"] or "")
+    assert created["id"] not in [r["id"] for r in runner.store.due(row["last_checked_at"])]
+
+
+# ---------- review 2026-10-22: regressions ----------
+
+
+def test_check_now_on_a_dead_page_is_a_plain_error(api: Api) -> None:
+    """'Check now' on a page that 404s (or times out, or is refused) answered 500."""
+    dead = f"{api.search.url}/no-such-page"  # type: ignore[attr-defined]
+    created = api.post("/watchlists", {"kind": "page", "target": dead}, 201)
+    response = api.client.post(f"/api/v1/watchlists/{created['id']}/check", headers=AUTH)
+    assert response.status_code == 502, response.text
+    assert "couldn't check" in response.json()["detail"]
+    [row] = [w for w in api.get("/watchlists") if w["id"] == created["id"]]
+    assert row["last_checked_at"] is not None and "check failed" in (row["last_summary"] or "")
+
+
+def test_check_now_on_a_refused_page_is_a_plain_error(api: Api) -> None:
+    created = api.post("/watchlists", {"kind": "page", "target": "https://example.com/"}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    settings = ctx.settings
+    ctx.settings = dataclasses.replace(settings, research_allow_private_fetch=False)
+    ctx.dbs.universe.execute(  # a page on this machine: the researcher only reads public pages
+        "UPDATE watchlists SET target = ? WHERE id = ?", ("http://127.0.0.1:9/", created["id"])
+    )
+    try:
+        response = api.client.post(f"/api/v1/watchlists/{created['id']}/check", headers=AUTH)
+    finally:
+        ctx.settings = settings
+    assert response.status_code == 422, response.text
+    assert "private" in response.json()["detail"]
+
+
+def test_a_topic_that_finds_nothing_is_not_a_change(api: Api) -> None:
+    """An empty results page (often a rate limit) became the new fingerprint, so the next real check was a hit."""
+    wid = api.post("/watchlists", {"kind": "topic", "target": "local-first"}, 201)["id"]
+    api.search.results = ["alpha"]  # type: ignore[attr-defined]
+    api.post(f"/watchlists/{wid}/check")  # baseline
+    api.search.results = []  # type: ignore[attr-defined]
+    empty = api.post(f"/watchlists/{wid}/check")
+    assert "no results" in (empty["last_summary"] or "")
+    api.search.results = ["alpha"]  # type: ignore[attr-defined] — same as before the empty page
+    api.post(f"/watchlists/{wid}/check")
+    assert api.get(f"/watchlists/{wid}/hits") == []

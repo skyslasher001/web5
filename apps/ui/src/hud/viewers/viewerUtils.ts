@@ -1,0 +1,167 @@
+// Helpers the item viewers share: the file as a blob URL (media and PDFs need the session token, so a plain
+// src can't load them) and safe Markdown.
+import type { ProjectGoal } from '@universe/shared-types';
+import DOMPurify from 'dompurify';
+import { Marked, type TokenizerAndRendererExtension } from 'marked';
+import { useEffect, useState } from 'react';
+import { useApi } from '../../lib/api-context';
+
+/**
+ * The item's file as an object URL for <img>, <audio> and <video>, freed when the viewer closes, plus the
+ * Blob itself for code that reads the bytes (pdf.js, the waveform). Reading a blob: URL with fetch or XHR
+ * falls under the CSP's connect-src, which deliberately allows only Core.
+ */
+export function useFileUrl(id: string): { url: string | null; blob: Blob | null; error: string | null } {
+  const api = useApi();
+  const [state, setState] = useState<{
+    id: string;
+    url: string | null;
+    blob: Blob | null;
+    error: string | null;
+  }>({ id, url: null, blob: null, error: null });
+  useEffect(() => {
+    let url: string | null = null;
+    let cancelled = false;
+    api.itemFile(id).then(
+      (blob) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setState({ id, url, blob, error: null });
+      },
+      (err: unknown) => {
+        if (!cancelled)
+          setState({ id, url: null, blob: null, error: err instanceof Error ? err.message : String(err) });
+      },
+    );
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [api, id]);
+  return state.id === id
+    ? { url: state.url, blob: state.blob, error: state.error }
+    : { url: null, blob: null, error: null };
+}
+
+/**
+ * Quick edits to a galaxy's goals (tick, tick, add). Each edit builds on the previous one, not on the
+ * project as last fetched (it only changes after a save lands and the list refetches), and the saves go
+ * out one after another, so none overwrites another. `settled` runs once every save has finished.
+ */
+export class GoalQueue {
+  private latest: ProjectGoal[] | null = null;
+  private inFlight = 0;
+  private chain: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly send: (goals: ProjectGoal[]) => Promise<unknown>,
+    private readonly settled: () => void,
+  ) {}
+
+  /** No save is waiting or in flight. */
+  get idle(): boolean {
+    return this.inFlight === 0;
+  }
+
+  /** Apply `change` and queue its save; returns the goals to show now. */
+  edit(fetched: ProjectGoal[], change: (goals: ProjectGoal[]) => ProjectGoal[]): ProjectGoal[] {
+    const next = change(this.latest ?? fetched);
+    this.latest = next;
+    this.inFlight++;
+    this.chain = this.chain
+      .then(async () => {
+        await this.send(next);
+      })
+      .catch(() => {}) // `send` reports its own failure; the next save still goes out
+      .finally(() => {
+        if (--this.inFlight > 0) return;
+        this.latest = null;
+        this.settled();
+      });
+    return next;
+  }
+}
+
+/** The editor's draft once a save of `sent` lands: kept only if the owner typed more meanwhile. */
+export function draftAfterSave(current: string | null, sent: string): string | null {
+  return current === sent ? null : current;
+}
+
+const WIKILINK = /^\[\[([^[\]|#\n]{1,200})(?:#[^[\]|\n]*)?(?:\|([^[\]\n]*))?\]\]/;
+
+const escapeHtml = (text: string) =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// `[[Target]]` and `[[Target|label]]` as an inline Markdown token, so code spans and fenced code keep them
+// as literal text, and both parts are escaped.
+const wikilink: TokenizerAndRendererExtension = {
+  name: 'wikilink',
+  level: 'inline',
+  start: (src) => src.indexOf('[['),
+  tokenizer(src) {
+    const m = WIKILINK.exec(src);
+    if (!m) return undefined;
+    const target = m[1]!.trim();
+    return { type: 'wikilink', raw: m[0], target, label: (m[2] ?? '').trim() || target };
+  },
+  renderer: (token) =>
+    `<a href="#" data-wikilink="${escapeHtml(String(token.target))}">${escapeHtml(String(token.label))}</a>`,
+};
+
+const markdown = new Marked({ gfm: true, breaks: false, extensions: [wikilink] });
+
+/** Markdown → HTML, before sanitizing (exported for tests). */
+export function markdownToHtml(source: string): string {
+  return markdown.parse(source, { async: false });
+}
+
+/** Attributes that make the browser load a URL as soon as the element is rendered. */
+const LOADING_ATTRS = new Set(['src', 'srcset', 'poster', 'background', 'href', 'xlink:href']);
+
+/** True when loading `url` stays on this machine: a blob: or data: URL, or a path relative to the app. */
+function isLocalUrl(url: string): boolean {
+  // The URL parser ignores tabs and newlines anywhere and leading spaces and control characters.
+  // eslint-disable-next-line no-control-regex
+  const u = url.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+/, '');
+  if (/^(blob|data):/i.test(u)) return true;
+  return !/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[\\/]{2}/.test(u); // no scheme, no //host or \\share
+}
+
+/** The URLs in a srcset ("a.png 1x, data:…,… 2x": a URL runs to whitespace, then descriptors to a comma). */
+function srcsetUrls(value: string): string[] {
+  const urls: string[] = [];
+  let i = 0;
+  while (i < value.length) {
+    while (i < value.length && /[\s,]/.test(value[i]!)) i++;
+    let end = i;
+    while (end < value.length && !/\s/.test(value[end]!)) end++;
+    const url = value.slice(i, end);
+    if (url) urls.push(url.replace(/,+$/, ''));
+    i = end;
+    if (!url.endsWith(',')) while (i < value.length && value[i] !== ',') i++;
+  }
+  return urls;
+}
+
+/**
+ * Whether the sanitizer keeps this attribute: nothing in a note may make the viewer fetch from another
+ * machine (a tracking pixel; the dev server has no CSP to stop it). Links stay: following one is a click.
+ */
+export function keepAttribute(tag: string, name: string, value: string): boolean {
+  if (name === 'style') return !/(url|image|image-set)\s*\(|\\|@import/i.test(value);
+  if (!LOADING_ATTRS.has(name) || (tag === 'a' && name === 'href')) return true;
+  if (name === 'srcset') return srcsetUrls(value).every(isLocalUrl);
+  return isLocalUrl(value);
+}
+
+DOMPurify.addHook?.('uponSanitizeAttribute', (node, data) => {
+  if (!keepAttribute(node.nodeName.toLowerCase(), data.attrName, data.attrValue)) data.keepAttr = false;
+});
+
+/** Markdown → sanitized HTML. `[[Wikilinks]]` become links the viewer follows. */
+export function renderMarkdown(source: string): string {
+  return DOMPurify.sanitize(markdownToHtml(source), {
+    ADD_ATTR: ['data-wikilink'],
+    FORBID_TAGS: ['style', 'form', 'input'],
+  });
+}

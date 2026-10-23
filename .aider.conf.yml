@@ -1,0 +1,2 @@
+# Aider: load the project rules into every session. AGENTS.md is the single source of truth (docs/HANDOFF.md).
+read: [AGENTS.md]

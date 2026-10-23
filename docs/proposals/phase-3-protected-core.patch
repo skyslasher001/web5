@@ -1,0 +1,1117 @@
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index db26597..69179ed 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -4,6 +4,7 @@ import {
+   app,
+   clipboard,
+   dialog,
++  globalShortcut,
+   ipcMain,
+   net,
+   protocol,
+@@ -33,6 +34,7 @@ import { createLogger } from './logger';
+ import { isAllowedNavigation } from './navigation';
+ import { resolvePaths } from './paths';
+ import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
++import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
+ import { SupervisorProcess } from './protected/supervisor';
+ import { createTray } from './tray';
+ import { insideFolder } from './vaultAccess';
+@@ -272,10 +274,13 @@ function registerIpc(): void {
+   });
+   ipcMain.handle(CH.captureClipboard, saveClipboard);
+ 
+-  // ---------- kill switch ----------
+-  // The control lives in protected code (Phase 3 protected-core patch); until it's applied, there is none.
+-  ipcMain.handle(CH.getKillSwitch, () => ({ available: false, engaged: false }));
+-  ipcMain.handle(CH.setKillSwitch, () => ({ available: false, engaged: false }));
++  // ---------- kill switch (protected control) ----------
++  ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
++  ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
++    if (typeof engaged !== 'boolean') return { available: true, engaged: killSwitch.engaged };
++    const result = await killSwitch.set(engaged, 'hud');
++    return { available: true, engaged: result.engaged };
++  });
+ 
+   // ---------- command bar ----------
+   ipcMain.handle(CH.getHotkey, (): HotkeyStatus => commandBar?.status ?? noHotkey());
+@@ -303,6 +308,32 @@ function registerIpc(): void {
+   });
+ }
+ 
++const killSwitch = new KillSwitchControl({
++  initial: readKillSwitchFile(join(paths.dataDir, 'killswitch.json')),
++  setOnSupervisor: (engaged) => supervisor.setKillSwitch(engaged),
++  stopCapture: () => {}, // no capture exists yet; mic, screen and camera arrive in Phases 7–8
++  confirmRelease: async () => {
++    const options = {
++      type: 'warning' as const,
++      buttons: ['Keep it on', 'Release'],
++      defaultId: 0,
++      cancelId: 0,
++      title: 'Release the kill switch?',
++      message: 'Release the kill switch?',
++      detail:
++        'Agents and network jobs can run again. Mic, screen and camera stay off until you turn them on.',
++    };
++    const choice = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
++    return choice.response === 1;
++  },
++  onChange: (engaged) => {
++    for (const w of BrowserWindow.getAllWindows()) {
++      w.webContents.send(CH.killSwitchEvent, { available: true, engaged });
++    }
++  },
++  log: (event, fields) => log.warn(event, fields),
++});
++
+ let commandBar: CommandBar | null = null;
+ let tray: Tray | null = null;
+ 
+@@ -342,6 +373,17 @@ function startCommandBarAndTray(): void {
+       show: showMainWindow,
+       quit: () => app.quit(),
+       hotkey: () => commandBar?.status.accelerator ?? '',
++      extraItems: () => [
++        killSwitch.engaged
++          ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }
++          : {
++              label: 'Kill switch: stop all agents',
++              accelerator: KILL_SWITCH_HOTKEY,
++              registerAccelerator: false,
++              click: () => void killSwitch.set(true, 'tray'),
++            },
++        { type: 'separator' },
++      ],
+     });
+   } catch (err) {
+     log.warn('tray_unavailable', { error: err instanceof Error ? err.message : String(err) });
+@@ -386,6 +428,11 @@ if (!app.requestSingleInstanceLock()) {
+     });
+     supervisor.start();
+     createWindow();
++    const killHotkey = globalShortcut.register(KILL_SWITCH_HOTKEY, () => void killSwitch.set(true, 'hotkey'));
++    log[killHotkey ? 'info' : 'warn']('kill_switch_hotkey', {
++      accelerator: KILL_SWITCH_HOTKEY,
++      registered: killHotkey,
++    });
+     // The main window gets the CPU first (SPEC §24); the hidden command bar loads once it's up.
+     win?.webContents.once('did-finish-load', startCommandBarAndTray);
+   });
+diff --git a/apps/desktop/src/main/protected/killswitch.test.ts b/apps/desktop/src/main/protected/killswitch.test.ts
+new file mode 100644
+index 0000000..a2cfa27
+--- /dev/null
++++ b/apps/desktop/src/main/protected/killswitch.test.ts
+@@ -0,0 +1,47 @@
++import { describe, expect, it, vi } from 'vitest';
++import { KillSwitchControl, parseKillSwitchFile } from './killswitch';
++
++function control(overrides: Partial<ConstructorParameters<typeof KillSwitchControl>[0]> = {}) {
++  const calls: string[] = [];
++  const ks = new KillSwitchControl({
++    initial: false,
++    setOnSupervisor: vi.fn(async (engaged: boolean) => {
++      calls.push(`supervisor:${engaged}`);
++      return { engaged, core_acked: true };
++    }),
++    stopCapture: () => calls.push('capture-stopped'),
++    confirmRelease: async () => true,
++    onChange: (engaged) => calls.push(`changed:${engaged}`),
++    log: () => {},
++    ...overrides,
++  });
++  return { ks, calls };
++}
++
++describe('kill switch', () => {
++  it('stops capture locally before anything else, and shows engaged at once', async () => {
++    const { ks, calls } = control();
++    await ks.set(true, 'hotkey');
++    expect(calls).toEqual(['capture-stopped', 'changed:true', 'supervisor:true']);
++    expect(ks.engaged).toBe(true);
++  });
++
++  it('releases only after the native dialog is confirmed', async () => {
++    const declined = control({ initial: true, confirmRelease: async () => false });
++    await declined.ks.set(false, 'hud');
++    expect(declined.ks.engaged).toBe(true);
++    expect(declined.calls).toEqual([]);
++
++    const confirmed = control({ initial: true });
++    await confirmed.ks.set(false, 'tray');
++    expect(confirmed.ks.engaged).toBe(false);
++    expect(confirmed.calls).toEqual(['supervisor:false', 'changed:false']);
++  });
++
++  it('reads the state file fail-safe', () => {
++    expect(parseKillSwitchFile(null)).toBe(false); // no file: never engaged
++    expect(parseKillSwitchFile('{"engaged":true}')).toBe(true);
++    expect(parseKillSwitchFile('{"engaged":false}')).toBe(false);
++    expect(parseKillSwitchFile('{garbage')).toBe(true); // unreadable: engaged
++  });
++});
+diff --git a/apps/desktop/src/main/protected/killswitch.ts b/apps/desktop/src/main/protected/killswitch.ts
+new file mode 100644
+index 0000000..1acc54d
+--- /dev/null
++++ b/apps/desktop/src/main/protected/killswitch.ts
+@@ -0,0 +1,73 @@
++// The global kill switch (SPEC §15, ARCHITECTURE.md §1.4). PROTECTED CORE.
++// Engaging is instant and needs no confirmation: capture stops here first, then the supervisor stops the
++// agents and network jobs (restarting Core if it doesn't answer). Releasing needs a native dialog, which
++// no renderer code (and nothing in Core) can click.
++import { readFileSync } from 'node:fs';
++
++export const KILL_SWITCH_HOTKEY = 'CommandOrControl+Alt+Shift+K';
++
++export interface KillSwitchResult {
++  engaged: boolean;
++  core_acked: boolean;
++}
++
++/** The state file the supervisor writes; unreadable means engaged (fail safe), missing means off. */
++export function parseKillSwitchFile(text: string | null): boolean {
++  if (text === null) return false;
++  try {
++    const value = JSON.parse(text) as { engaged?: unknown };
++    return value.engaged === true;
++  } catch {
++    return true;
++  }
++}
++
++export function readKillSwitchFile(path: string): boolean {
++  let text: string | null = null;
++  try {
++    text = readFileSync(path, 'utf8');
++  } catch (err) {
++    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return true;
++  }
++  return parseKillSwitchFile(text);
++}
++
++export class KillSwitchControl {
++  engaged: boolean;
++
++  constructor(
++    private readonly opts: {
++      initial: boolean;
++      /** POST /killswitch on the supervisor. */
++      setOnSupervisor: (engaged: boolean) => Promise<KillSwitchResult>;
++      /** Stop mic, screen and camera capture locally, before anything else (none exists before Phase 7). */
++      stopCapture: () => void;
++      /** A native yes/no dialog; resolves true only if you confirm. */
++      confirmRelease: () => Promise<boolean>;
++      onChange: (engaged: boolean) => void;
++      log: (event: string, fields: Record<string, unknown>) => void;
++    },
++  ) {
++    this.engaged = opts.initial;
++  }
++
++  async set(engaged: boolean, via: string): Promise<KillSwitchResult> {
++    if (engaged) {
++      this.opts.stopCapture();
++    } else if (!(await this.opts.confirmRelease())) {
++      return { engaged: this.engaged, core_acked: true };
++    }
++    // Reflect an engage at once, even if the supervisor is slow: the indicator must never lag behind.
++    if (engaged) this.update(true);
++    const result = await this.opts.setOnSupervisor(engaged);
++    this.update(result.engaged);
++    this.opts.log('killswitch', { engaged: result.engaged, via, core_acked: result.core_acked });
++    return result;
++  }
++
++  private update(engaged: boolean): void {
++    if (engaged === this.engaged) return;
++    this.engaged = engaged;
++    this.opts.onChange(engaged);
++  }
++}
+diff --git a/apps/desktop/src/main/protected/supervisor.ts b/apps/desktop/src/main/protected/supervisor.ts
+index fac5048..8a1e600 100644
+--- a/apps/desktop/src/main/protected/supervisor.ts
++++ b/apps/desktop/src/main/protected/supervisor.ts
+@@ -104,11 +104,15 @@ export class SupervisorProcess extends EventEmitter {
+     this.emit('state', this.state);
+   }
+ 
+-  private async request<T>(method: 'GET' | 'POST', path: string): Promise<T> {
++  private async request<T>(method: 'GET' | 'POST', path: string, payload?: unknown): Promise<T> {
+     if (this.controlPort === null) throw new Error('The supervisor is not running');
+     const response = await fetch(`http://127.0.0.1:${this.controlPort}${path}`, {
+       method,
+-      headers: { Authorization: `Bearer ${this.opts.token}` },
++      headers: {
++        Authorization: `Bearer ${this.opts.token}`,
++        ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
++      },
++      body: payload === undefined ? undefined : JSON.stringify(payload),
+       signal: AbortSignal.timeout(5000),
+     });
+     const body = (await response.json()) as T;
+@@ -125,6 +129,10 @@ export class SupervisorProcess extends EventEmitter {
+     return (await this.request<{ ok: boolean }>('POST', `/services/${name}/kill`)).ok;
+   }
+ 
++  async setKillSwitch(engaged: boolean): Promise<{ engaged: boolean; core_acked: boolean }> {
++    return this.request('POST', '/killswitch', { engaged });
++  }
++
+   async exitSafeMode(): Promise<boolean> {
+     return (await this.request<{ ok: boolean }>('POST', '/safe-mode/exit')).ok;
+   }
+diff --git a/services/core/src/universe_core/protected/budget.py b/services/core/src/universe_core/protected/budget.py
+new file mode 100644
+index 0000000..1761aed
+--- /dev/null
++++ b/services/core/src/universe_core/protected/budget.py
+@@ -0,0 +1,130 @@
++"""Budget caps (SPEC §3 "cost-effective", ARCHITECTURE.md §1.5). PROTECTED CORE.
++
++Every model call is in `usage_ledger`. Local calls cost $0 but count. The monthly cap applies to money;
++at 50 % and 80 % of it you get a warning, at 100 % paid calls stop. Caps change only from your UI session.
++"""
++
++import sqlite3
++from datetime import UTC, datetime
++from typing import Any
++
++from pydantic import BaseModel, Field
++
++from universe_common.timeutil import utcnow
++
++CAP_KEY = "budget.monthly_cap_usd"
++WARN_AT = (0.5, 0.8)
++
++
++class BudgetCaps(BaseModel):
++    monthly_cap_usd: float = Field(ge=0, le=10_000)
++
++
++class UsageRow(BaseModel):
++    key: str
++    tokens_in: int
++    tokens_out: int
++    cost_usd: float
++    calls: int
++
++
++class BudgetStatus(BaseModel):
++    month: str
++    monthly_cap_usd: float
++    spent_usd: float
++    tokens_in: int
++    tokens_out: int
++    calls: int
++    by_agent: list[UsageRow]
++    by_model: list[UsageRow]
++
++
++def month_start(now: datetime | None = None) -> str:
++    now = now or datetime.now(UTC)
++    return now.strftime("%Y-%m-01T00:00:00.000Z")
++
++
++class Budget:
++    def __init__(self, conn: sqlite3.Connection, audit: Any, publish: Any) -> None:
++        self._conn = conn
++        self._audit = audit
++        self._publish = publish
++        self._warned: set[tuple[str, float]] = set()
++
++    @property
++    def cap(self) -> float:
++        row = self._conn.execute("SELECT value FROM settings WHERE key = ?", (CAP_KEY,)).fetchone()
++        return float(row["value"]) if row else 0.0  # $0: local models only, which cost nothing
++
++    def set_caps(self, caps: BudgetCaps, *, actor: str = "user") -> None:
++        if actor != "user":
++            raise PermissionError("only you can change budget caps")
++        self._conn.execute(
++            "INSERT INTO settings (key, value, protected, updated_at) VALUES (?, ?, 1, ?)"
++            " ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
++            (CAP_KEY, str(caps.monthly_cap_usd), utcnow()),
++        )
++        self._audit(
++            actor=actor,
++            action="setting.changed",
++            target_type="setting",
++            target_id=CAP_KEY,
++            details={"value": caps.monthly_cap_usd},
++        )
++
++    def set_caps_from(self, body: dict[str, Any], *, actor: str = "user") -> None:
++        """Validate a request body (raises ValueError) and set the caps."""
++        self.set_caps(BudgetCaps.model_validate(body), actor=actor)
++
++    def spent(self) -> float:
++        row = self._conn.execute(
++            "SELECT COALESCE(SUM(cost_usd), 0) FROM usage_ledger WHERE ts >= ?", (month_start(),)
++        ).fetchone()
++        return float(row[0])
++
++    def allows(self, estimate_usd: float = 0.0) -> tuple[bool, str]:
++        """Before a model call. A free call is always within budget."""
++        if estimate_usd <= 0:
++            return True, ""
++        cap, spent = self.cap, self.spent()
++        if spent + estimate_usd > cap:
++            self._publish("budget.cap_reached", {"cap_usd": cap, "spent_usd": round(spent, 4)})
++            return False, f"The monthly budget of ${cap:.2f} is used up (${spent:.2f} spent)"
++        for level in WARN_AT:
++            key = (month_start(), level)
++            if spent + estimate_usd >= cap * level and key not in self._warned:
++                self._warned.add(key)
++                self._publish("budget.warning", {"level": level, "cap_usd": cap, "spent_usd": round(spent, 4)})
++        return True, ""
++
++    def status(self) -> BudgetStatus:
++        since = month_start()
++
++        def grouped(column: str) -> list[UsageRow]:
++            return [
++                UsageRow(
++                    key=r["key"] or "-", tokens_in=r["ti"], tokens_out=r["to_"], cost_usd=r["cost"], calls=r["calls"]
++                )
++                for r in self._conn.execute(
++                    f"SELECT {column} AS key, SUM(tokens_in) AS ti, SUM(tokens_out) AS to_,"  # noqa: S608
++                    f" SUM(cost_usd) AS cost, COUNT(*) AS calls FROM usage_ledger WHERE ts >= ? GROUP BY {column}"
++                    " ORDER BY calls DESC",
++                    (since,),
++                )
++            ]
++
++        total = self._conn.execute(
++            "SELECT COALESCE(SUM(tokens_in), 0) AS ti, COALESCE(SUM(tokens_out), 0) AS to_,"
++            " COALESCE(SUM(cost_usd), 0) AS cost, COUNT(*) AS calls FROM usage_ledger WHERE ts >= ?",
++            (since,),
++        ).fetchone()
++        return BudgetStatus(
++            month=since[:7],
++            monthly_cap_usd=self.cap,
++            spent_usd=total["cost"],
++            tokens_in=total["ti"],
++            tokens_out=total["to_"],
++            calls=total["calls"],
++            by_agent=grouped("agent_id"),
++            by_model=grouped("model"),
++        )
+diff --git a/services/core/src/universe_core/protected/killswitch.py b/services/core/src/universe_core/protected/killswitch.py
+new file mode 100644
+index 0000000..aae84fe
+--- /dev/null
++++ b/services/core/src/universe_core/protected/killswitch.py
+@@ -0,0 +1,96 @@
++"""The global kill switch (SPEC §15, ARCHITECTURE.md §1.4). PROTECTED CORE.
++
++The state lives in `<data dir>/killswitch.json` so the supervisor can set it even when Core is hung, and a
++restarted Core comes back with it still engaged. Engaged means: every agent call is refused, running tasks
++are cancelled, pending approvals are refused, and the egress gate closes.
++"""
++
++import contextlib
++import json
++import os
++import tempfile
++from collections.abc import Callable
++from pathlib import Path
++from typing import Any
++
++from pydantic import BaseModel
++
++from universe_common.timeutil import utcnow
++
++FILENAME = "killswitch.json"
++
++
++class KillSwitchState(BaseModel):
++    engaged: bool = False
++    since: str | None = None
++    via: str | None = None
++
++
++def read_state(path: Path) -> KillSwitchState:
++    try:
++        return KillSwitchState.model_validate_json(path.read_text(encoding="utf-8"))
++    except FileNotFoundError:
++        return KillSwitchState()
++    except (OSError, ValueError):
++        # Unreadable or corrupt: fail safe, as if engaged. Releasing it rewrites the file.
++        return KillSwitchState(engaged=True, since=utcnow(), via="unreadable state file")
++
++
++def write_state(path: Path, state: KillSwitchState) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".killswitch-", suffix=".json")
++    try:
++        with os.fdopen(fd, "w", encoding="utf-8") as out:
++            out.write(state.model_dump_json())
++        os.replace(tmp, path)
++    finally:
++        with contextlib.suppress(FileNotFoundError):
++            os.unlink(tmp)
++
++
++class KillSwitch:
++    def __init__(
++        self,
++        data_dir: Path,
++        *,
++        audit: Callable[..., Any],
++        publish: Callable[[str, dict[str, Any]], Any],
++        on_change: Callable[[bool], Any],
++    ) -> None:
++        self.path = data_dir / FILENAME
++        self._audit = audit
++        self._publish = publish
++        self._on_change = on_change
++        self.state = read_state(self.path)
++        if self.state.engaged:
++            self._on_change(True)
++
++    @property
++    def engaged(self) -> bool:
++        return self.state.engaged
++
++    def set(self, engaged: bool, *, via: str, actor: str = "user") -> KillSwitchState:
++        """Engage or release from Core's side (writes the file the supervisor also reads)."""
++        if engaged != self.state.engaged:
++            write_state(self.path, KillSwitchState(engaged=engaged, since=utcnow(), via=via))
++        return self.sync(actor=actor)
++
++    def sync(self, *, actor: str = "system") -> KillSwitchState:
++        """Re-read the file (the supervisor changed it) and apply any change."""
++        state = read_state(self.path)
++        changed = state.engaged != self.state.engaged
++        self.state = state
++        if changed:
++            self._on_change(state.engaged)
++            self._audit(
++                actor=actor,
++                action="killswitch",
++                target_type="system",
++                target_id="killswitch",
++                details={"engaged": state.engaged, "via": state.via},
++            )
++            self._publish("killswitch.engaged" if state.engaged else "killswitch.released", state.model_dump())
++        return state
++
++    def status(self) -> dict[str, Any]:
++        return json.loads(self.state.model_dump_json())
+diff --git a/services/core/src/universe_core/protected/permissions.py b/services/core/src/universe_core/protected/permissions.py
+new file mode 100644
+index 0000000..b0c6d75
+--- /dev/null
++++ b/services/core/src/universe_core/protected/permissions.py
+@@ -0,0 +1,122 @@
++"""Permission rules (ARCHITECTURE.md §4.1 `permission_rules`, §7.3). PROTECTED CORE.
++
++Rules are written only through this store, from your UI session, never by an agent. A rule matches an
++agent (or `*`) and a tool name or glob (`vault.*`) and says allow, ask or deny.
++"""
++
++import json
++import sqlite3
++from fnmatch import fnmatchcase
++from typing import Any, Literal
++
++from pydantic import BaseModel, Field
++
++from universe_common.ids import uuid7
++from universe_common.timeutil import utcnow
++
++RuleDecision = Literal["allow", "ask", "deny"]
++
++
++class PermissionRule(BaseModel):
++    id: str
++    agent_id: str
++    tool: str
++    decision: RuleDecision
++    applies_when_tainted: bool
++    created_at: str
++    expires_at: str | None
++
++
++class RuleRequest(BaseModel):
++    agent_id: str = Field(default="*", pattern=r"^(\*|[a-z][a-z0-9-]{1,31})$")
++    tool: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9_.*-]+$")
++    decision: RuleDecision
++    applies_when_tainted: bool = False
++    expires_at: str | None = None
++
++
++def _rule(row: sqlite3.Row) -> PermissionRule:
++    return PermissionRule(
++        id=row["id"],
++        agent_id=row["agent_id"],
++        tool=row["tool"],
++        decision=row["decision"],
++        applies_when_tainted=bool(row["applies_when_tainted"]),
++        created_at=row["created_at"],
++        expires_at=row["expires_at"],
++    )
++
++
++def _specificity(rule: PermissionRule) -> tuple[int, int, int]:
++    # An exact agent beats `*`; an exact tool beats a glob; a longer glob beats a shorter one.
++    return (int(rule.agent_id != "*"), int("*" not in rule.tool), len(rule.tool))
++
++
++class PermissionStore:
++    def __init__(self, conn: sqlite3.Connection, audit: Any) -> None:
++        self._conn = conn
++        self._audit = audit
++
++    def list(self) -> list[PermissionRule]:
++        return [_rule(r) for r in self._conn.execute("SELECT * FROM permission_rules ORDER BY created_at")]
++
++    def add(self, request: RuleRequest, *, actor: str = "user") -> PermissionRule:
++        if not actor == "user":
++            raise PermissionError("only you can change permission rules")
++        row = self._conn.execute(
++            "INSERT INTO permission_rules (id, agent_id, tool, decision, scope, applies_when_tainted, created_at,"
++            " expires_at) VALUES (?, ?, ?, ?, '{}', ?, ?, ?) RETURNING *",
++            (
++                uuid7(),
++                request.agent_id,
++                request.tool,
++                request.decision,
++                int(request.applies_when_tainted),
++                utcnow(),
++                request.expires_at,
++            ),
++        ).fetchone()
++        rule = _rule(row)
++        self._audit(
++            actor=actor,
++            action="permission.changed",
++            target_type="permission_rule",
++            target_id=rule.id,
++            details={"op": "add", **json.loads(request.model_dump_json())},
++        )
++        return rule
++
++    def add_from(self, body: dict[str, Any], *, actor: str = "user") -> PermissionRule:
++        """Validate a request body (raises ValueError) and add the rule."""
++        return self.add(RuleRequest.model_validate(body), actor=actor)
++
++    def remove(self, rule_id: str, *, actor: str = "user") -> bool:
++        if not actor == "user":
++            raise PermissionError("only you can change permission rules")
++        removed = bool(self._conn.execute("DELETE FROM permission_rules WHERE id = ?", (rule_id,)).rowcount)
++        if removed:
++            self._audit(
++                actor=actor,
++                action="permission.changed",
++                target_type="permission_rule",
++                target_id=rule_id,
++                details={"op": "remove"},
++            )
++        return removed
++
++    def match(self, agent_id: str, tool: str) -> PermissionRule | None:
++        now = utcnow()
++        candidates = [
++            r
++            for r in self.list()
++            if (r.agent_id in ("*", agent_id))
++            and fnmatchcase(tool, r.tool)
++            and (r.expires_at is None or r.expires_at > now)
++        ]
++        if not candidates:
++            return None
++        best = max(_specificity(r) for r in candidates)
++        tied = [r for r in candidates if _specificity(r) == best]
++        # Between equally specific rules the strictest wins: deny > ask > allow.
++        order = {"deny": 0, "ask": 1, "allow": 2}
++        return min(tied, key=lambda r: order[r.decision])
+diff --git a/services/core/src/universe_core/protected/policy.py b/services/core/src/universe_core/protected/policy.py
+new file mode 100644
+index 0000000..25c53b4
+--- /dev/null
++++ b/services/core/src/universe_core/protected/policy.py
+@@ -0,0 +1,111 @@
++"""The policy engine: every agent model call and tool call is decided here (ARCHITECTURE.md §7.3). PROTECTED CORE.
++
++Order of checks for a tool call:
++1. kill switch: everything is refused while it's engaged;
++2. tier gate: a tool's tier must not exceed the agent's `permission_tier`;
++3. your rules (`permission_rules`): allow / ask / deny, most specific first;
++4. taint: once untrusted text is in a task, tools with side effects or network access ask first, unless a
++   rule explicitly applies when tainted;
++5. defaults: read → allow, write → ask if listed in the agent's `requires_approval`, otherwise allow,
++   system → always ask, and tools marked `ask_first` (MCP servers) → ask.
++Before every model call: kill switch, budget caps, and the agent's step, token and time limits.
++"""
++
++from fnmatch import fnmatchcase
++from typing import TYPE_CHECKING, Any, Literal
++
++from pydantic import BaseModel
++
++from universe_agents.registry import AgentDefinition
++from universe_agents.runtime import Decision, TaskState
++from universe_agents.tools import TIER_RANK, Tool
++from universe_core.protected.budget import Budget
++from universe_core.protected.killswitch import KillSwitch
++from universe_core.protected.permissions import PermissionStore
++
++if TYPE_CHECKING:
++    from universe_core.context import CoreContext
++
++KILLED = "The kill switch is on: agents are stopped until you release it"
++
++
++Risk = Literal["low", "medium", "high"]
++
++
++def _risk(tool: Tool) -> Risk:
++    if tool.tier == "system":
++        return "high"
++    if tool.side_effects or tool.network:
++        return "medium"
++    return "low"
++
++
++class PolicyEngine:
++    def __init__(self, *, killswitch: KillSwitch, permissions: PermissionStore, budget: Budget) -> None:
++        self.killswitch = killswitch
++        self.permissions = permissions
++        self.budget = budget
++
++    def check_llm(self, agent: AgentDefinition, task: TaskState, estimate_usd: float = 0.0) -> Decision:
++        if self.killswitch.engaged:
++            return Decision("deny", KILLED, "high")
++        limits = agent.limits
++        if task.steps_used >= limits.max_steps:
++            return Decision("deny", f"{agent.name} used all {limits.max_steps} steps for this task")
++        if task.tokens_out >= limits.max_tokens:
++            return Decision("deny", f"{agent.name} reached its limit of {limits.max_tokens} tokens for this task")
++        if task.elapsed_s >= limits.timeout_s:
++            return Decision("deny", f"{agent.name} ran out of time ({limits.timeout_s} s) for this task")
++        allowed, why = self.budget.allows(estimate_usd)
++        if not allowed:
++            return Decision("deny", why, "high")
++        return Decision("allow")
++
++    def check_tool(self, agent: AgentDefinition, tool: Tool, args: BaseModel, task: TaskState) -> Decision:
++        risk = _risk(tool)
++        if self.killswitch.engaged:
++            return Decision("deny", KILLED, "high")
++        if TIER_RANK[tool.tier] > TIER_RANK[agent.permission_tier]:
++            return Decision(
++                "deny", f"{tool.name} needs the '{tool.tier}' tier; {agent.name} has '{agent.permission_tier}'", risk
++            )
++        risky_when_tainted = task.tainted and (tool.side_effects or tool.network)
++        rule = self.permissions.match(agent.id, tool.name)
++        if rule is not None:
++            if rule.decision == "deny":
++                return Decision("deny", "You set a rule that refuses this", risk, rule.id)
++            if rule.decision == "ask":
++                return Decision("ask", "You set a rule to be asked first", risk, rule.id)
++            if risky_when_tainted and not rule.applies_when_tainted:
++                return Decision("ask", "The task has read untrusted text, so actions need your OK", risk, rule.id)
++            return Decision("allow", "Allowed by your rule", risk, rule.id)
++        if tool.tier == "system":
++            return Decision("ask", "System actions always need your OK", risk)
++        if tool.ask_first:
++            return Decision("ask", "This tool comes from an MCP server: you're asked until you set a rule", risk)
++        if risky_when_tainted:
++            return Decision("ask", "The task has read untrusted text, so actions need your OK", risk)
++        if tool.tier == "write" and any(fnmatchcase(tool.name, p) for p in agent.requires_approval):
++            return Decision("ask", f"{agent.name} needs your OK for {tool.name}", risk)
++        return Decision("allow", "", risk)
++
++
++def build(ctx: "CoreContext") -> PolicyEngine:
++    """Called by Core at startup (universe_core.context.load_safety)."""
++
++    def audit(**entry: Any) -> None:
++        ctx.audit.append(**entry)
++
++    def publish(event_type: str, payload: dict[str, Any]) -> None:
++        ctx.bus.publish(event_type, payload, actor="system")
++
++    def on_change(engaged: bool) -> None:
++        ctx.gate.killed = engaged
++        if engaged and ctx.engine is not None:
++            ctx.engine.halt_all("The kill switch is on")
++
++    return PolicyEngine(
++        killswitch=KillSwitch(ctx.settings.data_dir, audit=audit, publish=publish, on_change=on_change),
++        permissions=PermissionStore(ctx.dbs.universe, audit),
++        budget=Budget(ctx.dbs.universe, audit, publish),
++    )
+diff --git a/services/supervisor/src/universe_supervisor/control.py b/services/supervisor/src/universe_supervisor/control.py
+index ca793cc..1f93a89 100644
+--- a/services/supervisor/src/universe_supervisor/control.py
++++ b/services/supervisor/src/universe_supervisor/control.py
+@@ -76,6 +76,16 @@ class _Handler(BaseHTTPRequestHandler):
+         if len(parts) == 3 and parts[0] == "services" and parts[2] in ("restart", "kill"):
+             ok = sup.restart(parts[1]) if parts[2] == "restart" else sup.kill(parts[1])
+             self._send(200 if ok else 409, {"ok": ok})
++        elif parts == ["killswitch"]:
++            length = int(self.headers.get("Content-Length") or 0)
++            try:
++                body = json.loads(self.rfile.read(min(length, 4096)) or b"{}")
++            except ValueError:
++                body = None
++            if not isinstance(body, dict) or not isinstance(body.get("engaged"), bool):
++                self._send(400, {"error": 'send {"engaged": true|false}'})
++                return
++            self._send(200, sup.killswitch(body["engaged"]))
+         elif parts == ["safe-mode", "exit"]:
+             self._send(200, {"ok": sup.exit_safe_mode()})
+         elif parts == ["shutdown"]:
+diff --git a/services/supervisor/src/universe_supervisor/health.py b/services/supervisor/src/universe_supervisor/health.py
+index eccd5b8..d5eb0af 100644
+--- a/services/supervisor/src/universe_supervisor/health.py
++++ b/services/supervisor/src/universe_supervisor/health.py
+@@ -18,3 +18,18 @@ def get_json(url: str, timeout: float = 1.0) -> Any | None:
+             return json.loads(response.read() or b"null")
+     except (urllib.error.URLError, OSError, ValueError):
+         return None
++
++
++def post_json(url: str, *, token: str, body: Any = None, timeout: float = 1.0) -> Any | None:
++    """POST to a loopback service with a bearer token. None when it doesn't answer 2xx in time."""
++    if not url.startswith(("http://127.0.0.1:", "http://localhost:")):
++        raise ValueError("loopback only")
++    data = json.dumps(body if body is not None else {}).encode()
++    request = urllib.request.Request(  # noqa: S310 - loopback http only, checked above
++        url, data=data, method="POST", headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
++    )
++    try:
++        with _opener.open(request, timeout=timeout) as response:
++            return json.loads(response.read() or b"null") if 200 <= response.status < 300 else None
++    except (urllib.error.URLError, OSError, ValueError):
++        return None
+diff --git a/services/supervisor/src/universe_supervisor/supervisor.py b/services/supervisor/src/universe_supervisor/supervisor.py
+index 4f7d7a5..2e17582 100644
+--- a/services/supervisor/src/universe_supervisor/supervisor.py
++++ b/services/supervisor/src/universe_supervisor/supervisor.py
+@@ -9,7 +9,7 @@ from typing import Any
+ 
+ from universe_supervisor import __version__
+ from universe_supervisor.config import SupervisorConfig, find_ollama
+-from universe_supervisor.health import get_json
++from universe_supervisor.health import get_json, post_json
+ from universe_supervisor.jsonlog import JsonLog
+ from universe_supervisor.lkg import current_commit, lkg_pythonpath, prepare_worktree
+ from universe_supervisor.service import (
+@@ -30,6 +30,7 @@ from universe_supervisor.state import StateFile
+ from universe_supervisor.winjob import JobObject
+ 
+ BOOT_FAILURES_FOR_SAFE_MODE = 2
++KILLSWITCH_ACK_S = 1.0  # Core must apply the kill switch within this, or it's restarted with it engaged
+ EXTERNAL_RECHECK_S = 5.0
+ TICK_S = 0.2
+ 
+@@ -326,6 +327,32 @@ class Supervisor:
+             self.log("service_killed_on_request", service=name, pid=rt.proc.pid)
+             return True
+ 
++    def killswitch(self, engaged: bool) -> dict[str, Any]:
++        """Engage or release the kill switch (ARCHITECTURE.md §1.4).
++
++        The state file is the source of truth: Core re-reads it on /killswitch/sync and at boot. If Core
++        doesn't acknowledge an engage within a second (hung), it's restarted and comes back engaged.
++        """
++        path = self.config.data_dir / "killswitch.json"
++        path.parent.mkdir(parents=True, exist_ok=True)
++        tmp = path.with_name(f".killswitch-{os.getpid()}.json")
++        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
++        tmp.write_text(json.dumps({"engaged": engaged, "since": since, "via": "supervisor"}), encoding="utf-8")
++        os.replace(tmp, path)
++        url = f"http://127.0.0.1:{self.config.core_port}/api/v1/killswitch/sync"
++        acked = post_json(url, token=self.config.session_token, timeout=KILLSWITCH_ACK_S) is not None
++        restarted = False
++        if engaged and not acked:
++            restarted = self.restart("core")
++        self.log(
++            "killswitch",
++            level="warning" if engaged else "info",
++            engaged=engaged,
++            core_acked=acked,
++            core_restarted=restarted,
++        )
++        return {"ok": True, "engaged": engaged, "core_acked": acked, "core_restarted": restarted}
++
+     def exit_safe_mode(self) -> bool:
+         with self.lock:
+             if not self.state["safe_mode"]:
+diff --git a/tests/protected/test_killswitch.py b/tests/protected/test_killswitch.py
+new file mode 100644
+index 0000000..b796fab
+--- /dev/null
++++ b/tests/protected/test_killswitch.py
+@@ -0,0 +1,72 @@
++"""The kill switch works even when Core is hung (ARCHITECTURE.md §1.4). PROTECTED: Forge may not change these."""
++
++import json
++import time
++from pathlib import Path
++
++from tests.integration.test_supervisor import CONTROL_TOKEN, Harness, _call, core, harness  # noqa: F401
++from universe_core.protected.killswitch import KillSwitch, KillSwitchState, read_state, write_state
++from universe_supervisor.control import ControlServer
++
++
++def test_state_file_is_fail_safe(tmp_path: Path) -> None:
++    path = tmp_path / "killswitch.json"
++    assert not read_state(path).engaged  # no file: off
++    path.write_text("{garbage")
++    assert read_state(path).engaged  # unreadable: engaged
++    write_state(path, KillSwitchState(engaged=False))
++    assert not read_state(path).engaged
++
++
++def test_core_comes_back_engaged_after_a_restart(tmp_path: Path) -> None:
++    write_state(tmp_path / "killswitch.json", KillSwitchState(engaged=True, via="supervisor"))
++    changes: list[bool] = []
++    switch = KillSwitch(tmp_path, audit=lambda **_e: None, publish=lambda *_a: None, on_change=changes.append)
++    assert switch.engaged and changes == [True]  # applied at startup: tasks stop, the egress gate closes
++
++
++def _post(port: int, path: str, body: dict) -> tuple[int, dict]:
++    import urllib.request
++
++    request = urllib.request.Request(
++        f"http://127.0.0.1:{port}{path}",
++        data=json.dumps(body).encode(),
++        method="POST",
++        headers={"Authorization": f"Bearer {CONTROL_TOKEN}", "Content-Type": "application/json"},
++    )
++    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
++    with opener.open(request, timeout=10) as response:
++        return response.status, json.loads(response.read())
++
++
++def test_supervisor_engages_and_core_acknowledges(harness: Harness) -> None:  # noqa: F811
++    harness.run_until(lambda s: core(s)["state"] == "healthy")
++    server = ControlServer(harness.sup, CONTROL_TOKEN, on_shutdown=lambda: None)
++    server.start()
++    try:
++        assert _call(server.port, "POST", "/killswitch")[0] == 400  # needs {"engaged": bool}
++        status, result = _post(server.port, "/killswitch", {"engaged": True})
++        assert status == 200 and result == {"ok": True, "engaged": True, "core_acked": True, "core_restarted": False}
++        state = json.loads((harness.config.data_dir / "killswitch.json").read_text())
++        assert state["engaged"] and state["via"] == "supervisor"
++        syncs = [s for s in harness.starts() if "killswitch_sync" in s]
++        assert syncs == [{"killswitch_sync": True, "state": state}]  # with the session token
++        _status, released = _post(server.port, "/killswitch", {"engaged": False})
++        assert released["engaged"] is False and released["core_acked"]
++    finally:
++        server.shutdown()
++
++
++def test_a_hung_core_is_restarted_with_the_switch_engaged(harness: Harness) -> None:  # noqa: F811
++    harness.set_mode("hung")
++    harness.run_until(lambda s: core(s)["state"] == "healthy")
++    first = [s for s in harness.starts() if "mode" in s]
++    started = time.monotonic()
++    result = harness.sup.killswitch(True)
++    assert time.monotonic() - started < 3  # gave Core one second, not forever
++    assert result["core_acked"] is False and result["core_restarted"] is True
++    harness.set_mode("ok")
++    harness.run_until(
++        lambda s: core(s)["state"] == "healthy" and len([x for x in harness.starts() if "mode" in x]) > len(first)
++    )
++    assert json.loads((harness.config.data_dir / "killswitch.json").read_text())["engaged"]
+diff --git a/tests/protected/test_policy.py b/tests/protected/test_policy.py
+new file mode 100644
+index 0000000..bcf1b8d
+--- /dev/null
++++ b/tests/protected/test_policy.py
+@@ -0,0 +1,186 @@
++"""The policy engine decides every agent call (ARCHITECTURE.md §7.3). PROTECTED: Forge may not change these."""
++
++import sqlite3
++from pathlib import Path
++from typing import Any
++
++import pytest
++from pydantic import BaseModel
++
++from universe_agents.registry import AgentDefinition, AgentLimits
++from universe_agents.runtime import TaskState
++from universe_agents.tools import Tool, ToolContext, ToolResult
++from universe_common.ids import uuid7
++from universe_common.sqlite import connect, migrate_up
++from universe_common.timeutil import utcnow
++from universe_core.db import migrations_dir
++from universe_core.protected.budget import Budget, BudgetCaps
++from universe_core.protected.killswitch import KillSwitch
++from universe_core.protected.permissions import PermissionStore, RuleRequest
++from universe_core.protected.policy import PolicyEngine
++
++
++class NoArgs(BaseModel):
++    pass
++
++
++async def _noop(_args: BaseModel, _ctx: ToolContext) -> ToolResult:
++    return ToolResult("ok")
++
++
++def tool(name: str, tier: str = "read", **flags: Any) -> Tool:
++    return Tool(name, "", NoArgs, tier, _noop, **flags)  # type: ignore[arg-type]
++
++
++def agent(tier: str = "write", requires_approval: list[str] | None = None, **limits: int) -> AgentDefinition:
++    return AgentDefinition(
++        id="scribe",
++        name="Scribe",
++        purpose="",
++        model="local-fast",
++        color="green",
++        permission_tier=tier,  # type: ignore[arg-type]
++        limits=AgentLimits(**{"max_steps": 5, "max_tokens": 1000, "timeout_s": 60, **limits}),
++        requires_approval=requires_approval or [],
++        prompt="p.md",
++    )
++
++
++class Rig:
++    def __init__(self, tmp_path: Path) -> None:
++        self.conn = connect(tmp_path / "universe.db")
++        migrate_up(self.conn, migrations_dir("universe"))
++        self.audited: list[dict[str, Any]] = []
++        self.events: list[tuple[str, dict[str, Any]]] = []
++        self.halted: list[bool] = []
++        self.killswitch = KillSwitch(
++            tmp_path / "data", audit=self._audit, publish=self._publish, on_change=self.halted.append
++        )
++        self.permissions = PermissionStore(self.conn, self._audit)
++        self.budget = Budget(self.conn, self._audit, self._publish)
++        self.policy = PolicyEngine(killswitch=self.killswitch, permissions=self.permissions, budget=self.budget)
++
++    def _audit(self, **entry: Any) -> None:
++        self.audited.append(entry)
++
++    def _publish(self, event: str, payload: dict[str, Any]) -> None:
++        self.events.append((event, payload))
++
++    def check(self, t: Tool, a: AgentDefinition | None = None, *, tainted: bool = False) -> str:
++        state = TaskState(task_id="t", agent_id="scribe", tainted=tainted)
++        return self.policy.check_tool(a or agent(), t, NoArgs(), state).verdict
++
++    def spend(self, usd: float) -> None:
++        self.conn.execute(
++            "INSERT INTO usage_ledger (id, ts, provider, model, cost_usd) VALUES (?, ?, 'cloud', 'm', ?)",
++            (uuid7(), utcnow(), usd),
++        )
++
++
++@pytest.fixture
++def rig(tmp_path: Path) -> Rig:
++    return Rig(tmp_path)
++
++
++def test_defaults_by_tier(rig: Rig) -> None:
++    assert rig.check(tool("vault.search")) == "allow"
++    assert rig.check(tool("project.add_items", "write", side_effects=True)) == "allow"
++    assert rig.check(tool("note.create", "write"), agent(requires_approval=["note.*"])) == "ask"
++    assert rig.check(tool("shell.run", "system"), agent("system")) == "ask"  # system always asks
++    assert rig.check(tool("mcp.fs.write", "write", ask_first=True)) == "ask"
++
++
++def test_an_agent_never_exceeds_its_tier(rig: Rig) -> None:
++    assert rig.check(tool("note.create", "write"), agent("read")) == "deny"
++    assert rig.check(tool("shell.run", "system"), agent("write")) == "deny"
++    # Not even with a rule that allows it.
++    rig.permissions.add(RuleRequest(agent_id="scribe", tool="shell.run", decision="allow"))
++    assert rig.check(tool("shell.run", "system"), agent("write")) == "deny"
++
++
++def test_taint_makes_side_effects_and_network_ask(rig: Rig) -> None:
++    assert rig.check(tool("vault.read"), tainted=True) == "allow"  # reading more is fine
++    assert rig.check(tool("project.add_items", "write", side_effects=True), tainted=True) == "ask"
++    assert rig.check(tool("web.fetch", "read", network=True), tainted=True) == "ask"
++
++
++def test_rules_most_specific_first_and_strictest_on_ties(rig: Rig) -> None:
++    t = tool("project.add_items", "write", side_effects=True)
++    rig.permissions.add(RuleRequest(agent_id="*", tool="project.*", decision="deny"))
++    assert rig.check(t) == "deny"
++    rig.permissions.add(RuleRequest(agent_id="scribe", tool="project.add_items", decision="allow"))
++    assert rig.check(t) == "allow"  # exact agent and exact tool beat the glob
++    assert rig.check(t, tainted=True) == "ask"  # still asks after untrusted text…
++    rig.permissions.add(
++        RuleRequest(agent_id="scribe", tool="project.add_items", decision="allow", applies_when_tainted=True)
++    )
++    rig.permissions.add(RuleRequest(agent_id="scribe", tool="project.add_items", decision="ask"))
++    assert rig.check(t, tainted=True) == "ask"  # …and between equal rules the strictest wins
++    assert rig.check(tool("mcp.x.y", "write", ask_first=True)) == "ask"
++    rig.permissions.add(RuleRequest(agent_id="scribe", tool="mcp.x.y", decision="allow"))
++    assert rig.check(tool("mcp.x.y", "write", ask_first=True)) == "allow"  # your rule answers for MCP tools
++    assert sum(1 for e in rig.audited if e["action"] == "permission.changed") == 5
++
++
++def test_expired_rules_no_longer_apply(rig: Rig) -> None:
++    rig.permissions.add(RuleRequest(tool="vault.search", decision="deny", expires_at="2000-01-01T00:00:00.000Z"))
++    assert rig.check(tool("vault.search")) == "allow"
++
++
++def test_only_you_change_rules_and_caps(rig: Rig) -> None:
++    with pytest.raises(PermissionError):
++        rig.permissions.add(RuleRequest(tool="x", decision="allow"), actor="agent:core")
++    with pytest.raises(PermissionError):
++        rig.budget.set_caps(BudgetCaps(monthly_cap_usd=100), actor="agent:core")
++    with pytest.raises(ValueError):
++        rig.permissions.add_from({"tool": "x; drop table", "decision": "allow"})
++    rule = rig.permissions.add(RuleRequest(tool="x", decision="allow"))
++    with pytest.raises(PermissionError):
++        rig.permissions.remove(rule.id, actor="agent:core")
++
++
++def test_the_kill_switch_refuses_everything(rig: Rig) -> None:
++    rig.killswitch.set(True, via="test")
++    assert rig.halted == [True]
++    state = TaskState(task_id="t", agent_id="scribe")
++    assert rig.policy.check_llm(agent(), state).verdict == "deny"
++    assert rig.check(tool("vault.search")) == "deny"
++    rig.permissions.add(RuleRequest(tool="vault.search", decision="allow"))
++    assert rig.check(tool("vault.search")) == "deny"  # no rule overrides it
++    assert ("killswitch.engaged", rig.killswitch.status()) in rig.events
++    assert any(e["action"] == "killswitch" for e in rig.audited)
++    rig.killswitch.set(False, via="test")
++    assert rig.check(tool("vault.search")) == "allow" and rig.halted == [True, False]
++
++
++def test_limits_are_checked_before_every_model_call(rig: Rig) -> None:
++    a = agent(max_steps=2, max_tokens=100, timeout_s=60)
++    assert rig.policy.check_llm(a, TaskState("t", "scribe")).verdict == "allow"
++    assert rig.policy.check_llm(a, TaskState("t", "scribe", steps_used=2)).verdict == "deny"
++    assert rig.policy.check_llm(a, TaskState("t", "scribe", tokens_out=100)).verdict == "deny"
++    late = TaskState("t", "scribe", started=0.0)  # started at monotonic 0: long ago
++    assert rig.policy.check_llm(a, late).verdict == "deny"
++
++
++def test_budget_caps_stop_paid_calls_and_warn_on_the_way(rig: Rig) -> None:
++    state = TaskState("t", "scribe")
++    assert rig.budget.cap == 0
++    assert rig.policy.check_llm(agent(), state).verdict == "allow"  # free local calls are always fine
++    assert rig.policy.check_llm(agent(), state, estimate_usd=0.01).verdict == "deny"  # $0 cap: nothing paid
++    rig.budget.set_caps(BudgetCaps(monthly_cap_usd=10))
++    rig.spend(5.5)
++    assert rig.policy.check_llm(agent(), state, estimate_usd=0.1).verdict == "allow"
++    assert [e for e, _p in rig.events if e == "budget.warning"] == ["budget.warning"]  # 50 %
++    rig.spend(4.0)
++    decision = rig.policy.check_llm(agent(), state, estimate_usd=1.0)
++    assert decision.verdict == "deny" and "$10.00" in decision.reason
++    assert ("budget.cap_reached", {"cap_usd": 10.0, "spent_usd": 9.5}) in rig.events
++    status = rig.budget.status()
++    assert status.spent_usd == pytest.approx(9.5) and status.monthly_cap_usd == 10
++
++
++def test_permission_rules_table_is_only_written_here(rig: Rig) -> None:
++    # A sanity check on the schema the store relies on.
++    columns = {r["name"] for r in rig.conn.execute("PRAGMA table_info(permission_rules)")}
++    assert {"agent_id", "tool", "decision", "applies_when_tainted", "expires_at"} <= columns
++    assert isinstance(rig.conn, sqlite3.Connection)

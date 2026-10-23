@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The bridge types name DOM's File (drag-drop): both the preload and the renderer have it.
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src"]
+}

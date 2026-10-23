@@ -1,0 +1,352 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c0e32f2..5032f84 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -29,7 +29,7 @@ jobs:
+       - name: Install pnpm
+         run: npm install -g pnpm@12.11.2
+ 
+-      - uses: astral-sh/setup-uv@v6
++      - uses: astral-sh/setup-uv@v10
+ 
+       - name: Install dependencies
+         run: |
+@@ -72,7 +72,7 @@ jobs:
+ 
+       - name: Upload test artifacts
+         if: failure()
+-        uses: actions/upload-artifact@v4
++        uses: actions/upload-artifact@v7
+         with:
+           name: test-results-${{ matrix.os }}
+           path: test-results/
+diff --git a/services/supervisor/src/universe_supervisor/service.py b/services/supervisor/src/universe_supervisor/service.py
+index 989f44a..1de3c83 100644
+--- a/services/supervisor/src/universe_supervisor/service.py
++++ b/services/supervisor/src/universe_supervisor/service.py
+@@ -1,6 +1,7 @@
+ """One supervised process: spawn, health-check, restart with backoff."""
+ 
+ import os
++import signal
+ import subprocess
+ import sys
+ import time
+@@ -40,7 +41,8 @@ class ServiceRuntime:
+     state: str = "stopped"  # stopped|starting|healthy|backoff|failed|external|missing|disabled
+     proc: subprocess.Popen[bytes] | None = None
+     started_at: float = 0.0
+-    healthy_since: float | None = None
++    healthy_since: float | None = None  # monotonic, for the state machine
++    healthy_since_wall: float | None = None  # epoch seconds, for status()
+     next_start_at: float = 0.0
+     last_health_at: float = 0.0
+     health_failures: int = 0
+@@ -56,7 +58,7 @@ class ServiceRuntime:
+             "state": self.state,
+             "pid": self.proc.pid if self.proc and self.proc.poll() is None else None,
+             "restarts": self.restarts,
+-            "healthy_since": self.healthy_since,
++            "healthy_since": self.healthy_since_wall,
+             "last_exit_code": self.last_exit_code,
+             "last_error": self.last_error,
+             "health_url": self.spec.health_url,
+@@ -108,15 +110,47 @@ def spawn(spec: ServiceSpec, env: dict[str, str], log_dir: Path, job: JobObject)
+     return proc
+ 
+ 
++def kill_tree(proc: subprocess.Popen[bytes]) -> None:
++    """Hard-kill a service and everything it started.
++
++    On Windows a venv's python.exe is a launcher that runs the real interpreter as its child, so
++    killing only the launcher would orphan Core, still holding its port. On POSIX each service leads
++    its own session (see spawn), so its process group is the tree.
++    """
++    try:
++        if sys.platform == "win32":
++            subprocess.run(
++                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
++                stdin=subprocess.DEVNULL,
++                stdout=subprocess.DEVNULL,
++                stderr=subprocess.DEVNULL,
++                creationflags=CREATE_NO_WINDOW,
++                timeout=10,
++                check=False,
++            )
++        else:
++            os.killpg(proc.pid, signal.SIGKILL)
++    except (OSError, subprocess.TimeoutExpired):
++        pass  # already gone, or taskkill unavailable: fall back to the direct kill below
++    if proc.poll() is None:
++        proc.kill()
++
++
+ def stop(proc: subprocess.Popen[bytes] | None, timeout: float = 5.0) -> int | None:
+     if proc is None:
+         return None
+     if proc.poll() is None:
+-        proc.terminate()
++        if sys.platform == "win32":
++            kill_tree(proc)  # Windows has no graceful signal for these services; terminate() is a hard kill too
++        else:
++            try:
++                os.killpg(proc.pid, signal.SIGTERM)  # the whole session, as a terminal's Ctrl+C would
++            except OSError:
++                proc.terminate()
+         try:
+             proc.wait(timeout)
+         except subprocess.TimeoutExpired:
+-            proc.kill()
++            kill_tree(proc)
+             proc.wait(5)
+     return proc.returncode
+ 
+diff --git a/services/supervisor/src/universe_supervisor/supervisor.py b/services/supervisor/src/universe_supervisor/supervisor.py
+index 847316f..4f7d7a5 100644
+--- a/services/supervisor/src/universe_supervisor/supervisor.py
++++ b/services/supervisor/src/universe_supervisor/supervisor.py
+@@ -20,6 +20,7 @@ from universe_supervisor.service import (
+     ServiceSpec,
+     backoff_delay,
+     healthy,
++    kill_tree,
+     out_log_path,
+     spawn,
+     stop,
+@@ -156,6 +157,7 @@ class Supervisor:
+         rt.state = "starting"
+         rt.started_at = now
+         rt.healthy_since = None
++        rt.healthy_since_wall = None
+         rt.health_failures = 0
+         self.log("service_starting", service=rt.spec.name, pid=rt.proc.pid, reason=rt.start_reason)
+ 
+@@ -172,6 +174,7 @@ class Supervisor:
+             elif healthy(rt.spec, rt.proc):
+                 rt.state = "healthy"
+                 rt.healthy_since = now
++                rt.healthy_since_wall = time.time()
+                 rt.last_health_at = now
+                 rt.last_error = None
+                 self.log(
+@@ -211,7 +214,21 @@ class Supervisor:
+         rt.start_reason = reason
+         self.log("service_restart_scheduled", service=rt.spec.name, delay_s=delay, reason=reason)
+ 
++    def _adopt_external_ollama(self, rt: ServiceRuntime) -> bool:
++        """Our `ollama serve` died, but an Ollama answers anyway (say the tray app won the port): use it."""
++        if rt.spec.name != "ollama" or get_json(rt.spec.health_url or "") is None:
++            return False
++        rt.proc = None
++        rt.state = "external"
++        rt.crash_streak = 0
++        rt.last_error = None
++        self._next_external_check = 0.0
++        self.log("ollama_external_adopted", url=self.config.ollama_url)
++        return True
++
+     def _on_crash(self, rt: ServiceRuntime, now: float, why: str, reason: str) -> None:
++        if self._adopt_external_ollama(rt):
++            return
+         if rt.healthy_since is not None and now - rt.healthy_since > STABLE_RESET_S:
+             rt.crash_streak = 0
+         rt.last_error = self._error_with_tail(rt, why)
+@@ -219,6 +236,8 @@ class Supervisor:
+         self._schedule_restart(rt, now, reason)
+ 
+     def _on_boot_failure(self, rt: ServiceRuntime, now: float, why: str) -> None:
++        if self._adopt_external_ollama(rt):
++            return
+         rt.last_error = self._error_with_tail(rt, why)
+         self.log("service_boot_failed", level="error", service=rt.spec.name, why=why)
+         if rt.spec.name != "core":
+@@ -303,7 +322,7 @@ class Supervisor:
+             rt = self.runtimes.get(name)
+             if rt is None or rt.proc is None or rt.proc.poll() is not None:
+                 return False
+-            rt.proc.kill()
++            kill_tree(rt.proc)
+             self.log("service_killed_on_request", service=name, pid=rt.proc.pid)
+             return True
+ 
+diff --git a/services/supervisor/src/universe_supervisor/winjob.py b/services/supervisor/src/universe_supervisor/winjob.py
+index a17f467..99e1864 100644
+--- a/services/supervisor/src/universe_supervisor/winjob.py
++++ b/services/supervisor/src/universe_supervisor/winjob.py
+@@ -7,6 +7,7 @@ from typing import Any
+ class JobObject:
+     def __init__(self) -> None:
+         self.handle = None
++        self.contains_self = False
+         self._kernel32: Any = None
+         if sys.platform != "win32":
+             return
+@@ -61,6 +62,7 @@ class JobObject:
+         ]
+         kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+         kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
++        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+         self._kernel32 = kernel32
+         handle = kernel32.CreateJobObjectW(None, None)
+         if not handle:
+@@ -69,6 +71,11 @@ class JobObject:
+         info.BasicLimitInformation.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+         ok = kernel32.SetInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info))
+         self.handle = handle if ok else None
++        if self.handle is not None:
++            # Join the job ourselves so every child is a member from the moment it's created.
++            # Assigning a child only after Popen returns misses whatever it started in between,
++            # such as the real interpreter behind a venv's python.exe launcher.
++            self.contains_self = bool(kernel32.AssignProcessToJobObject(self.handle, kernel32.GetCurrentProcess()))
+ 
+     def assign(self, process_handle: int) -> bool:
+         if self.handle is None:
+diff --git a/tests/integration/test_supervisor.py b/tests/integration/test_supervisor.py
+index 504e7b7..df98dd6 100644
+--- a/tests/integration/test_supervisor.py
++++ b/tests/integration/test_supervisor.py
+@@ -9,9 +9,11 @@ import urllib.request
+ from collections.abc import Iterator
+ from pathlib import Path
+ 
++import psutil
+ import pytest
+ 
+ from tests.conftest import REPO, free_port
++from tests.support.fake_ollama import FakeOllama
+ from universe_supervisor.config import SupervisorConfig
+ from universe_supervisor.control import ControlServer
+ from universe_supervisor.jsonlog import JsonLog
+@@ -20,11 +22,21 @@ from universe_supervisor.supervisor import Supervisor
+ pytestmark = pytest.mark.slow
+ 
+ FAKE_CORE = REPO / "tests" / "support" / "fake_core.py"
++LAUNCHER = REPO / "tests" / "support" / "launcher.py"
+ CONTROL_TOKEN = "c" * 40
+ 
+ 
+ class Harness:
+-    def __init__(self, tmp: Path, repo: Path, *, lkg_stable_s: float = 3600) -> None:
++    def __init__(
++        self,
++        tmp: Path,
++        repo: Path,
++        *,
++        lkg_stable_s: float = 3600,
++        core_argv: list[str] | None = None,
++        manage_ollama: bool = False,
++        ollama_exe: str | None = None,
++    ) -> None:
+         self.tmp = tmp
+         self.control_file = tmp / "mode"
+         self.env_out = tmp / "env.jsonl"
+@@ -38,7 +50,7 @@ class Harness:
+             vault_dir=tmp / "vault",
+             service_python=sys.executable,
+             core_port=self.port,
+-            manage_ollama=False,
++            manage_ollama=manage_ollama,
+             ollama_url=f"http://127.0.0.1:{free_port()}",
+             lkg_stable_s=lkg_stable_s,
+             boot_timeout_s=5,
+@@ -48,8 +60,8 @@ class Harness:
+             self.config,
+             log=JsonLog(self.config.log_dir / "supervisor.jsonl", echo=False),
+             emit=self.statuses.append,
+-            core_argv=[sys.executable, str(FAKE_CORE)],
+-            ollama_exe=None,
++            core_argv=core_argv or [sys.executable, str(FAKE_CORE)],
++            ollama_exe=ollama_exe,
+         )
+ 
+     def set_mode(self, mode: str) -> None:
+@@ -86,6 +98,10 @@ def core(status: dict) -> dict:
+     return status["services"]["core"]
+ 
+ 
++def ollama(status: dict) -> dict:
++    return status["services"]["ollama"]
++
++
+ def test_starts_core_and_keeps_secrets_scoped(harness: Harness) -> None:
+     harness.run_until(lambda s: core(s)["state"] == "healthy")
+     first = harness.starts()[0]
+@@ -208,3 +224,62 @@ def test_shutdown_stops_children(harness: Harness) -> None:
+     proc = harness.sup.runtimes["core"].proc
+     harness.sup.shutdown()
+     assert proc is not None and proc.poll() is not None
++
++
++def test_status_reports_healthy_since_as_wall_clock_time(harness: Harness) -> None:
++    harness.run_until(lambda s: core(s)["state"] == "healthy")
++    assert abs(core(harness.sup.status())["healthy_since"] - time.time()) < 60
++
++
++def test_kill_and_restart_take_the_whole_process_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    # Core behind a launcher, as with a venv's python.exe on Windows: killing only the launcher
++    # would leave the real Core running and holding the port, so the restart could never bind.
++    h = Harness(tmp_path, REPO, core_argv=[sys.executable, str(LAUNCHER), sys.executable, str(FAKE_CORE)])
++    monkeypatch.setenv("FAKE_CORE_CONTROL", str(h.control_file))
++    monkeypatch.setenv("FAKE_CORE_ENV_OUT", str(h.env_out))
++    try:
++        h.run_until(lambda s: core(s)["state"] == "healthy")
++        first = psutil.Process(h.starts()[-1]["pid"])
++        assert h.sup.kill("core")
++        first.wait(timeout=10)
++        h.run_until(lambda s: core(s)["state"] == "healthy" and core(s)["restarts"] == 1)
++        second = psutil.Process(h.starts()[-1]["pid"])
++        assert h.sup.restart("core")
++        second.wait(timeout=10)
++        h.run_until(lambda s: core(s)["state"] == "healthy" and core(s)["restarts"] == 2)
++    finally:
++        h.sup.shutdown()
++
++
++def test_managed_ollama_adopts_an_instance_that_takes_its_port(tmp_path: Path) -> None:
++    # `python serve` exits at once (no such file), like an `ollama serve` that lost the port race.
++    h = Harness(tmp_path, REPO, manage_ollama=True, ollama_exe=sys.executable)
++    try:
++        h.run_until(lambda s: ollama(s)["restarts"] >= 1)
++        external = FakeOllama(port=int(h.config.ollama_url.rsplit(":", 1)[-1])).start()
++        try:
++            h.run_until(lambda s: ollama(s)["state"] == "external" and ollama(s)["last_error"] is None)
++        finally:
++            external.stop()
++    finally:
++        h.sup.shutdown()
++
++
++@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Objects")
++def test_children_belong_to_the_job_from_creation() -> None:
++    # In a fresh interpreter: putting the test runner itself in a kill-on-close job would be rude.
++    script = """
++import ctypes, subprocess, sys
++from ctypes import wintypes
++from universe_supervisor.winjob import JobObject
++job = JobObject()
++child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
++k = ctypes.WinDLL("kernel32")
++k.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
++inside = wintypes.BOOL()
++k.IsProcessInJob(int(child._handle), job.handle, ctypes.byref(inside))
++child.kill()
++print(job.contains_self, bool(inside.value))
++"""
++    out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=True)
++    assert out.stdout.split() == ["True", "True"], out.stderr
+diff --git a/tests/support/launcher.py b/tests/support/launcher.py
+new file mode 100644
+index 0000000..34d0111
+--- /dev/null
++++ b/tests/support/launcher.py
+@@ -0,0 +1,10 @@
++"""Run argv[1:] as a child and wait for it, like the python.exe launcher in a Windows venv.
++
++Supervisor tests use it to check that stopping or killing a service takes the real process too.
++"""
++
++import subprocess
++import sys
++
++if __name__ == "__main__":
++    sys.exit(subprocess.call(sys.argv[1:]))

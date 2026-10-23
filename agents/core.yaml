@@ -1,0 +1,30 @@
+# Core: orchestrator and your main point of contact (SPEC §8).
+id: core
+name: Core
+purpose: Orchestrator and your main point of contact. Plans, delegates, merges.
+synopsis: >-
+  Core is the one you talk to. It plans the work, hands pieces to the specialists, checks what comes back and gives you one answer. It can also file items into galaxies and write notes itself, within the permissions and approvals you set.
+model: local-fast # router tier, resolved to an installed model
+escalate_to: local-large
+voice: calm-neutral # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLES)
+color: cyan
+icon: orbit
+tools:
+  [
+    agent.delegate,
+    vault.search,
+    project.list,
+    project.add_items,
+    note.create,
+    memory.search,
+    memory.save,
+    ui.show,
+    mcp.*,
+  ]
+permission_tier: write
+memory: [shared, self]
+triggers:
+  - manual: true
+limits: { max_steps: 12, max_tokens: 8192, timeout_s: 600 }
+requires_approval: [note.create]
+prompt: prompts/core.md

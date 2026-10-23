@@ -1,0 +1,764 @@
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index 1cae734..4ef898c 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -34,6 +34,7 @@ import { createLogger } from './logger';
+ import { isAllowedNavigation } from './navigation';
+ import { resolvePaths } from './paths';
+ import { buildCsp, contentType, isServableFile, resolveAppFile } from './protocol';
++import { MicConsent, mediaAllowed } from './protected/consent';
+ import { KILL_SWITCH_HOTKEY, KillSwitchControl, readKillSwitchFile } from './protected/killswitch';
+ import { SupervisorProcess } from './protected/supervisor';
+ import { createTray } from './tray';
+@@ -195,7 +196,10 @@ function createWindow(): void {
+     log.error('ui_failed_to_load', { code, description, url });
+     if (!showingSafeMode && code !== -3) showSafeMode('ui-failed-to-load');
+   });
++  // A new page (reload, crash, safe mode) starts with the mic off: consent goes with the page that had it.
++  win.webContents.on('did-navigate', () => consent.revoke('window'));
+   win.webContents.on('render-process-gone', (_e, details) => {
++    consent.revoke('window');
+     log.error('renderer_gone', { reason: details.reason, exitCode: details.exitCode });
+     const now = Date.now();
+     rendererCrashes.push(now);
+@@ -282,15 +286,15 @@ function registerIpc(): void {
+   ipcMain.handle(CH.forgeRollback, () => ({ ok: false, message: NO_RELEASES }));
+   ipcMain.handle(CH.getReleases, () => ({ available: false, reason: NO_RELEASES, releases: [] }));
+ 
+-  // ---------- consent ----------
+-  // The mic belongs to protected code (Phase 7 protected-core patch); until it's applied, it can't be turned on.
+-  const NO_CONSENT = {
+-    available: false,
+-    mic: false,
+-    reason: 'The microphone needs the Phase 7 protected-core patch (docs/proposals/phase-7-consent.md).',
+-  };
+-  ipcMain.handle(CH.getConsent, () => NO_CONSENT);
+-  ipcMain.handle(CH.setMicConsent, () => NO_CONSENT);
++  // ---------- consent (protected: ./protected/consent.ts) ----------
++  ipcMain.handle(CH.getConsent, () => consent.state());
++  ipcMain.handle(CH.setMicConsent, (e, on: unknown) => {
++    if (typeof on !== 'boolean') return consent.state();
++    // Only the main window may ask, and asking to turn it on still shows the native dialog.
++    if (on && e.sender !== win?.webContents)
++      return consent.state('Only the main window can turn the mic on.');
++    return consent.request(on, 'hud');
++  });
+ 
+   ipcMain.handle(CH.getKillSwitch, () => ({ available: true, engaged: killSwitch.engaged }));
+   ipcMain.handle(CH.setKillSwitch, async (_e, engaged: unknown) => {
+@@ -325,10 +329,47 @@ function registerIpc(): void {
+   });
+ }
+ 
++const consent = new MicConsent({
++  confirm: async () => {
++    const options = {
++      type: 'question' as const,
++      buttons: ['Keep it off', 'Turn on the microphone'],
++      defaultId: 0,
++      cancelId: 0,
++      title: 'Turn on the microphone?',
++      message: 'Turn on the microphone?',
++      detail:
++        'UNIVERSE will listen while the mic is on. What you say is processed on this computer and never stored, ' +
++        'unless you save a voice memo. Turn it off any time from the orb, the tray or the kill switch. ' +
++        'It is off again the next time UNIVERSE starts.',
++    };
++    const choice = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
++    return choice.response === 1;
++  },
++  killSwitchEngaged: () => killSwitch.engaged,
++  onChange: (state) => {
++    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.consentEvent, state);
++    tray?.setToolTip(state.mic ? 'UNIVERSE · microphone on' : 'UNIVERSE'); // main's own indicator
++  },
++  record: async (mic, via) => {
++    const response = await net.fetch(`${coreUrl}/api/v1/consent`, {
++      method: 'POST',
++      headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
++      body: JSON.stringify({ kind: 'mic', on: mic, via }),
++    });
++    if (!response.ok) throw new Error(`Core answered ${response.status}`);
++  },
++  log: (event, fields) => log.info(event, fields),
++});
++
+ const killSwitch = new KillSwitchControl({
+   initial: readKillSwitchFile(join(paths.dataDir, 'killswitch.json')),
+   setOnSupervisor: (engaged) => supervisor.setKillSwitch(engaged),
+-  stopCapture: () => {}, // no capture exists yet; mic, screen and camera arrive in Phases 7–8
++  stopCapture: () => {
++    // Chromium keeps an open stream running even after permission is revoked: if the mic was on, reload the
++    // page, which ends every capture it holds. Then tell any window (the reload already did for the main one).
++    if (consent.revoke('killswitch') && win && !win.isDestroyed()) win.webContents.reload();
++  },
+   confirmRelease: async () => {
+     const options = {
+       type: 'warning' as const,
+@@ -391,6 +432,9 @@ function startCommandBarAndTray(): void {
+       quit: () => app.quit(),
+       hotkey: () => commandBar?.status.accelerator ?? '',
+       extraItems: () => [
++        ...(consent.mic
++          ? [{ label: 'Microphone on: turn it off', click: () => void consent.request(false, 'tray') }]
++          : []),
+         killSwitch.engaged
+           ? { label: 'Release kill switch…', click: () => void killSwitch.set(false, 'tray') }
+           : {
+@@ -429,13 +473,32 @@ if (!app.requestSingleInstanceLock()) {
+         headers: { 'content-type': contentType(file), 'content-security-policy': csp },
+       });
+     });
+-    // Mic, camera, screen, notifications…: denied until the consent system lands (Phases 7–8).
+-    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) =>
+-      callback(permission === 'clipboard-sanitized-write'),
+-    );
+-    session.defaultSession.setPermissionCheckHandler(
+-      (_wc, permission) => permission === 'clipboard-sanitized-write',
+-    );
++    // The mic: audio only, for our main window, while you've consented (protected/consent.ts). Camera, screen,
++    // notifications…: denied (screen and camera consent arrive in Phase 8).
++    const appOrigins = ['app://universe', ...(devUiUrl ? [new URL(devUiUrl).origin] : [])];
++    session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
++      if (permission === 'clipboard-sanitized-write') return callback(true);
++      const mediaTypes = 'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
++      const request = {
++        permission,
++        mediaTypes,
++        requestingUrl: details.requestingUrl ?? wc.getURL(),
++        fromMainWindow: wc === win?.webContents,
++      };
++      const allowed = mediaAllowed(request, consent.mic, appOrigins);
++      if (permission === 'media') log.info('media_permission', { mediaTypes, allowed });
++      callback(allowed);
++    });
++    session.defaultSession.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => {
++      if (permission === 'clipboard-sanitized-write') return true;
++      const request = {
++        permission,
++        mediaTypes: details.mediaType ? [details.mediaType] : [],
++        requestingUrl: details.requestingUrl ?? requestingOrigin,
++        fromMainWindow: wc !== null && wc === win?.webContents,
++      };
++      return mediaAllowed(request, consent.mic, appOrigins);
++    });
+     registerIpc();
+     log.info('app_ready', {
+       repo: paths.repoRoot,
+diff --git a/apps/desktop/src/main/protected/consent.test.ts b/apps/desktop/src/main/protected/consent.test.ts
+new file mode 100644
+index 0000000..209cbe2
+--- /dev/null
++++ b/apps/desktop/src/main/protected/consent.test.ts
+@@ -0,0 +1,126 @@
++import { describe, expect, it, vi } from 'vitest';
++import { MicConsent, mediaAllowed, type MediaRequest } from './consent';
++
++function make(opts: { confirm?: boolean[]; killed?: boolean } = {}) {
++  const answers = [...(opts.confirm ?? [true])];
++  const killed = { value: opts.killed ?? false };
++  const changes: boolean[] = [];
++  const records: Array<[boolean, string]> = [];
++  const confirm = vi.fn(async () => answers.shift() ?? false);
++  const consent = new MicConsent({
++    confirm,
++    killSwitchEngaged: () => killed.value,
++    onChange: (s) => changes.push(s.mic),
++    record: async (mic, via) => {
++      records.push([mic, via]);
++    },
++    log: () => {},
++  });
++  return { consent, confirm, changes, records, killed };
++}
++
++describe('MicConsent', () => {
++  it('is off at launch and turns on only after the native dialog', async () => {
++    const { consent, confirm, changes, records } = make({ confirm: [true] });
++    expect(consent.mic).toBe(false);
++    const state = await consent.request(true, 'hud');
++    expect(state).toEqual({ available: true, mic: true, reason: null });
++    expect(confirm).toHaveBeenCalledTimes(1);
++    expect(changes).toEqual([true]);
++    expect(records).toEqual([[true, 'hud']]);
++  });
++
++  it('stays off when you decline, and asks again next time', async () => {
++    const { consent, confirm } = make({ confirm: [false, true] });
++    expect((await consent.request(true, 'hud')).mic).toBe(false);
++    expect((await consent.request(true, 'hud')).mic).toBe(true);
++    expect(confirm).toHaveBeenCalledTimes(2);
++  });
++
++  it('asks once per launch; turning off is instant and needs no dialog', async () => {
++    const { consent, confirm, changes } = make({ confirm: [true] });
++    await consent.request(true, 'hud');
++    expect((await consent.request(false, 'voice')).mic).toBe(false);
++    expect((await consent.request(true, 'hud')).mic).toBe(true);
++    expect(confirm).toHaveBeenCalledTimes(1);
++    expect(changes).toEqual([true, false, true]);
++  });
++
++  it('refuses while the kill switch is engaged, even after you confirmed', async () => {
++    const { consent, confirm, killed } = make({ killed: true });
++    const state = await consent.request(true, 'hud');
++    expect(state.mic).toBe(false);
++    expect(state.reason).toMatch(/kill switch/);
++    expect(confirm).not.toHaveBeenCalled();
++    // Engaged while the dialog was open: still off.
++    killed.value = false;
++    const pending = make({ confirm: [true] });
++    pending.confirm.mockImplementationOnce(async () => {
++      pending.killed.value = true;
++      return true;
++    });
++    expect((await pending.consent.request(true, 'hud')).mic).toBe(false);
++  });
++
++  it('the kill switch revokes it at once', async () => {
++    const { consent, records } = make();
++    await consent.request(true, 'hud');
++    expect(consent.revoke('killswitch')).toBe(true);
++    expect(consent.mic).toBe(false);
++    expect(consent.revoke('killswitch')).toBe(false); // already off: nothing to record
++    expect(records).toEqual([
++      [true, 'hud'],
++      [false, 'killswitch'],
++    ]);
++  });
++
++  it('a failing audit record never blocks turning the mic off', async () => {
++    const log = vi.fn();
++    const consent = new MicConsent({
++      confirm: async () => true,
++      killSwitchEngaged: () => false,
++      onChange: () => {},
++      record: async () => {
++        throw new Error('Core is restarting');
++      },
++      log,
++    });
++    await consent.request(true, 'hud');
++    expect((await consent.request(false, 'tray')).mic).toBe(false);
++    await new Promise((r) => setTimeout(r, 0));
++    expect(log).toHaveBeenCalledWith('consent_record_failed', { error: 'Core is restarting' });
++  });
++});
++
++describe('mediaAllowed', () => {
++  const ours = ['app://universe'];
++  const audio: MediaRequest = {
++    permission: 'media',
++    mediaTypes: ['audio'],
++    requestingUrl: 'app://universe/index.html',
++    fromMainWindow: true,
++  };
++
++  it('allows an audio stream for our main window only while consent is on', () => {
++    expect(mediaAllowed(audio, true, ours)).toBe(true);
++    expect(mediaAllowed(audio, false, ours)).toBe(false);
++  });
++
++  it.each<[string, Partial<MediaRequest>]>([
++    ['the camera', { mediaTypes: ['video'] }],
++    ['audio and video', { mediaTypes: ['audio', 'video'] }],
++    ['no media type', { mediaTypes: [] }],
++    ['another window (the command bar)', { fromMainWindow: false }],
++    ['a page that is not ours', { requestingUrl: 'https://example.com/' }],
++    ['a garbled origin', { requestingUrl: 'not a url' }],
++    ['another permission', { permission: 'notifications' }],
++  ])('refuses %s', (_name, change) => {
++    expect(mediaAllowed({ ...audio, ...change }, true, ours)).toBe(false);
++  });
++
++  it('allows the dev server origin when that is what the app loads', () => {
++    const dev = { ...audio, requestingUrl: 'http://127.0.0.1:5173/' };
++    expect(mediaAllowed(dev, true, ['app://universe', 'http://127.0.0.1:5173'])).toBe(true);
++    expect(mediaAllowed(dev, true, ours)).toBe(false);
++  });
++});
+diff --git a/apps/desktop/src/main/protected/consent.ts b/apps/desktop/src/main/protected/consent.ts
+new file mode 100644
+index 0000000..1b137a2
+--- /dev/null
++++ b/apps/desktop/src/main/protected/consent.ts
+@@ -0,0 +1,93 @@
++// Microphone consent (SPEC §3.4 and §11, ARCHITECTURE.md §1.3). PROTECTED CORE.
++// The mic is off at every launch. Only this code turns it on, and only after you confirm a native dialog (once
++// per launch), which no renderer code can click. Turning it off is instant, from anywhere. Chromium is only
++// allowed to open an audio-only stream for our own main window while consent is on; the kill switch revokes it
++// before anything else.
++
++export interface ConsentState {
++  available: true;
++  mic: boolean;
++  reason: string | null;
++}
++
++export type ConsentVia = 'hud' | 'voice' | 'tray' | 'killswitch' | 'window';
++
++export interface MediaRequest {
++  permission: string;
++  /** For a permission request: the media types asked for. For a check: the one being checked. */
++  mediaTypes: readonly string[];
++  requestingUrl: string;
++  fromMainWindow: boolean;
++}
++
++/** Whether Chromium may hand out a stream: audio only, our own UI, our main window, consent on. */
++export function mediaAllowed(req: MediaRequest, mic: boolean, appOrigins: readonly string[]): boolean {
++  if (req.permission !== 'media' || !mic || !req.fromMainWindow) return false;
++  if (req.mediaTypes.length === 0 || req.mediaTypes.some((t) => t !== 'audio')) return false;
++  let origin: string;
++  try {
++    const url = new URL(req.requestingUrl);
++    origin = `${url.protocol}//${url.host}`; // URL.origin is "null" for custom schemes like app://
++  } catch {
++    return false;
++  }
++  return appOrigins.includes(origin);
++}
++
++export class MicConsent {
++  mic = false; // off at every launch, whatever it was last time
++  private confirmed = false;
++
++  constructor(
++    private readonly opts: {
++      /** A native yes/no dialog; resolves true only if you confirm. */
++      confirm: () => Promise<boolean>;
++      killSwitchEngaged: () => boolean;
++      onChange: (state: ConsentState) => void;
++      /** The audit trail (Core's consent record); failures are logged, never block turning the mic off. */
++      record: (mic: boolean, via: ConsentVia) => Promise<void>;
++      log: (event: string, fields: Record<string, unknown>) => void;
++    },
++  ) {}
++
++  state(reason: string | null = null): ConsentState {
++    return { available: true, mic: this.mic, reason };
++  }
++
++  async request(on: boolean, via: ConsentVia): Promise<ConsentState> {
++    if (!on) {
++      this.set(false, via);
++      return this.state();
++    }
++    if (this.opts.killSwitchEngaged())
++      return this.state('The kill switch is engaged: the microphone stays off.');
++    if (this.mic) return this.state();
++    if (!this.confirmed) {
++      if (!(await this.opts.confirm())) return this.state('You kept the microphone off.');
++      if (this.opts.killSwitchEngaged())
++        return this.state('The kill switch is engaged: the microphone stays off.');
++      this.confirmed = true;
++    }
++    this.set(true, via);
++    return this.state();
++  }
++
++  /** The kill switch, a closed window, or the tray: off now, no questions. */
++  revoke(via: ConsentVia): boolean {
++    const was = this.mic;
++    this.set(false, via);
++    return was;
++  }
++
++  private set(mic: boolean, via: ConsentVia): void {
++    if (mic === this.mic) return;
++    this.mic = mic;
++    this.opts.log('consent_changed', { kind: 'mic', on: mic, via });
++    this.opts.onChange(this.state());
++    this.opts
++      .record(mic, via)
++      .catch((err: unknown) =>
++        this.opts.log('consent_record_failed', { error: err instanceof Error ? err.message : String(err) }),
++      );
++  }
++}
+diff --git a/apps/desktop/src/main/protected/killswitch.ts b/apps/desktop/src/main/protected/killswitch.ts
+index 1acc54d..0336ca6 100644
+--- a/apps/desktop/src/main/protected/killswitch.ts
++++ b/apps/desktop/src/main/protected/killswitch.ts
+@@ -40,7 +40,7 @@ export class KillSwitchControl {
+       initial: boolean;
+       /** POST /killswitch on the supervisor. */
+       setOnSupervisor: (engaged: boolean) => Promise<KillSwitchResult>;
+-      /** Stop mic, screen and camera capture locally, before anything else (none exists before Phase 7). */
++      /** Stop mic, screen and camera capture locally, before anything else (the mic since Phase 7). */
+       stopCapture: () => void;
+       /** A native yes/no dialog; resolves true only if you confirm. */
+       confirmRelease: () => Promise<boolean>;
+diff --git a/packages/shared-types/openapi.json b/packages/shared-types/openapi.json
+index 0dc7bb6..43a6d2b 100644
+--- a/packages/shared-types/openapi.json
++++ b/packages/shared-types/openapi.json
+@@ -1395,6 +1395,75 @@
+         "title": "ChatSendResponse",
+         "type": "object"
+       },
++      "ConsentRecord": {
++        "properties": {
++          "changed_at": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "null"
++              }
++            ],
++            "title": "Changed At"
++          },
++          "mic": {
++            "title": "Mic",
++            "type": "boolean"
++          },
++          "via": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "null"
++              }
++            ],
++            "title": "Via"
++          }
++        },
++        "required": [
++          "mic",
++          "via",
++          "changed_at"
++        ],
++        "title": "ConsentRecord",
++        "type": "object"
++      },
++      "ConsentReport": {
++        "properties": {
++          "kind": {
++            "const": "mic",
++            "default": "mic",
++            "title": "Kind",
++            "type": "string"
++          },
++          "on": {
++            "title": "On",
++            "type": "boolean"
++          },
++          "via": {
++            "description": "Where the change came from",
++            "enum": [
++              "hud",
++              "voice",
++              "tray",
++              "killswitch",
++              "window"
++            ],
++            "title": "Via",
++            "type": "string"
++          }
++        },
++        "required": [
++          "on",
++          "via"
++        ],
++        "title": "ConsentReport",
++        "type": "object"
++      },
+       "Conversation": {
+         "properties": {
+           "agent_id": {
+@@ -7014,6 +7083,60 @@
+         "summary": "Chat Send"
+       }
+     },
++    "/api/v1/consent": {
++      "get": {
++        "operationId": "consent_api_v1_consent_get",
++        "responses": {
++          "200": {
++            "content": {
++              "application/json": {
++                "schema": {
++                  "$ref": "#/components/schemas/ConsentRecord"
++                }
++              }
++            },
++            "description": "Successful Response"
++          }
++        },
++        "summary": "Consent"
++      },
++      "post": {
++        "operationId": "report_consent_api_v1_consent_post",
++        "requestBody": {
++          "content": {
++            "application/json": {
++              "schema": {
++                "$ref": "#/components/schemas/ConsentReport"
++              }
++            }
++          },
++          "required": true
++        },
++        "responses": {
++          "200": {
++            "content": {
++              "application/json": {
++                "schema": {
++                  "$ref": "#/components/schemas/ConsentRecord"
++                }
++              }
++            },
++            "description": "Successful Response"
++          },
++          "422": {
++            "content": {
++              "application/json": {
++                "schema": {
++                  "$ref": "#/components/schemas/HTTPValidationError"
++                }
++              }
++            },
++            "description": "Validation Error"
++          }
++        },
++        "summary": "Report Consent"
++      }
++    },
+     "/api/v1/conversations": {
+       "get": {
+         "operationId": "conversations_api_v1_conversations_get",
+diff --git a/packages/shared-types/src/api.ts b/packages/shared-types/src/api.ts
+index f63712c..f1819ac 100644
+--- a/packages/shared-types/src/api.ts
++++ b/packages/shared-types/src/api.ts
+@@ -381,6 +381,24 @@ export interface paths {
+         patch?: never;
+         trace?: never;
+     };
++    "/api/v1/consent": {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        /** Consent */
++        get: operations["consent_api_v1_consent_get"];
++        put?: never;
++        /** Report Consent */
++        post: operations["report_consent_api_v1_consent_post"];
++        delete?: never;
++        options?: never;
++        head?: never;
++        patch?: never;
++        trace?: never;
++    };
+     "/api/v1/conversations": {
+         parameters: {
+             query?: never;
+@@ -2260,6 +2278,32 @@ export interface components {
+             /** User Message Id */
+             user_message_id: string;
+         };
++        /** ConsentRecord */
++        ConsentRecord: {
++            /** Changed At */
++            changed_at: string | null;
++            /** Mic */
++            mic: boolean;
++            /** Via */
++            via: string | null;
++        };
++        /** ConsentReport */
++        ConsentReport: {
++            /**
++             * Kind
++             * @default mic
++             * @constant
++             */
++            kind: "mic";
++            /** On */
++            on: boolean;
++            /**
++             * Via
++             * @description Where the change came from
++             * @enum {string}
++             */
++            via: "hud" | "voice" | "tray" | "killswitch" | "window";
++        };
+         /** Conversation */
+         Conversation: {
+             /** Agent Id */
+@@ -4517,6 +4561,59 @@ export interface operations {
+             };
+         };
+     };
++    consent_api_v1_consent_get: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody?: never;
++        responses: {
++            /** @description Successful Response */
++            200: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content: {
++                    "application/json": components["schemas"]["ConsentRecord"];
++                };
++            };
++        };
++    };
++    report_consent_api_v1_consent_post: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody: {
++            content: {
++                "application/json": components["schemas"]["ConsentReport"];
++            };
++        };
++        responses: {
++            /** @description Successful Response */
++            200: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content: {
++                    "application/json": components["schemas"]["ConsentRecord"];
++                };
++            };
++            /** @description Validation Error */
++            422: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content: {
++                    "application/json": components["schemas"]["HTTPValidationError"];
++                };
++            };
++        };
++    };
+     conversations_api_v1_conversations_get: {
+         parameters: {
+             query?: {
+diff --git a/services/core/src/universe_core/app.py b/services/core/src/universe_core/app.py
+index 7c1cf5b..c0ac398 100644
+--- a/services/core/src/universe_core/app.py
++++ b/services/core/src/universe_core/app.py
+@@ -17,6 +17,7 @@ from universe_core.api import public, router
+ from universe_core.chat import ChatError, ChatUnavailable
+ from universe_core.context import CoreContext
+ from universe_core.forge_api import router as forge_router
++from universe_core.protected.consent_api import router as consent_router
+ from universe_core.research_api import router as research_router
+ from universe_core.security import LocalGuard, TokenAuth
+ from universe_core.settings import CoreSettings
+@@ -96,6 +97,7 @@ def create_app(settings: CoreSettings) -> FastAPI:
+     app.include_router(forge_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+     app.include_router(research_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+     app.include_router(voice_router, dependencies=[Depends(TokenAuth(settings.session_token))])
++    app.include_router(consent_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+     app.include_router(vault_admin_router, dependencies=[Depends(TokenAuth(settings.session_token))])
+     app.include_router(vault_local_api)  # session token or a scoped local API key, checked per endpoint
+     app.include_router(vault_internal)  # Core's own workers (per-boot internal token)
+diff --git a/services/core/src/universe_core/protected/consent_api.py b/services/core/src/universe_core/protected/consent_api.py
+new file mode 100644
+index 0000000..2972e4e
+--- /dev/null
++++ b/services/core/src/universe_core/protected/consent_api.py
+@@ -0,0 +1,49 @@
++"""Consent mirror (ARCHITECTURE §5: `GET /consent`). PROTECTED CORE.
++
++Electron main owns consent: it alone decides whether Chromium may open the microphone. It reports every change
++here so the audit log and the timeline record it (`consent.changed`) and the HUD can show it. Core never grants
++capture from this record; a wrong report can't open a mic, only mislabel the log.
++"""
++
++from datetime import UTC, datetime
++from typing import Literal
++
++from fastapi import APIRouter, Request
++from pydantic import BaseModel, Field
++
++from universe_common.schema import ApiModel
++
++router = APIRouter(prefix="/api/v1")
++
++
++class ConsentRecord(ApiModel):
++    mic: bool
++    via: str | None
++    changed_at: str | None
++
++
++class ConsentReport(BaseModel):
++    kind: Literal["mic"] = "mic"
++    on: bool
++    via: Literal["hud", "voice", "tray", "killswitch", "window"] = Field(description="Where the change came from")
++
++
++@router.get("/consent", response_model=ConsentRecord)
++async def consent(request: Request) -> ConsentRecord:
++    return getattr(request.app.state, "consent", None) or ConsentRecord(mic=False, via=None, changed_at=None)
++
++
++@router.post("/consent", response_model=ConsentRecord)
++async def report_consent(request: Request, body: ConsentReport) -> ConsentRecord:
++    ctx = request.app.state.ctx
++    record = ConsentRecord(mic=body.on, via=body.via, changed_at=datetime.now(UTC).isoformat())
++    request.app.state.consent = record
++    ctx.audit.append(
++        actor="user",
++        action="consent.changed",
++        target_type="consent",
++        target_id=body.kind,
++        details={"on": body.on, "via": body.via},
++    )
++    ctx.bus.publish("consent.changed", {"kind": body.kind, "on": body.on, "via": body.via}, actor="user")
++    return record
+diff --git a/tests/protected/test_consent_api.py b/tests/protected/test_consent_api.py
+new file mode 100644
+index 0000000..73ae89c
+--- /dev/null
++++ b/tests/protected/test_consent_api.py
+@@ -0,0 +1,29 @@
++"""The consent mirror (Phase 7 protected core): off until main reports otherwise, and every change audited."""
++
++from fastapi.testclient import TestClient
++
++from tests.conftest import AUTH
++
++
++def test_consent_is_off_until_main_reports_it(client: TestClient) -> None:
++    response = client.get("/api/v1/consent", headers=AUTH)
++    assert response.status_code == 200
++    assert response.json() == {"mic": False, "via": None, "changed_at": None}
++
++
++def test_every_change_is_audited_and_published(client: TestClient) -> None:
++    on = client.post("/api/v1/consent", json={"on": True, "via": "hud"}, headers=AUTH)
++    assert on.status_code == 200 and on.json()["mic"] is True
++    off = client.post("/api/v1/consent", json={"on": False, "via": "killswitch"}, headers=AUTH)
++    assert off.json()["mic"] is False
++    assert client.get("/api/v1/consent", headers=AUTH).json()["via"] == "killswitch"
++    audit = client.get("/api/v1/audit", params={"action": "consent.changed"}, headers=AUTH).json()
++    assert [(a["details"]["on"], a["details"]["via"]) for a in audit][:2] == [(False, "killswitch"), (True, "hud")]
++    events = client.get("/api/v1/events", params={"type": "consent.changed"}, headers=AUTH).json()["events"]
++    assert [e["payload"]["on"] for e in events] == [True, False]
++
++
++def test_reports_need_the_session_token_and_a_known_source(client: TestClient) -> None:
++    assert client.post("/api/v1/consent", json={"on": True, "via": "hud"}).status_code == 401
++    bad = client.post("/api/v1/consent", json={"on": True, "via": "a webpage"}, headers=AUTH)
++    assert bad.status_code == 422
