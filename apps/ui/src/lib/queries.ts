@@ -122,6 +122,14 @@ export function useItemsView() {
   };
 }
 
+/**
+ * The item to show for `id`: undefined while `useItem` still holds the previous item (keepPreviousData),
+ * so nothing acts on the new id while showing the old one (Delete forever on the wrong item).
+ */
+export function itemShown<T extends { id: string }>(id: string | null, data: T | undefined): T | undefined {
+  return data && data.id === id ? data : undefined;
+}
+
 export function useItem(id: string | null) {
   const api = useApi();
   return useQuery({

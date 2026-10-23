@@ -19,7 +19,7 @@ import { attempt } from '../lib/attempt';
 import { hueHex } from '../lib/colors';
 import { formatBytes } from '../lib/format';
 import { formatDate, ITEM_TYPES } from '../lib/itemTypes';
-import { useItem, useProjects } from '../lib/queries';
+import { itemShown, useItem, useProjects } from '../lib/queries';
 import { openItem, revealItem, trashItem } from '../lib/vaultActions';
 import { useUniverse } from '../state/store';
 import { ItemVisual } from '../views2d/ItemVisual';
@@ -185,12 +185,12 @@ export function ItemPanel({ id }: { id: string }) {
   const item = useItem(id);
   const select = useUniverse((s) => s.selectItem);
   const refresh = useUniverse((s) => s.refreshItems);
+  const data = itemShown(id, item.data);
   const text = useQuery({
-    queryKey: ['item-text', id, item.data?.current_version],
+    queryKey: ['item-text', id, data?.current_version],
     queryFn: () => api.itemText(id, 1500),
-    enabled: !!item.data && !item.data.trashed_at,
+    enabled: !!data && !data.trashed_at,
   });
-  const data = item.data;
   if (item.isError) return <p className="text-sm text-danger">This item is gone.</p>;
   if (!data) return <p className="text-xs text-ink-3">Loading…</p>;
   const style = ITEM_TYPES[data.type];

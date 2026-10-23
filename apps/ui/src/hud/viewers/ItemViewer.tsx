@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react';
 import { useApi } from '../../lib/api-context';
 import { hueHex } from '../../lib/colors';
 import { ITEM_TYPES } from '../../lib/itemTypes';
-import { useItem, useProjects } from '../../lib/queries';
+import { itemShown, useItem, useProjects } from '../../lib/queries';
 import { openItem } from '../../lib/vaultActions';
 import { useUniverse } from '../../state/store';
 import { styleFor } from '../../universe/scene/types';
@@ -21,7 +21,7 @@ const MARKDOWN = /\.(md|markdown)$/i;
 
 function Body({ id }: { id: string }) {
   const item = useItem(id);
-  const data = item.data;
+  const data = itemShown(id, item.data);
   if (!data) return <p className="text-sm text-ink-3">{item.isError ? 'This item is gone.' : 'Loading…'}</p>;
   switch (data.type) {
     case 'note':
@@ -50,7 +50,7 @@ export function ItemViewer() {
   const itemId = useUniverse((s) => s.viewerItemId);
   const projectId = useUniverse((s) => s.dashboardProjectId);
   const close = useUniverse((s) => s.closeViewer);
-  const item = useItem(itemId);
+  const item = itemShown(itemId, useItem(itemId).data);
   const projects = useProjects();
   const project = projectId ? projects.data?.find((p) => p.id === projectId) : undefined;
   const card = useRef<HTMLDivElement>(null);
@@ -66,11 +66,11 @@ export function ItemViewer() {
   }, [api, itemId]);
   if (!open) return null;
 
-  const type = item.data?.type as ItemType | undefined;
+  const type = item?.type as ItemType | undefined;
   const style = type ? ITEM_TYPES[type] : null;
   const Icon = style?.Icon;
   const color = project ? hueHex(project.color_token) : style ? tokens.color[style.hue] : tokens.color.slate;
-  const title = project?.name ?? item.data?.title ?? '…';
+  const title = project?.name ?? item?.title ?? '…';
   const subtitle = project
     ? `Galaxy · ${project.item_count} items · ${project.status}`
     : type
