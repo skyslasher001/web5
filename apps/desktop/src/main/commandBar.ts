@@ -103,8 +103,8 @@ export class CommandBar {
     else this.show(mode);
   }
 
-  /** Register the global shortcut. A failure (another app owns it) is reported, never fatal. */
-  /** The new shortcut is registered before the old one is released, so a failure keeps the one that works. */
+  /** Register the global shortcut. A failure (another app owns it) is reported, never fatal: the new shortcut is
+   * registered before the old one is released, so a failure keeps the one that works. */
   register(accelerator: string): HotkeyStatus {
     const previous = this.hotkey;
     if (previous.registered && previous.accelerator === accelerator) return previous;
