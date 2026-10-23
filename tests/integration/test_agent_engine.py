@@ -328,3 +328,87 @@ def test_mcp_tools_ask_first_and_their_output_is_untrusted(api: Api) -> None:
     task = wait_task(api, task_id, DONE)
     assert task["status"] == "done" and task["output"].startswith("The MCP server says")
     assert "5" in task["output"] and task["tainted"]
+
+
+# ---------- review 2026-10-22: regressions ----------
+
+
+def test_approving_after_the_task_was_stopped_records_nothing_as_approved(api: Api) -> None:
+    """Stopping a task that waits for you used to leave its approval pending; approving it later then wrote
+    'approved' and an audit entry saying you approved an action that never ran."""
+    seed_notes(api)
+    task_id = api.post(
+        "/agents/core/run",
+        {"instruction": "Find my notes about land deal, summarize them, and link them to project DevMind."},
+        202,
+    )["task_id"]
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    api.post(f"/tasks/{task_id}/cancel")
+    assert wait_task(api, task_id, DONE)["status"] == "cancelled"
+    assert api.get("/approvals") == []  # nothing is waiting for you any more
+    late = api.post(f"/approvals/{approval['id']}/decision", {"approve": True})
+    assert late["status"] == "expired"
+    decided = [e for e in api.get("/audit", params={"limit": 500}) if e["action"] == "approval.decided"]
+    assert not [e for e in decided if e["details"]["approved"]]
+    assert api.get("/items", params={"project": project_id(api, "DevMind")})["items"] == []
+
+
+def test_voice_cannot_approve_an_old_high_risk_request(api: Api) -> None:
+    """The risk check only looked at the newest 100 pending approvals: an older high-risk one passed by voice."""
+    conn = api.client.app.state.ctx.dbs.universe  # type: ignore[attr-defined]
+    seed_notes(api)
+    task_id = api.post(
+        "/agents/core/run",
+        {"instruction": "Find my notes about land deal, summarize them, and link them to project DevMind."},
+        202,
+    )["task_id"]
+    wait_task(api, task_id, {"waiting_approval"})
+    [approval] = api.get("/approvals")
+    conn.execute("UPDATE approvals SET risk = 'high' WHERE id = ?", (approval["id"],))
+    for n in range(100):  # newer requests push it out of the first page
+        conn.execute(
+            "INSERT INTO approvals (id, kind, requester, task_id, tool, risk, summary, status, created_at, expires_at)"
+            " VALUES (?, 'tool_call', 'agent:core', ?, 'vault.search', 'low', 'x', 'pending', ?, ?)",
+            (f"newer-{n:03}", task_id, f"2999-01-01T00:00:{n % 60:02}.{n:03}Z", "2999-01-02T00:00:00.000Z"),
+        )
+    assert approval["id"] not in [a["id"] for a in api.get("/approvals")]
+    refused = api.client.post(
+        f"/api/v1/approvals/{approval['id']}/decision", json={"approve": True, "via": "voice"}, headers=AUTH
+    )
+    assert refused.status_code == 409 and "need a click" in refused.text
+    status = conn.execute("SELECT status FROM approvals WHERE id = ?", (approval["id"],)).fetchone()["status"]
+    assert status == "pending"
+
+
+def test_stopping_a_specialist_does_not_stop_the_task_that_delegated(api: Api) -> None:
+    """A delegated task ran in its parent's asyncio task and was registered under its own id with it, so
+    cancelling the specialist cancelled the parent too."""
+    import asyncio
+
+    server = str(__import__("pathlib").Path(__file__).resolve().parents[1] / "support" / "mcp_demo_server.py")
+    api.post("/mcp/servers", {"name": "demo", "command": sys.executable, "args": [server]}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    engine = ctx.engine
+    parent = engine._new_task(ctx.agents["librarian"], "parent", parent=None, conversation_id=None, correlation_id=None)
+
+    async def scenario() -> tuple[bool, str | None]:
+        # The specialist (Core, which may use MCP tools) waits for your OK; then you stop just the specialist.
+        outer = asyncio.create_task(engine.run("core", "[[mcp]] add 2 and 3", parent=parent))
+        for _ in range(400):
+            pending = engine.approvals("pending")
+            if pending:
+                break
+            await asyncio.sleep(0.05)
+        child_id = pending[0].task_id
+        assert child_id != parent.task_id
+        assert engine.cancel(child_id)
+        await asyncio.wait([outer], timeout=10)
+        if outer.cancelled():
+            return True, None
+        child, _outcome = outer.result()
+        return False, child.status
+
+    parent_cancelled, child_status = api.client.portal.call(scenario)  # type: ignore[union-attr]
+    assert not parent_cancelled, "cancelling the specialist cancelled the task that delegated to it"
+    assert child_status == "cancelled"

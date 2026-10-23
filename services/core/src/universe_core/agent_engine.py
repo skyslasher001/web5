@@ -282,7 +282,7 @@ class AgentEngine:
         state = self._new_task(
             agent, instruction, parent=parent, conversation_id=conversation_id, correlation_id=correlation_id
         )
-        return await self._execute(
+        execution = self._execute(
             agent,
             state,
             instruction,
@@ -292,6 +292,21 @@ class AgentEngine:
             parent=parent,
             on_started=on_started,
         )
+        if parent is None:
+            return await execution
+        # A specialist runs in its own asyncio task, so stopping it doesn't stop the task that delegated to it
+        # (stopping the parent still stops the specialist: the await below passes the cancellation on).
+        child = asyncio.create_task(execution, name=f"agent:{agent.id}")
+        self._running[state.task_id] = child
+        try:
+            return await child
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if not child.cancelled() or (current is not None and current.cancelling()):
+                raise
+            task = self.task(state.task_id)  # only the specialist was stopped: the parent carries on
+            assert task is not None
+            return task, None
 
     def start(self, agent_id: str, instruction: str, *, conversation_id: str | None = None) -> str:
         """Run a task in the background; returns its id at once (POST /agents/{id}/run)."""
@@ -524,17 +539,24 @@ class AgentEngine:
         try:
             return await asyncio.wait_for(future, timeout=APPROVAL_TTL.total_seconds())
         except TimeoutError:
-            self._set_approval(approval_id, "expired", via=None)
-            self._bus.publish(
-                "approval.expired",
-                {"approval_id": approval_id},
-                actor="system",
-                subject_type="approval",
-                subject_id=approval_id,
-            )
+            self._expire(approval_id)
             return False
+        except asyncio.CancelledError:
+            # The task was stopped while it waited: nothing will run, so the question is closed, not pending.
+            self._expire(approval_id)
+            raise
         finally:
             self._waiting.pop(approval_id, None)
+
+    def _expire(self, approval_id: str) -> None:
+        self._set_approval(approval_id, "expired", via=None)
+        self._bus.publish(
+            "approval.expired",
+            {"approval_id": approval_id},
+            actor="system",
+            subject_type="approval",
+            subject_id=approval_id,
+        )
 
     def decide(self, approval_id: str, approve: bool, *, via: str = "ui") -> Approval | None:
         row = self._conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
@@ -542,14 +564,16 @@ class AgentEngine:
             return None
         if row["status"] != "pending":
             return _approval(row)
-        status = "approved" if approve else "denied"
-        self._set_approval(approval_id, status, via=via)
         future = self._waiting.get(approval_id)
-        if future is not None and not future.done():
+        if row["kind"] == "tool_call" and (future is None or future.done()):
+            # Nobody is waiting (the task stopped, or Core restarted since): nothing will run, so it's expired,
+            # and the audit log must not say you approved something.
+            self._expire(approval_id)
+            updated = self._conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+            return _approval(updated)
+        self._set_approval(approval_id, "approved" if approve else "denied", via=via)
+        if future is not None:
             future.set_result(approve)
-        elif future is None and row["kind"] == "tool_call":
-            # Nobody is waiting (Core restarted since): nothing will run, so record it as expired instead.
-            self._set_approval(approval_id, "expired", via=via)
         self._audit.append(
             actor="user",
             action="approval.decided",
@@ -574,6 +598,10 @@ class AgentEngine:
             " WHERE id = ? AND status = 'pending'",
             (status, via, utcnow(), reason, approval_id),
         )
+
+    def approval(self, approval_id: str) -> Approval | None:
+        row = self._conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+        return _approval(row) if row else None
 
     def approvals(self, status: str | None = "pending", limit: int = 100) -> list[Approval]:
         if status:

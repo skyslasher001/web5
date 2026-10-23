@@ -313,7 +313,7 @@ class CoreContext:
         if self.settings.safe_mode:
             return
         if self.mcp is not None:
-            await self.mcp.start_all()
+            self.mcp.start_in_background()
         await self.workers.start()
         self.governor = Governor(
             conn=self.dbs.universe,

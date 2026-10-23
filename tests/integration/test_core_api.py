@@ -243,6 +243,35 @@ def test_event_replay_resumes_after_a_seq(client: TestClient) -> None:
         assert first["replay"] is True and first["event"]["type"] == "error.raised"
 
 
+def test_replay_after_a_long_absence_sends_every_missed_event(client: TestClient) -> None:
+    """Replay stopped at 2000 events; the next live event then moved the client's lastSeq past the gap."""
+    ctx = client.app.state.ctx  # type: ignore[attr-defined]
+    last = client.get("/api/v1/events", headers=AUTH).json()["last_seq"]
+    missed = [ctx.bus.publish("error.raised", {"service": "desktop", "kind": f"E{i}"}).seq for i in range(2500)]
+    with client.websocket_connect(f"{WS}?ticket={_ticket(client)}&since_seq={last}") as ws:
+        ws.send_json({"op": "ping"})
+        replayed: list[int] = []
+        while (msg := ws.receive_json())["kind"] != "pong":
+            if msg.get("replay"):
+                replayed.append(msg["event"]["seq"])
+    assert replayed == missed
+
+
+def test_frames_that_are_not_json_messages_get_an_error_not_a_closed_socket(client: TestClient) -> None:
+    with client.websocket_connect(f"{WS}?ticket={_ticket(client)}") as ws:
+        ws.send_text("this is not json")
+        assert ws.receive_json() == {"kind": "ack", "op": None, "ok": False, "error": "expected a JSON message"}
+        ws.send_bytes(b"\x00\x01binary")
+        assert ws.receive_json()["ok"] is False
+        ws.send_json({"op": "chat.send", "text": "hi", "conversation_id": 123, "id": "r1"})
+        bad_id = ws.receive_json()
+        assert bad_id["ok"] is False and bad_id["id"] == "r1" and "conversation_id" in bad_id["error"]
+        ws.send_json({"op": "chat.cancel", "conversation_id": {"x": 1}})
+        assert ws.receive_json()["ok"] is False
+        ws.send_json({"op": "ping"})
+        assert ws.receive_json()["kind"] == "pong"  # the connection is still fine
+
+
 def test_token_never_appears_in_logs(make_settings: Callable[..., CoreSettings], tmp_path) -> None:
     from universe_common.log import configure_logging, get_logger, register_secret
 

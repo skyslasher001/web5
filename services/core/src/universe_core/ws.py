@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -15,6 +16,8 @@ router = APIRouter()
 
 CLOSE_UNAUTHORIZED = 4401
 CLOSE_OVERFLOW = 4409
+REPLAY_PAGE = 2000
+_NOT_JSON = object()
 
 
 @router.websocket("/ws")
@@ -28,13 +31,30 @@ async def websocket_endpoint(websocket: WebSocket, ticket: str = "", since_seq: 
     sub = ctx.bus.subscribe(["*"])
     try:
         if since_seq is not None:
-            for event in ctx.bus.replay(since_seq, limit=2000):
-                await websocket.send_json({"kind": "event", "event": event.model_dump(), "replay": True})
+            # Page through everything missed before going live: a live event's seq would otherwise move the
+            # client's lastSeq past whatever wasn't replayed.
+            cursor = since_seq
+            while page := ctx.bus.replay(cursor, limit=REPLAY_PAGE):
+                for event in page:
+                    await websocket.send_json({"kind": "event", "event": event.model_dump(), "replay": True})
+                cursor = page[-1].seq or cursor
+                if len(page) < REPLAY_PAGE:
+                    break
         writer = asyncio.create_task(_writer(websocket, sub))
         try:
             while True:
-                message = await websocket.receive_json()
-                await websocket.send_json(await _handle(ctx, sub, message))
+                frame = await websocket.receive()
+                if frame["type"] == "websocket.disconnect":
+                    raise WebSocketDisconnect(frame.get("code", 1000))
+                try:
+                    message = json.loads(frame["text"]) if frame.get("text") is not None else _NOT_JSON
+                except json.JSONDecodeError:
+                    message = _NOT_JSON
+                if message is _NOT_JSON:
+                    reply = {"kind": "ack", "op": None, "ok": False, "error": "expected a JSON message"}
+                else:
+                    reply = await _handle(ctx, sub, message)
+                await websocket.send_json(reply)
         finally:
             writer.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -69,16 +89,25 @@ async def _handle(ctx: CoreContext, sub: Any, message: Any) -> dict[str, Any]:
                 raise ChatError("topics must be a list of strings")
             sub.patterns = topics
         elif op == "chat.send":
+            conversation_id = message.get("conversation_id")
+            if conversation_id is not None and not isinstance(conversation_id, str):
+                raise ChatError("conversation_id must be a string")
             result = await ctx.chat.send(
                 text=str(message.get("text", "")),
-                conversation_id=message.get("conversation_id"),
+                conversation_id=conversation_id,
                 agent_id=str(message.get("agent_id") or "core"),
             )
             reply["result"] = result.__dict__
         elif op == "chat.cancel":
-            reply["result"] = {"cancelled": ctx.chat.cancel(str(message.get("conversation_id", "")))}
+            conversation_id = message.get("conversation_id", "")
+            if not isinstance(conversation_id, str):
+                raise ChatError("conversation_id must be a string")
+            reply["result"] = {"cancelled": ctx.chat.cancel(conversation_id)}
         else:
             reply.update(ok=False, error=f"unknown op '{op}'")
     except (ChatError, ChatUnavailable) as exc:
         reply.update(ok=False, error=str(exc))
+    except Exception as exc:  # one bad message must not end the connection
+        ctx.record_exception(exc)
+        reply.update(ok=False, error="Something went wrong; the error was recorded.")
     return reply

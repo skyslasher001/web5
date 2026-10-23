@@ -320,7 +320,8 @@ async def list_approvals(
 @router.post("/approvals/{approval_id}/decision", response_model=Approval)
 async def decide_approval(ctx: Ctx, approval_id: str, body: DecisionRequest) -> Approval:
     engine = _engine(ctx)
-    pending = next((a for a in engine.approvals("pending") if a.id == approval_id), None)
+    found = engine.approval(approval_id)
+    pending = found if found is not None and found.status == "pending" else None
     if body.via == "voice" and body.approve and (body.remember or (pending is not None and pending.risk == "high")):
         # A voice in the room isn't proof it's you: high-risk actions and standing rules take a click.
         raise HTTPException(status.HTTP_409_CONFLICT, "High-risk actions and standing rules need a click, not voice")

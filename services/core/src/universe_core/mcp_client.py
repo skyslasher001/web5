@@ -13,7 +13,9 @@ import contextlib
 import json
 import os
 import re
+import shutil
 import sqlite3
+import sys
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -45,6 +47,28 @@ class RawArgs(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+# Core's own secrets: an MCP server is someone else's program and must not be able to call Core or the supervisor.
+_SCRUBBED_ENV = ("UNIVERSE_SESSION", "UNIVERSE_SUPERVISOR", "UNIVERSE_INTERNAL")
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def server_env(extra: dict[str, str]) -> dict[str, str]:
+    return {**{k: v for k, v in os.environ.items() if not k.startswith(_SCRUBBED_ENV)}, **extra}
+
+
+def resolve_command(command: str) -> str:
+    """Find a bare command on PATH the way a shell would: on Windows `npx` is `npx.cmd`, which CreateProcess
+    won't find by itself. Paths, and commands not found (the start then fails with a clear error), stay as they are."""
+    if os.path.dirname(command):
+        return command
+    return shutil.which(command) or command
+
+
+def spawn_options(platform: str = sys.platform) -> dict[str, Any]:
+    """No console window flashing up for each server on Windows."""
+    return {"creationflags": _CREATE_NO_WINDOW} if platform == "win32" else {}
+
+
 class MCPConnection:
     def __init__(self, name: str, command: str, args: list[str], env: dict[str, str]) -> None:
         self.name = name
@@ -61,16 +85,16 @@ class MCPConnection:
         self.stderr_tail: list[str] = []
 
     async def start(self, wait_s: float = 20.0) -> None:
-        env = {**os.environ, **self.env}
         try:
             self._proc = await asyncio.create_subprocess_exec(
-                self.command,
+                resolve_command(self.command),
                 *self.args,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=env,
+                env=server_env(self.env),
                 limit=MAX_LINE,
+                **spawn_options(),
             )
         except OSError as exc:
             raise MCPError(f"cannot start '{self.command}': {exc}") from exc
@@ -146,9 +170,14 @@ class MCPConnection:
             self._pending.pop(request_id, None)
             raise MCPError(f"{self.name} didn't answer {method} within {wait_s:.0f} s") from exc
         if "error" in message:
-            error = message["error"] or {}
+            error = message["error"]
+            if not isinstance(error, dict):
+                raise MCPError(f"{self.name}: {str(error)[:200] or 'error'}")
             raise MCPError(f"{self.name}: {error.get('message', 'error')} ({error.get('code')})")
-        return message.get("result") or {}
+        result = message.get("result") or {}
+        if not isinstance(result, dict):
+            raise MCPError(f"{self.name} answered {method} with something other than an object")
+        return result
 
     async def notify(self, method: str, params: dict[str, Any]) -> None:
         await self._send({"jsonrpc": "2.0", "method": method, "params": params})
@@ -240,6 +269,7 @@ class MCPManager:
         self._connections: dict[str, MCPConnection] = {}
         self._errors: dict[str, str] = {}
         self._tools: dict[str, list[str]] = {}
+        self._starting: asyncio.Task[None] | None = None
 
     @property
     def _conn(self) -> sqlite3.Connection:
@@ -266,9 +296,11 @@ class MCPManager:
         )
 
     async def start_all(self) -> None:
-        for row in self._rows():
-            if row["enabled"]:
-                await self._start(row)
+        await asyncio.gather(*(self._start(row) for row in self._rows() if row["enabled"]))
+
+    def start_in_background(self) -> None:
+        """At boot: Core must answer /health within the supervisor's timeout, and a server may take 20 s or more."""
+        self._starting = asyncio.create_task(self.start_all(), name="mcp-start")
 
     async def add(self, request: MCPServerRequest) -> MCPServerInfo:
         """From your UI session only: running a program is your decision, and it's audited."""
@@ -333,10 +365,16 @@ class MCPManager:
         try:
             await connection.start()
             tools = await connection.list_tools()
-        except MCPError as exc:
+        except asyncio.CancelledError:  # Core is stopping: don't leave the program running
             await connection.close()
-            self._errors[server_id] = str(exc)
-            log.warning("mcp_server_failed", server=name, error=str(exc))
+            raise
+        except Exception as exc:  # one broken server must not stop the others (or Core's boot)
+            await connection.close()
+            error = str(exc) if isinstance(exc, MCPError) else f"{name} failed to start ({type(exc).__name__})"
+            self._errors[server_id] = error
+            log.warning("mcp_server_failed", server=name, error=error)
+            if not isinstance(exc, MCPError):
+                self._ctx.record_exception(exc)
             return
         self._connections[server_id] = connection
         self._errors.pop(server_id, None)
@@ -357,6 +395,10 @@ class MCPManager:
             await connection.close()
 
     async def close(self) -> None:
+        if self._starting is not None:
+            self._starting.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._starting
         for server_id in list(self._connections):
             await self._stop(server_id)
 
