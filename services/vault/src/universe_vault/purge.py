@@ -104,15 +104,26 @@ def _own_version_files(conn: sqlite3.Connection, vault: Vault, item_id: str) -> 
     return own
 
 
+def _owns(conn: sqlite3.Connection, vault: Vault, row: sqlite3.Row, path: Path) -> bool:
+    """Whether the file at the item's path is still the item's own: in its trash folder, or not used by another
+    item and holding the item's bytes. An item trashed by older code for "deleted outside the app" kept its
+    original path, where the owner may since have put a different file."""
+    if (vault.trash / row["id"]).resolve() in path.parents:
+        return True
+    shared = conn.execute("SELECT 1 FROM items WHERE path = ? AND id != ?", (row["path"], row["id"])).fetchone()
+    return shared is None and path.is_file() and sha256_file(path) == row["content_hash"]
+
+
 def purge(conn: sqlite3.Connection, vault: Vault, vectors: VectorStore, item_id: str) -> bool:
     """Delete an item everywhere. Returns False if it didn't exist."""
     row = store.get_row(conn, item_id)
     if row is None:
         return False
     original = vault.abs(row["path"])
+    own = [original, sidecar_path(original)] if _owns(conn, vault, row, original) else []
     version_paths = _own_version_files(conn, vault, item_id)
     vectors.delete_item(item_id)
-    for path in {original, sidecar_path(original), vault.thumb_path(item_id), *version_paths}:
+    for path in {*own, vault.thumb_path(item_id), *version_paths}:
         if path.exists() and path.is_file():
             path.unlink()
     for directory in (vault.version_dir(item_id), vault.trash / item_id):

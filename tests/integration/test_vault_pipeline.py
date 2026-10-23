@@ -546,3 +546,46 @@ def test_opendocument_files_finish_with_extraction_skipped(rig: Rig, tmp_path: P
         stage = {s.stage: s for s in store.stages(rig.conn, row["id"])}["extract"]
         assert stage.status == "skipped" and "OpenDocument" in (stage.detail or ""), (row["path"], stage)
         assert row["pipeline_status"] == "done"
+
+
+def _legacy_deleted_outside(rig: Rig, hand: Path) -> str:
+    """An item trashed for "deleted outside the app" by code before 2026-10-23: it kept its original path."""
+    hand.parent.mkdir(parents=True, exist_ok=True)
+    hand.write_text("Put here by hand", encoding="utf-8")
+    _vault_file(rig, hand, "changed")
+    item_id = rig.conn.execute("SELECT id FROM items").fetchone()["id"]
+    hand.unlink()
+    rig.conn.execute(
+        "UPDATE items SET trashed_at = ?, metadata = json_set(metadata, '$.deleted_outside_app', json('true'))"
+        " WHERE id = ?",
+        ("2026-10-01T00:00:00Z", item_id),
+    )
+    return item_id
+
+
+def test_purge_never_deletes_a_file_that_isnt_the_items_own(rig: Rig) -> None:
+    """Regression: an item trashed by the old "deleted outside" code still points at its original path. If the
+    owner put a new file there, purging the old item deleted it. Purge now checks the bytes first."""
+    hand = rig.vault.root / "documents" / "hand-placed.txt"
+    item_id = _legacy_deleted_outside(rig, hand)
+    hand.write_text("The owner's new file, never imported", encoding="utf-8")
+    assert purge.purge(rig.conn, rig.vault, rig.ctx.vectors, item_id)
+    assert hand.read_text(encoding="utf-8") == "The owner's new file, never imported"
+
+
+def test_migration_moves_old_deleted_outside_items_out_of_the_way(rig: Rig) -> None:
+    """Regression: rows trashed by the old code kept their (UNIQUE) path, so a new file there could never be
+    imported. Migration 0009 moves them to their trash folder, as the new code stores them."""
+    from universe_core.db import migrations_dir
+
+    hand = rig.vault.root / "documents" / "hand-placed.txt"
+    item_id = _legacy_deleted_outside(rig, hand)
+    sql = (migrations_dir("universe") / "0009_deleted_outside_paths.up.sql").read_text(encoding="utf-8")
+    rig.conn.executescript(sql)
+    row = _row(rig.conn, item_id)
+    assert row["path"] == f".universe/trash/{item_id}/hand-placed.txt"
+    assert json.loads(row["metadata"])["trashed_from"] == "documents/hand-placed.txt"
+    hand.write_text("A new file with the same name", encoding="utf-8")
+    _vault_file(rig, hand, "changed")
+    live = rig.conn.execute("SELECT path FROM items WHERE trashed_at IS NULL").fetchall()
+    assert [r["path"] for r in live] == ["documents/hand-placed.txt"]
