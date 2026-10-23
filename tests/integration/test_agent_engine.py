@@ -285,6 +285,37 @@ def test_chat_runs_through_the_engine(api: Api) -> None:
     assert messages[-1]["task_id"] == task["id"]
 
 
+def test_taint_carries_over_to_later_turns_of_the_same_chat(api: Api) -> None:
+    """Regression: each chat turn started a new task untainted, but the conversation history it is given holds
+    the earlier turn's answer built from untrusted text (your notes), so injected instructions could steer a
+    later turn's tool calls without the taint rules applying."""
+    seed_notes(api)
+
+    def chat_task(conversation_id: str, replies: int) -> dict[str, Any]:
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            messages = api.get(f"/conversations/{conversation_id}/messages")
+            if len(messages) >= 2 * replies and messages[-1]["task_id"]:
+                return wait_task(api, messages[-1]["task_id"], DONE)
+            time.sleep(0.05)
+        raise AssertionError(f"no reply {replies} in conversation {conversation_id}")
+
+    text = "Find my notes about land deal and summarize them."
+    sent = api.post("/chat", {"text": text, "agent_id": "librarian"}, 202)
+    conversation_id = sent["conversation_id"]
+    first = chat_task(conversation_id, 1)
+    assert first["tainted"]  # it read your notes
+
+    follow_up = {"text": "Thanks. Anything else?", "conversation_id": conversation_id, "agent_id": "librarian"}
+    api.post("/chat", follow_up, 202)
+    later = chat_task(conversation_id, 2)
+    assert later["id"] != first["id"] and later["conversation_id"] == conversation_id
+    assert later["tainted"]
+
+    other = api.post("/chat", {"text": "Hello there", "agent_id": "librarian"}, 202)  # a new conversation starts clean
+    assert not chat_task(other["conversation_id"], 1)["tainted"]
+
+
 def test_mcp_tools_ask_first_and_their_output_is_untrusted(api: Api) -> None:
     server = str(__import__("pathlib").Path(__file__).resolve().parents[1] / "support" / "mcp_demo_server.py")
     api.post("/mcp/servers", {"name": "demo", "command": sys.executable, "args": [server]}, 201)

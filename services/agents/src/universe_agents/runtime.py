@@ -267,6 +267,8 @@ class AgentRuntime:
             result = ToolResult(f"Error: {tool.name} timed out after {tool.timeout_s:.0f} s", error=True)
         except (ValueError, LookupError, PermissionError, OSError) as exc:
             result = ToolResult(f"Error: {exc}", error=True)
+        except Exception as exc:  # a bug in the tool: still traced and audited below, and the task carries on
+            result = ToolResult(f"Error: {tool.name} failed unexpectedly ({type(exc).__name__}: {exc})", error=True)
         if tool.side_effects and not result.error:
             state.used_side_effects = True
         if result.untrusted and not state.tainted:

@@ -226,9 +226,18 @@ class AgentEngine:
         correlation_id: str | None,
     ) -> TaskState:
         task_id = uuid7()
+        # A specialist working for a tainted task starts tainted: what it was told came from untrusted text. So
+        # does a later turn of a conversation an earlier turn tainted: the history it is given carries that text.
+        tainted = bool(parent and parent.tainted) or (
+            conversation_id is not None
+            and self._conn.execute(
+                "SELECT 1 FROM agent_tasks WHERE conversation_id = ? AND tainted = 1 LIMIT 1", (conversation_id,)
+            ).fetchone()
+            is not None
+        )
         self._conn.execute(
             "INSERT INTO agent_tasks (id, parent_id, conversation_id, agent_id, title, input, status, correlation_id,"
-            " created_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+            " tainted, created_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
             (
                 task_id,
                 parent.task_id if parent else None,
@@ -237,15 +246,12 @@ class AgentEngine:
                 instruction.splitlines()[0][:80] if instruction.strip() else agent.name,
                 instruction,
                 correlation_id,
+                int(tainted),
                 utcnow(),
             ),
         )
-        # A specialist working for a tainted task starts tainted: what it was told came from untrusted text.
         return TaskState(
-            task_id=task_id,
-            agent_id=agent.id,
-            parent_id=parent.task_id if parent else None,
-            tainted=bool(parent and parent.tainted),
+            task_id=task_id, agent_id=agent.id, parent_id=parent.task_id if parent else None, tainted=tainted
         )
 
     def _agent(self, agent_id: str) -> AgentDefinition:
