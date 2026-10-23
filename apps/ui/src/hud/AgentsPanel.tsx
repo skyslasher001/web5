@@ -4,9 +4,9 @@ import type { AgentTask, Memory, TaskStep } from '@universe/shared-types';
 import { tokens } from '@universe/design-tokens';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Pencil, Play, Square, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApi } from '../lib/api-context';
-import { attempt } from '../lib/attempt';
+import { attempt, startOnce } from '../lib/attempt';
 import { timeAgo } from '../lib/format';
 import { useEngine, useMemories, useTask, useTasks } from '../lib/queries';
 import { useUniverse } from '../state/store';
@@ -65,20 +65,22 @@ function RunForm() {
   const engine = useEngine();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const ready = !!engine.data?.available && !engine.data.killswitch_engaged;
   const run = () => {
     const instruction = text.trim();
     if (!instruction || !ready) return;
+    const started = startOnce(inFlight, () =>
+      api.runAgent(agentId, instruction).then((r) => {
+        setText('');
+        selectTask(r.task_id);
+      }),
+    );
+    if (!started) return; // Ctrl+Enter again while the first run is starting
     setBusy(true);
     attempt(
       'Run agent',
-      api
-        .runAgent(agentId, instruction)
-        .then((r) => {
-          setText('');
-          selectTask(r.task_id);
-        })
-        .finally(() => setBusy(false)),
+      started.finally(() => setBusy(false)),
     );
   };
   return (

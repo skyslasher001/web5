@@ -5,9 +5,9 @@ import type { Watchlist } from '@universe/shared-types';
 import { tokens } from '@universe/design-tokens';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Globe, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApi } from '../lib/api-context';
-import { attempt } from '../lib/attempt';
+import { attempt, startOnce } from '../lib/attempt';
 import { timeAgo } from '../lib/format';
 import { useEngine, useSentRequests, useWatchlists } from '../lib/queries';
 import { useUniverse } from '../state/store';
@@ -17,16 +17,23 @@ function Ask({ blocked, reason }: { blocked: boolean; reason: string }) {
   const api = useApi();
   const [q, setQ] = useState('');
   const [mode, setMode] = useState<'quick' | 'deep'>('quick');
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const ask = () => {
     const text = q.trim();
     if (text.length < 2 || blocked) return;
-    attempt(
-      'Research',
+    const started = startOnce(inFlight, () =>
       api.research(text, mode).then((r) => {
         useUniverse.getState().addNotice('info', 'Researcher is on it: follow it in Agents → Tasks');
         useUniverse.getState().selectTask(r.task_id);
         setQ('');
       }),
+    );
+    if (!started) return; // a second click while the first question is being sent
+    setBusy(true);
+    attempt(
+      'Research',
+      started.finally(() => setBusy(false)),
     );
   };
   return (
@@ -56,7 +63,7 @@ function Ask({ blocked, reason }: { blocked: boolean; reason: string }) {
             </button>
           ))}
         </div>
-        <Button onClick={ask} disabled={blocked || q.trim().length < 2} testid="research-send">
+        <Button onClick={ask} disabled={blocked || busy || q.trim().length < 2} testid="research-send">
           <Search className="size-3.5" aria-hidden /> Research
         </Button>
       </div>
