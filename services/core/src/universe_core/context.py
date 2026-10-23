@@ -182,6 +182,7 @@ class CoreContext:
             publish=lambda event_type, payload: ctx.bus.publish(event_type, payload),
             record_error=ctx.record_exception,
         )
+        BackupService.recover_after_restart(dbs.universe)
         ensure_seed_galaxies(dbs.universe, bus)
         ctx.memory = MemoryStore(dbs.universe)
         for tool in builtin_tools(ctx):

@@ -1,13 +1,20 @@
 """UUIDv7 ids (RFC 9562): time-ordered, generated anywhere, stored as TEXT."""
 
 import os
+import re
 import threading
 import time
 import uuid
 
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _lock = threading.Lock()
 _last_ms = 0
 _counter = 0
+
+
+def is_uuid(value: object) -> bool:
+    """A canonical lowercase UUID string, the form every id UNIVERSE makes takes (safe in a file name)."""
+    return isinstance(value, str) and _UUID.fullmatch(value) is not None
 
 
 def uuid7() -> str:

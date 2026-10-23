@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from universe_common.errors import fingerprint_from_text
-from universe_common.ids import uuid7
+from universe_common.ids import is_uuid, uuid7
 from universe_common.schema import ApiModel
 from universe_common.sqlite import transaction
 from universe_common.timeutil import utcnow
@@ -397,6 +397,8 @@ async def reprocess_item(ctx: Ctx, item_id: str) -> Item:
 
 @router.get("/items/{item_id}/thumbnail", response_class=FileResponse)
 async def item_thumbnail(ctx: Ctx, item_id: str) -> FileResponse:
+    if not is_uuid(item_id):  # the id becomes a file name: never let `..\` (Windows) or `/` into it
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail")
     path = ctx.vault.thumb_path(item_id)
     if not path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail")
@@ -521,6 +523,7 @@ async def capture_files(
         for upload in files:
             name = Path(upload.filename or "upload").name or "upload"
             dest = staging / f"{uuid7()}{Path(name).suffix}"
+            staged.append((dest, name))  # before writing, so a file cut short is cleaned up too
             size = 0
             with dest.open("wb") as out:
                 while chunk := await upload.read(1024 * 1024):
@@ -528,10 +531,8 @@ async def capture_files(
                     if size > MAX_UPLOAD_BYTES:
                         raise HTTPException(413, f"{name} is larger than 2 GB")
                     out.write(chunk)
-            staged.append((dest, name))
     except BaseException:
-        for path, _name in staged:
-            path.unlink(missing_ok=True)
+        _discard(staged)
         raise
 
     def queue(conn: sqlite3.Connection) -> int:
@@ -555,7 +556,17 @@ async def capture_files(
                 )
         return len(staged)
 
-    return CaptureResult(queued_files=await ctx.vdb.run(queue), status="queued")
+    try:
+        queued = await ctx.vdb.run(queue)
+    except BaseException:  # nothing was queued (one transaction), so nothing will import and delete them
+        _discard(staged)
+        raise
+    return CaptureResult(queued_files=queued, status="queued")
+
+
+def _discard(staged: list[tuple[Path, str]]) -> None:
+    for path, _name in staged:
+        path.unlink(missing_ok=True)
 
 
 # ---------- search and recall ----------

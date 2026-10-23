@@ -280,3 +280,41 @@ def test_item_pages_walk_everything_once_and_count_on_the_first_page(api: Api) -
         cursor = page["next_cursor"]
     assert len(seen) == len(set(seen)) == 5
     assert api.get("/items", params={"type": "pdf"})["total"] == 0  # the count follows the filters
+
+
+# ---------- review 2026-10-22: regressions ----------
+
+
+def test_an_upload_that_is_too_large_leaves_nothing_behind(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The file being written when the size limit hit wasn't in the cleanup list yet: it stayed in the cache."""
+    from universe_core import vault_api
+
+    monkeypatch.setattr(vault_api, "MAX_UPLOAD_BYTES", 10)
+    response = api.client.post(
+        "/api/v1/capture/files",
+        files=[("files", ("small.txt", b"ok", "text/plain")), ("files", ("big.txt", b"x" * 100, "text/plain"))],
+        headers=AUTH,
+    )
+    assert response.status_code == 413
+    assert not list((api.vault.cache / "uploads").iterdir())
+
+
+def test_an_upload_that_cannot_be_queued_leaves_nothing_behind(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    from universe_core import vault_api
+
+    def broken(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("the job queue is unavailable")
+
+    monkeypatch.setattr(vault_api.jobs, "enqueue", broken)
+    with pytest.raises(RuntimeError, match="job queue"):
+        api.client.post("/api/v1/capture/files", files={"files": ("a.txt", b"hello", "text/plain")}, headers=AUTH)
+    assert not list((api.vault.cache / "uploads").iterdir())
+
+
+def test_a_thumbnail_id_must_be_an_item_id(api: Api) -> None:
+    """The id went straight into the file path; on Windows `..%5C` (a backslash) walks out of the thumbnails."""
+    api.vault.thumbs.mkdir(parents=True, exist_ok=True)
+    # On Linux a backslash is an ordinary character, so plant the file Windows would reach through `..\`.
+    (api.vault.thumbs / "..\\secret.webp").write_bytes(b"not a thumbnail")
+    response = api.client.get("/api/v1/items/..%5Csecret/thumbnail", headers=AUTH)
+    assert response.status_code == 404

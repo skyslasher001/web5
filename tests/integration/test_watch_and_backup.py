@@ -282,3 +282,33 @@ def test_backup_restore_and_verify_with_restic(rig: Rig, tmp_path: Path, memory_
         "/api/v1/backups/config", json={"target": str(repo), "password": "not the right password"}, headers=AUTH
     )
     assert wrong.status_code == 400 and "password" in wrong.json()["detail"]
+
+
+# ---------- review 2026-10-22: regressions ----------
+
+
+def test_a_backup_cut_off_by_a_restart_is_marked_failed(
+    make_settings: Callable[..., CoreSettings], fake_ollama: FakeOllama
+) -> None:
+    """A backup left 'running' by a crash or shutdown stayed running forever and counted as today's backup."""
+    import json
+
+    from universe_common.timeutil import utcnow
+
+    settings = make_settings()
+    with TestClient(create_app(settings), base_url=BASE) as c:
+        conn = c.app.state.ctx.dbs.universe  # type: ignore[attr-defined]
+        config = {"target": "/backups/universe", "enabled": True, "schedule_hour": 0}
+        conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES ('backup.config', ?, ?)",
+            (json.dumps(config), utcnow()),
+        )
+        conn.execute(
+            "INSERT INTO backups (id, kind, target, status, started_at) VALUES ('cut-off', 'manual', ?, 'running', ?)",
+            (config["target"], utcnow()),
+        )
+    with TestClient(create_app(settings), base_url=BASE) as c:
+        ctx = c.app.state.ctx  # type: ignore[attr-defined]
+        [row] = c.get("/api/v1/backups", headers=AUTH).json()
+        assert row["status"] == "failed" and "interrupted" in (row["error"] or "") and row["finished_at"]
+        assert ctx.backups._due(ctx.dbs.universe, datetime.now().astimezone())  # today's backup is still due

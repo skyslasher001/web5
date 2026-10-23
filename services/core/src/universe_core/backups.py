@@ -131,6 +131,16 @@ class BackupService:
             last_success=_record(success),
         )
 
+    @staticmethod
+    def recover_after_restart(conn: sqlite3.Connection) -> None:
+        """At boot nothing is backing up yet: a row still 'running' was cut off by a crash or shutdown. Left
+        alone it stayed running forever and counted as today's backup, so the scheduled one never ran."""
+        conn.execute(
+            "UPDATE backups SET status = 'failed', error = 'interrupted by a restart of Core', finished_at = ?"
+            " WHERE status = 'running'",
+            (utcnow(),),
+        )
+
     @property
     def running(self) -> bool:
         return self._task is not None and not self._task.done()

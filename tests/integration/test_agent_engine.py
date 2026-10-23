@@ -395,11 +395,13 @@ def test_stopping_a_specialist_does_not_stop_the_task_that_delegated(api: Api) -
     async def scenario() -> tuple[bool, str | None]:
         # The specialist (Core, which may use MCP tools) waits for your OK; then you stop just the specialist.
         outer = asyncio.create_task(engine.run("core", "[[mcp]] add 2 and 3", parent=parent))
+        pending = []
         for _ in range(400):
             pending = engine.approvals("pending")
             if pending:
                 break
             await asyncio.sleep(0.05)
+        assert pending, "the specialist never asked for approval"
         child_id = pending[0].task_id
         assert child_id != parent.task_id
         assert engine.cancel(child_id)

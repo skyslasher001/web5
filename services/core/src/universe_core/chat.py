@@ -4,7 +4,6 @@ Each turn is one agent task: agent.started → chat.started → chat.token… �
 """
 
 import asyncio
-import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -14,7 +13,7 @@ from universe_agents.providers import ChatMessage, ChatProvider, ProviderError
 from universe_agents.registry import AgentDefinition
 from universe_agents.router import ModelRouter, NoModelAvailable
 from universe_common.errors import capture_exception
-from universe_common.ids import uuid7
+from universe_common.ids import is_uuid, uuid7
 from universe_common.log import get_logger
 from universe_common.schema import ApiModel
 from universe_common.timeutil import utcnow
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 MAX_INPUT_CHARS = 20_000
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 HISTORY_MESSAGES = 30
 HISTORY_CHARS = 24_000
 
@@ -130,7 +128,7 @@ class ChatService:
         )
         if not exists:
             # Clients may name a new conversation (a UUID) so they can match its events immediately.
-            if conversation_id is not None and not _UUID.match(conversation_id):
+            if conversation_id is not None and not is_uuid(conversation_id):
                 raise ChatError("Unknown conversation")
             conversation_id = conversation_id or uuid7()
             title = text.splitlines()[0][:60]

@@ -183,3 +183,46 @@ def test_a_failing_page_watch_waits_for_its_interval(api: Api) -> None:
     [row] = [w for w in api.get("/watchlists") if w["id"] == created["id"]]
     assert row["last_checked_at"] is not None and "check failed" in (row["last_summary"] or "")
     assert created["id"] not in [r["id"] for r in runner.store.due(row["last_checked_at"])]
+
+
+# ---------- review 2026-10-22: regressions ----------
+
+
+def test_check_now_on_a_dead_page_is_a_plain_error(api: Api) -> None:
+    """'Check now' on a page that 404s (or times out, or is refused) answered 500."""
+    dead = f"{api.search.url}/no-such-page"  # type: ignore[attr-defined]
+    created = api.post("/watchlists", {"kind": "page", "target": dead}, 201)
+    response = api.client.post(f"/api/v1/watchlists/{created['id']}/check", headers=AUTH)
+    assert response.status_code == 502, response.text
+    assert "couldn't check" in response.json()["detail"]
+    [row] = [w for w in api.get("/watchlists") if w["id"] == created["id"]]
+    assert row["last_checked_at"] is not None and "check failed" in (row["last_summary"] or "")
+
+
+def test_check_now_on_a_refused_page_is_a_plain_error(api: Api) -> None:
+    created = api.post("/watchlists", {"kind": "page", "target": "https://example.com/"}, 201)
+    ctx = api.client.app.state.ctx  # type: ignore[attr-defined]
+    settings = ctx.settings
+    ctx.settings = dataclasses.replace(settings, research_allow_private_fetch=False)
+    ctx.dbs.universe.execute(  # a page on this machine: the researcher only reads public pages
+        "UPDATE watchlists SET target = ? WHERE id = ?", ("http://127.0.0.1:9/", created["id"])
+    )
+    try:
+        response = api.client.post(f"/api/v1/watchlists/{created['id']}/check", headers=AUTH)
+    finally:
+        ctx.settings = settings
+    assert response.status_code == 422, response.text
+    assert "private" in response.json()["detail"]
+
+
+def test_a_topic_that_finds_nothing_is_not_a_change(api: Api) -> None:
+    """An empty results page (often a rate limit) became the new fingerprint, so the next real check was a hit."""
+    wid = api.post("/watchlists", {"kind": "topic", "target": "local-first"}, 201)["id"]
+    api.search.results = ["alpha"]  # type: ignore[attr-defined]
+    api.post(f"/watchlists/{wid}/check")  # baseline
+    api.search.results = []  # type: ignore[attr-defined]
+    empty = api.post(f"/watchlists/{wid}/check")
+    assert "no results" in (empty["last_summary"] or "")
+    api.search.results = ["alpha"]  # type: ignore[attr-defined] — same as before the empty page
+    api.post(f"/watchlists/{wid}/check")
+    assert api.get(f"/watchlists/{wid}/hits") == []

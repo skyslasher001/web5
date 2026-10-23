@@ -8,14 +8,17 @@ instruction, the watchlist CRUD, and a read-only view of the egress audit for th
 import sqlite3
 from typing import Annotated, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from universe_common.egress import EgressDenied
 from universe_common.schema import ApiModel
+from universe_common.timeutil import utcnow
 from universe_core.agent_engine import EngineUnavailable
 from universe_core.context import CoreContext
 from universe_core.watchlists import WatchlistStore, check_one
+from universe_research.fetch import FetchRefused
 
 router = APIRouter(prefix="/api/v1")
 
@@ -204,6 +207,19 @@ async def check_watchlist(ctx: Ctx, watchlist_id: str) -> Watchlist:
         await check_one(ctx, store, row)
     except EgressDenied as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    except FetchRefused as exc:
+        store.record_failure(watchlist_id, f"check failed: {exc}"[:500], utcnow())
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"UNIVERSE couldn't check this: {exc}") from exc
+    except (httpx.HTTPError, TimeoutError) as exc:
+        why = "it took too long" if isinstance(exc, TimeoutError) else _http_reason(exc)
+        store.record_failure(watchlist_id, f"check failed: {type(exc).__name__}", utcnow())
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"UNIVERSE couldn't check this: {why}") from exc
     refreshed = store.get(watchlist_id)
     assert refreshed is not None
     return _to_model(store, refreshed)
+
+
+def _http_reason(exc: httpx.HTTPError) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"the site answered {exc.response.status_code}"
+    return f"the site couldn't be reached ({type(exc).__name__})"

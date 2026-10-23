@@ -106,8 +106,12 @@ async def check_one(ctx: CoreContext, store: WatchlistStore, row: sqlite3.Row) -
     if row["kind"] == "topic":
         async with asyncio.timeout(60):
             results = await run_search(ctx, "agent:researcher", target, 8, use_cache=False)
+        if not results:
+            # An empty page is often a rate limit, not an answer: keep the last results to compare against.
+            store.record_failure(row["id"], "no results this time; will check again", checked_at)
+            return False
         fp = fingerprint([r.url for r in results])
-        summary = f"{len(results)} result(s); top: {results[0].title}" if results else "no results"
+        summary = f"{len(results)} result(s); top: {results[0].title}"
         detail = "\n".join(f"- {r.title} — {r.url}" for r in results[:8])
     else:
         async with ctx.gate.async_client(purpose="research:watch", actor="agent:researcher") as client:
