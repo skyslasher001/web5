@@ -1,6 +1,6 @@
 import type { ItemSummary, RecallResult, SearchHit } from '@universe/shared-types';
 import { describe, expect, it } from 'vitest';
-import { actionForRecall, actionForRow, parseCapture, rowsFor } from './logic';
+import { actionForRecall, actionForRow, parseCapture, rowForEnter, rowsFor } from './logic';
 
 function hit(id: string, title = id): SearchHit {
   return { item: { id, title } as ItemSummary, score: 1, snippet: null, matched: ['title'] };
@@ -33,6 +33,16 @@ describe('command bar rows', () => {
     expect(actionForRow(row, false)).toEqual({ kind: 'open', itemId: 'a' });
     expect(actionForRow(row, true)).toEqual({ kind: 'focus', target: { kind: 'item', id: 'a' } });
     expect(actionForRow({ kind: 'capture', text: 'idea' }, false)).toEqual({ kind: 'capture', text: 'idea' });
+  });
+  it("never runs Enter on the previous query's hits while the new ones load", () => {
+    // Typed "tax", then "taxi": until "taxi" answers, the list still holds the hits for "tax".
+    const rows = rowsFor('taxi', [hit('tax-return')]);
+    expect(rowForEnter(rows, 0, false, true, false)).toBeNull(); // Ctrl+Enter: recall decides instead
+    expect(rowForEnter(rows, 0, true, false, false)).toBeNull();
+    expect(rowForEnter(rows, 1, true, false, false)).toEqual({ kind: 'capture', text: 'taxi' });
+    // Once the hits answer what's typed, Ctrl+Enter shows the highlighted one.
+    expect(rowForEnter(rows, 0, false, true, true)).toBe(rows[0]);
+    expect(rowForEnter(rows, 0, false, false, true)).toBeNull(); // plain Enter without picking: recall
   });
 });
 

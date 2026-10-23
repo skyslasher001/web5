@@ -23,6 +23,23 @@ export function actionForRow(row: Row, reveal: boolean): BarAction {
   return reveal ? { kind: 'focus', target: { kind: 'item', id } } : { kind: 'open', itemId: id };
 }
 
+/**
+ * The row Enter runs: the highlighted one when it was picked with the arrows or Ctrl+Enter asks to show it,
+ * else null (the recall grammar decides). `fresh` is false while the list still holds the previous query's
+ * hits (the new search hasn't answered): those hits are never run, only the capture row (always current).
+ */
+export function rowForEnter(
+  rows: Row[],
+  active: number,
+  picked: boolean,
+  reveal: boolean,
+  fresh: boolean,
+): Row | null {
+  const row = rows[active];
+  if (!row || !(picked || reveal)) return null;
+  return row.kind === 'hit' && !fresh ? null : row;
+}
+
 /** Enter without picking a row: what the recall grammar understood ("open …", "go to …", "show …"). */
 export function actionForRecall(result: RecallResult, query: string): BarAction {
   if (result.action === 'show_project' && result.target_id) {

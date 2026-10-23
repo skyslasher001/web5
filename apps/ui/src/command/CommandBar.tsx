@@ -20,7 +20,15 @@ import { formatDate, ITEM_TYPES, splitMarks } from '../lib/itemTypes';
 import { useDebounced } from '../lib/queries';
 import { Kbd } from '../hud/ui';
 import { TypeGlyph } from '../views2d/ItemVisual';
-import { actionForRecall, actionForRow, parseCapture, rowsFor, type BarAction, type Row } from './logic';
+import {
+  actionForRecall,
+  actionForRow,
+  parseCapture,
+  rowForEnter,
+  rowsFor,
+  type BarAction,
+  type Row,
+} from './logic';
 
 type Mode = 'search' | 'capture';
 type Status = { tone: 'info' | 'good' | 'bad'; text: string } | null;
@@ -108,6 +116,8 @@ function CommandBar() {
   const rows = rowsFor(query, hits);
   const active = cursor.q === q ? Math.min(cursor.index, Math.max(0, rows.length - 1)) : 0;
   const picked = cursor.q === q && cursor.picked; // the user moved the highlight with the arrows
+  // The hits answer what's typed now (not the previous query's, kept on screen while the new one loads).
+  const fresh = q === query.trim() && results.isSuccess && !results.isPlaceholderData;
 
   useEffect(() => {
     const focus = (next: Mode) => {
@@ -175,8 +185,8 @@ function CommandBar() {
   const enter = async (reveal: boolean) => {
     const text = query.trim();
     if (!text) return;
-    const row = rows[active];
-    if (row && (picked || reveal)) return run(actionForRow(row, reveal));
+    const row = rowForEnter(rows, active, picked, reveal, fresh);
+    if (row) return run(actionForRow(row, reveal));
     setBusy(true);
     try {
       const result = await api.recall(text);
