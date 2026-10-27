@@ -1,0 +1,12 @@
+# Keep LF everywhere, including Windows checkouts: Prettier, the generated-file drift checks and the
+# migration checksums all compare exact bytes, and Git's default autocrlf on Windows would break them.
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.gguf binary
+*.db binary

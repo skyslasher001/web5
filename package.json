@@ -1,35 +1,42 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "universe",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json"
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=22.12"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.57.4",
-    "lucide-react": "^0.344.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "pnpm build && node scripts/dev.mjs --prod",
+    "build": "pnpm --filter @universe/design-tokens build && pnpm --filter @universe/ui build && pnpm --filter @universe/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint --max-warnings=0 . && prettier --check .",
+    "check:generated": "node packages/design-tokens/build.mjs --check && node scripts/gen-types.mjs --check",
+    "format": "prettier --write .",
+    "test": "pnpm test:py && pnpm test:js",
+    "test:py": "uv run pytest",
+    "test:js": "vitest run",
+    "test:e2e": "playwright test",
+    "gen:types": "node scripts/gen-types.mjs",
+    "tokens": "node packages/design-tokens/build.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm check:generated && uv run ruff check && uv run ruff format --check && uv run pyright && pnpm test",
+    "bench:universe": "node scripts/universe_bench.mjs",
+    "handoff": "uv run python scripts/export_handoff.py"
   },
   "devDependencies": {
-    "@eslint/js": "^9.9.1",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "autoprefixer": "^10.4.18",
-    "eslint": "^9.9.1",
-    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
-    "eslint-plugin-react-refresh": "^0.4.11",
-    "globals": "^15.9.0",
-    "postcss": "^8.4.35",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.5.3",
-    "typescript-eslint": "^8.3.0",
-    "vite": "^5.4.2"
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.19.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "17.13.0",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vitest": "5.0.4"
   }
 }

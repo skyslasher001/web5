@@ -1,0 +1,20 @@
+import { describe, expect, it } from 'vitest';
+import { staleQueriesFor } from './queryClient';
+
+describe('engine query refresh', () => {
+  it('maps events to the views they change', () => {
+    expect(staleQueriesFor('approval.requested')).toContain('approvals');
+    expect(staleQueriesFor('agent.step')).toEqual(['task']);
+    expect(staleQueriesFor('agent.completed')).toEqual(expect.arrayContaining(['tasks', 'budget']));
+    expect(staleQueriesFor('killswitch.engaged')).toContain('engine');
+    expect(staleQueriesFor('memory.proposed')).toEqual(['memories']);
+    expect(staleQueriesFor('item.created')).toEqual([]);
+    // The roster's stats and list follow agent events (a task finished, an agent added or turned off).
+    expect(staleQueriesFor('agent.completed')).toContain('roster');
+    expect(staleQueriesFor('agent.added')).toContain('roster');
+    // Voice: the process, settings and model installs refresh the Voice panel; mic levels never do.
+    expect(staleQueriesFor('voice.service.changed')).toEqual(['voice']);
+    expect(staleQueriesFor('voice.model.progress')).toEqual(['voice']);
+    expect(staleQueriesFor('voice.level')).toEqual([]);
+  });
+});

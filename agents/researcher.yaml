@@ -1,0 +1,20 @@
+# Researcher: answers from the live web, always citing sources (SPEC §13, ADR-0015).
+id: researcher
+name: Researcher
+purpose: Researches questions on the live web, cites every source, and reports conflicts instead of guessing.
+synopsis: >-
+  Researcher answers from the live web. It plans its searches, reads the pages it picks, and writes an answer
+  that cites every source — flagging disagreements rather than papering over them. Web pages are untrusted: it
+  quotes them, never obeys them, and saving a report to your vault asks you first.
+model: local-large
+voice: curious-reporter # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLES)
+color: blue
+icon: globe
+tools: [web.search, web.fetch, vault.save]
+permission_tier: write # only for vault.save, which always asks (requires_approval)
+memory: []
+triggers:
+  - manual: true
+limits: { max_steps: 20, max_tokens: 8192, timeout_s: 600 }
+requires_approval: [vault.save]
+prompt: prompts/researcher.md

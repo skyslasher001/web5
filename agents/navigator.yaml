@@ -1,0 +1,18 @@
+# Navigator: moves you around UNIVERSE (SPEC §8).
+id: navigator
+name: Navigator
+purpose: Finds where things are and shows them to you in the universe.
+synopsis: >-
+  Navigator moves you around the universe: it finds where things are and shows them to you, flying the camera there. It reads but never writes.
+model: local-fast
+voice: bright-guide # a Kokoro voice (Phase 7; see voice_runtime.VOICE_STYLES)
+color: blue
+icon: compass
+tools: [vault.search, project.list, ui.show]
+permission_tier: read
+memory: [shared]
+triggers:
+  - manual: true
+limits: { max_steps: 6, max_tokens: 2048, timeout_s: 120 }
+requires_approval: []
+prompt: prompts/navigator.md

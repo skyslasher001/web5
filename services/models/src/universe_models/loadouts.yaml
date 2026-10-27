@@ -1,0 +1,50 @@
+# Model loadout candidates per hardware tier (ARCHITECTURE.md §2.3).
+# Ordered best-first. Nothing here is a hard default: the router uses what is installed,
+# and the owner can pick any installed model from the System panel.
+#
+# Provenance: web search on 2026-10-12. Hugging Face and ollama.com were not reachable from the
+# build environment, so tags, sizes and licenses must be re-checked against the model cards
+# (`verified: false`). Sizes are the approximate download sizes reported for Ollama.
+checked: "2026-10-12"
+verified: false
+source: "web search 2026-10-12 (Ollama library listings via search results); model cards not checked"
+
+tiers:
+  cpu:
+    label: "CPU-only"
+    local-fast:
+      - { tag: "gemma4:e2b", family: "Gemma 4 E2B", license: "Apache-2.0", approx_download_gb: 7.2 }
+    local-large:
+      - { tag: "gemma4:e4b", family: "Gemma 4 E4B", license: "Apache-2.0", approx_download_gb: 9.6 }
+  le-8gb:
+    label: "GPU with up to ~10 GB VRAM"
+    local-fast:
+      - { tag: "gemma4:e4b", family: "Gemma 4 E4B", license: "Apache-2.0", approx_download_gb: 9.6 }
+      - { tag: "qwen3-vl:8b", family: "Qwen3-VL 8B", license: "Apache-2.0", approx_download_gb: 6.0 }
+    local-large:
+      - { tag: "qwen3-vl:8b", family: "Qwen3-VL 8B", license: "Apache-2.0", approx_download_gb: 6.0 }
+  12-16gb:
+    label: "GPU with 12–16 GB VRAM"
+    local-fast:
+      - { tag: "gemma4:e4b", family: "Gemma 4 E4B", license: "Apache-2.0", approx_download_gb: 9.6 }
+    local-large:
+      - { tag: "gpt-oss:20b", family: "gpt-oss 20B", license: "Apache-2.0", approx_download_gb: 14.0 }
+      - { tag: "gemma4:26b", family: "Gemma 4 26B-A4B (MoE)", license: "Apache-2.0", approx_download_gb: 18.0 }
+  24gb-plus:
+    label: "GPU with 24 GB+ VRAM"
+    local-fast:
+      - { tag: "gemma4:e4b", family: "Gemma 4 E4B", license: "Apache-2.0", approx_download_gb: 9.6 }
+    local-large:
+      - { tag: "qwen3.8:27b", family: "Qwen3.8 27B", license: "Apache-2.0", approx_download_gb: 18.0 }
+      - { tag: "gemma4:31b", family: "Gemma 4 31B", license: "Apache-2.0", approx_download_gb: 20.0 }
+      - { tag: "qwen3.6:35b-a3b", family: "Qwen3.6 35B-A3B (MoE)", license: "Apache-2.0", approx_download_gb: null }
+
+# Roles that later phases use. Shown for planning only; not installed or used in Phase 1.
+later_roles:
+  embed_text: { phase: 2, candidates: ["nomic-embed-text (CPU tier)", "Qwen3-Embedding-0.6B"] }
+  rerank: { phase: 2, candidates: ["bge-reranker-v2-m3", "Qwen3-Reranker-0.6B"] }
+  embed_image: { phase: 2, candidates: ["SigLIP 2 base/16", "SigLIP 2 so400m"] }
+  vision: { phase: 8, candidates: ["Qwen3-VL 4B/8B", "Gemma 4 E2B/E4B", "Qwen3.8 27B (24 GB+)"] }
+  stt: { phase: 7, candidates: ["faster-whisper large-v3-turbo", "faster-whisper small.en (CPU)"] }
+  tts: { phase: 7, candidates: ["Kokoro-82M"] }
+  ocr: { phase: 2, candidates: ["RapidOCR PP-OCRv5"] }
