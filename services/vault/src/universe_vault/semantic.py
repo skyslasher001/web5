@@ -47,10 +47,12 @@ def _kmeans(z: np.ndarray, k: int, rng: np.random.Generator) -> tuple[np.ndarray
     labels = np.zeros(n, dtype=np.int64)
     for _ in range(ITERATIONS):
         labels = _assign(z, c)
-        for j in range(k):
-            members = z[labels == j]
-            if len(members):
-                c[j] = members.mean(axis=0)
+        # Every centre at once (one boolean mask per cluster per iteration was a quarter of the layout's time).
+        sums = np.zeros_like(c)
+        np.add.at(sums, labels, z)
+        sizes = np.bincount(labels, minlength=k)
+        filled = sizes > 0  # an empty cluster keeps its centre
+        c[filled] = sums[filled] / sizes[filled, None]
     return c, _assign(z, c)
 
 
@@ -65,17 +67,22 @@ def _assign(z: np.ndarray, c: np.ndarray, chunk: int = 8192) -> np.ndarray:
 
 def layout(vectors: Any) -> np.ndarray:
     """(n, 3) float32 positions for (n, dim) vectors."""
-    x = np.asarray(vectors, dtype=np.float64)
+    # The input is never copied whole: at 50k × 1024 one float64 copy is 400 MB, and filling fresh memory
+    # was most of the time on CI's Windows runner (2026-10-27). Project first, then divide by the norms:
+    # (x / |x|) @ R == (x @ R) / |x|, so the cosine geometry is the same.
+    x = np.asarray(vectors)
+    if x.dtype not in (np.float32, np.float64):
+        x = x.astype(np.float64)
     n = x.shape[0]
     if n == 0:
         return np.zeros((0, 3), dtype=np.float32)
     if n == 1:
         return np.array([[RADIUS * 0.3, 0.0, 0.0]], dtype=np.float32)
     rng = np.random.default_rng(SEED)
-    norms = np.linalg.norm(x, axis=1, keepdims=True)
-    x = x / np.where(norms == 0, 1, norms)  # cosine geometry, like search
+    norms = np.sqrt(np.einsum("ij,ij->i", x, x, dtype=np.float64))[:, None]
     if x.shape[1] > PROJECTED:
-        x = x @ (rng.standard_normal((x.shape[1], PROJECTED)) / math.sqrt(PROJECTED))
+        x = x @ (rng.standard_normal((x.shape[1], PROJECTED)) / math.sqrt(PROJECTED)).astype(x.dtype)
+    x = x.astype(np.float64) / np.where(norms == 0, 1, norms)  # cosine geometry, like search
     z = _pca(x, COMPONENTS)
     k = int(min(MAX_CLUSTERS, max(1, round(math.sqrt(n / 2)))))
     centres, labels = _kmeans(z, k, rng)

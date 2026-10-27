@@ -41,3 +41,19 @@ def test_probe_targets_from_tool_arguments() -> None:
     assert step_target('{"project": "DevMind"}') == {"kind": "project", "id": "DevMind"}
     assert step_target('{"query": "land"}') is None
     assert step_target("not json") is None and step_target('{"item_ids": 7}') is None and step_target(None) is None
+
+
+def test_the_layout_never_copies_its_input_whole() -> None:
+    """At 50k x 1024 one float64 copy is 400 MB, and filling fresh memory was most of the layout's time on CI's
+    Windows runner (2026-10-27). It used to make float64 and normalised copies: a peak of 4x the input."""
+    import tracemalloc
+
+    vectors = np.random.default_rng(1).standard_normal((20000, 1024)).astype(np.float32)
+    tracemalloc.start()
+    try:
+        positions = layout(vectors)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert positions.shape == (20000, 3) and np.isfinite(positions).all()
+    assert peak < 2 * vectors.nbytes

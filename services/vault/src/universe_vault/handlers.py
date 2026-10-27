@@ -382,8 +382,9 @@ def handle_layout(ctx: WorkerContext, job: Job) -> dict[str, Any]:
     # A vector with a NaN or infinity (a bad embedding) would break the whole layout: leave that item out.
     finite = np.isfinite(vectors).all(axis=1) if len(ids) else np.zeros(0, dtype=bool)
     keep = [i for i, item_id in enumerate(ids) if item_id in live and finite[i]]
-    ids = [ids[i] for i in keep]
-    positions = semantic.layout(vectors[keep]) if keep else semantic.layout([])
+    if len(keep) < len(ids):  # usually every item is kept: then don't copy 50k vectors
+        ids, vectors = [ids[i] for i in keep], vectors[keep]
+    positions = semantic.layout(vectors) if ids else semantic.layout([])
     data = {"ids": ids, "positions": [round(float(v), 2) for v in positions.reshape(-1)]}
     with transaction(ctx.conn):
         ctx.conn.execute(

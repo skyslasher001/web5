@@ -177,22 +177,24 @@ class VectorStore:
         total = int(table.count_rows()) if table is not None else 0
         if table is None or total == 0:
             return [], np.zeros((0, 0), dtype=np.float32)
-        sums: dict[str, Any] = {}
-        counts: dict[str, int] = {}
+        # The ids first (cheap), so the sums are one float32 matrix in sorted-id order, allocated once and
+        # averaged in place. A Python loop over 50k rows, each its own float64 copy, took 9 of the layout job's
+        # 14 s, and about five times that on CI's Windows runner (2026-10-27).
+        scan = table.search().limit(total)
+        ids = sorted({i for b in scan.select(["item_id"]).to_batches(batch_rows) for i in b.column(0).to_pylist()})
+        index = {item_id: n for n, item_id in enumerate(ids)}
+        sums: Any = None
+        counts = np.zeros(len(ids), dtype=np.int64)
         for batch in table.search().select(["item_id", "vector"]).limit(total).to_batches(batch_rows):
-            ids = batch.column("item_id").to_pylist()
             vectors = batch.column("vector")
             width = vectors.type.list_size
-            matrix = vectors.flatten().to_numpy(zero_copy_only=False).astype(np.float64).reshape(len(ids), width)
-            for item_id, row in zip(ids, matrix, strict=True):
-                if item_id in sums:
-                    sums[item_id] += row
-                    counts[item_id] += 1
-                else:
-                    sums[item_id] = row.copy()
-                    counts[item_id] = 1
-        ids = sorted(sums)
-        return ids, np.stack([sums[i] / counts[i] for i in ids]).astype(np.float32)
+            rows = np.fromiter((index[i] for i in batch.column("item_id").to_pylist()), np.int64, len(batch))
+            if sums is None:
+                sums = np.zeros((len(ids), width), dtype=np.float32)
+            np.add.at(sums, rows, vectors.flatten().to_numpy(zero_copy_only=False).reshape(len(rows), width))
+            counts += np.bincount(rows, minlength=len(ids))
+        sums /= counts[:, None]
+        return ids, sums
 
     def drop(self, name: str) -> None:
         with self._lock:
