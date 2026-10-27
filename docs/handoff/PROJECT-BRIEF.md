@@ -361,8 +361,9 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
    hardware, 30 FPS at 10k in Lite on minimum hardware.
 5. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-6. Fix GitHub Actions. Jobs never get a runner (they end in 2–3 s with no logs); a re-run after the 2026-10-21
-   billing fix failed the same way. **Nothing has run on Windows yet.**
+6. Apply [`docs/proposals/ci-setup-uv-version.patch`](../proposals/ci-setup-uv-version.md). Since 2026-10-27 CI jobs
+   get a runner (the account problem is gone), but both fail at setup: the workflow pins `astral-sh/setup-uv@v10`,
+   a tag that doesn't exist. **Nothing has run on Windows yet.**
 7. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
 8. Push the `pre-universe` tag (the build environment couldn't push tags):
