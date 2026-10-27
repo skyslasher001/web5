@@ -6,6 +6,7 @@ window. These tests check the lookup and flags on any OS; the Windows-only looku
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,11 +16,12 @@ from universe_core.mcp_client import resolve_command, spawn_options
 
 
 def test_a_bare_command_is_found_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    program = tmp_path / "my-mcp-server"
+    # Windows finds a bare name only through PATHEXT (`my-mcp-server` → `my-mcp-server.cmd`), as with `npx`.
+    program = tmp_path / ("my-mcp-server.cmd" if sys.platform == "win32" else "my-mcp-server")
     program.write_text("#!/bin/sh\n", encoding="utf-8")
     program.chmod(program.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
-    assert resolve_command("my-mcp-server") == str(program)
+    assert os.path.normcase(resolve_command("my-mcp-server")) == os.path.normcase(str(program))
 
 
 def test_windows_finds_npx_cmd(monkeypatch: pytest.MonkeyPatch) -> None:

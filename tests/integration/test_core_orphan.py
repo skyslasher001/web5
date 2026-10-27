@@ -42,21 +42,23 @@ def test_core_exits_and_frees_its_port_when_the_parent_dies(tmp_path: Path) -> N
     # A stand-in parent that starts Core, prints its pid, then waits to be killed.
     parent_code = textwrap.dedent(
         f"""
-        import subprocess, sys, time
+        import os, subprocess, sys, time
         child = subprocess.Popen([{sys.executable!r}, "-m", "universe_core"])
-        print(child.pid, flush=True)
+        print(os.getpid(), child.pid, flush=True)
         time.sleep(600)
         """
     )
     parent = subprocess.Popen([sys.executable, "-c", parent_code], env=env, stdout=subprocess.PIPE, text=True)
     assert parent.stdout is not None
-    core_pid = int(parent.stdout.readline())
+    # On Windows `parent` is the venv launcher and the stand-in runs as its child: kill that real process, as a
+    # dying supervisor would be (killing only the launcher would leave the stand-in, and Core's parent, alive).
+    real_parent_pid, core_pid = (int(x) for x in parent.stdout.readline().split())
     try:
         deadline = time.monotonic() + 30
         while not _healthy(port):
             assert time.monotonic() < deadline, "Core did not start"
             time.sleep(0.1)
-        parent.kill()  # the supervisor (or launcher) disappears without cleaning up
+        psutil.Process(real_parent_pid).kill()  # the supervisor disappears without cleaning up
         parent.wait(10)
         deadline = time.monotonic() + 10
         while _healthy(port):
