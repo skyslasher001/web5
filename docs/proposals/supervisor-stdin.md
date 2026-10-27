@@ -36,8 +36,11 @@ helpers didn't.
   repository, then times `GET /releases` and an apply. **On CI's Windows runner it fails on the current code**
   (`GET /releases` timed out after 10 s while `/status` answered). It passes on Linux either way.
 - `test_the_supervisor_stdin_proposal_fixes_it` (on the branch, temporary) runs the same check on a copy of the
-  supervisor with this patch applied, so CI's Windows runner shows the fix works before you apply it. Delete
-  it when you apply the patch: the patch no longer applies once it is in.
+  supervisor with this patch applied. **On CI's Windows runner it passes** (2033e8b, run 40523714614: 407
+  passed, the one failure being the unpatched test above). Delete it when you apply the patch: the patch no
+  longer applies once it is in.
+- CI's Windows job stops at the Python tests while the unpatched test fails, so its e2e step (including the
+  Phase 5 Forge loop) runs again only once the patch is applied.
 - `tests/unit/test_supervisor_stdin.py` (in the patch) fails on the current code, naming `lkg.py:15` and
   `releases.py:78`, and passes with the patch.
 

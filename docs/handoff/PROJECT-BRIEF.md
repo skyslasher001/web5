@@ -364,8 +364,10 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
    hardware, 30 FPS at 10k in Lite on minimum hardware.
 5. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-6. CI runs on Ubuntu and Windows (2026-10-27). Ubuntu is green. On Windows everything passes except the Forge
-   apply, which waits on the supervisor-stdin patch above.
+6. CI runs on Ubuntu and Windows (2026-10-27). Ubuntu is green. On Windows the static checks, Vitest and every
+   Python test pass except the supervisor-stdin reproduction, which fails until that patch is applied (the
+   patched copy passes there). The Windows e2e step runs again once it is applied; its last run had two
+   failures, the Forge apply (this bug) and the 50k Semantic layout (sped up since, not yet seen on Windows).
 7. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
 8. Push the `pre-universe` tag (the build environment couldn't push tags):
