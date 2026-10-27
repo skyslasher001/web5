@@ -1,6 +1,6 @@
 # Proposal: CI can't find `astral-sh/setup-uv@v10`
 
-Status: **waiting for your approval.** Nothing in it is applied yet.
+Status: **applied 2026-10-27** (owner-approved: "apply").
 
 Patch: [`ci-setup-uv-version.patch`](ci-setup-uv-version.patch). It changes one line in `.github/workflows/ci.yml`,
 which is protected (CI config).
