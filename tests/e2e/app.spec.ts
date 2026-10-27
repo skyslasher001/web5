@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { reportFailure } from './diagnose';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const electronPath = createRequire(join(root, 'apps', 'desktop', 'package.json'))(
@@ -135,6 +136,11 @@ test.beforeAll(async () => {
   page = app.windows().find((w) => !w.url().endsWith('#command-bar'))!;
 });
 
+// eslint-disable-next-line no-empty-pattern -- Playwright needs a destructuring pattern here, even with no fixtures
+test.afterEach(async ({}, info) => {
+  await reportFailure(info, page, join(tmp, 'data'));
+});
+
 test.afterAll(async () => {
   await app?.close().catch(() => {});
   fake?.kill();
@@ -165,6 +171,31 @@ test('chat streams a reply from the local model', async () => {
   await expect(reply).toContainText('Echo from the fake model: hello universe');
   await expect(reply).toHaveAttribute('data-status', 'complete');
   await page.screenshot({ path: 'test-results/chat.png' });
+});
+
+test('on a small screen the open chat never covers the side panel', async () => {
+  // Regression (CI's first Windows run, 2026-10-27): on a 1024×768 screen the window shrinks to fit, and the
+  // centered chat (26rem at least) covered the side panel's buttons (Forge's "Fix it" couldn't be clicked).
+  const win = await app.browserWindow(page);
+  const restore = await win.evaluate((w) => {
+    const [width, height] = w.getSize();
+    w.setSize(1024, 768);
+    return { width, height };
+  });
+  try {
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(1024);
+    const chat = page.getByTestId('chat-panel');
+    if ((await chat.count()) === 0) await page.getByTestId('orb').click();
+    await expect(chat).toBeVisible();
+    await expect
+      .poll(async () => {
+        const [c, s] = [await chat.boundingBox(), await page.getByTestId('side-panel').boundingBox()];
+        return c && s ? Math.round(c.x + c.width - s.x) : null;
+      })
+      .toBeLessThanOrEqual(0);
+  } finally {
+    await win.evaluate((w, size) => w.setSize(size.width, size.height), restore);
+  }
 });
 
 test('killing Core triggers an automatic restart and the app recovers', async () => {

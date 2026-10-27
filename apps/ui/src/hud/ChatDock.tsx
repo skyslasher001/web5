@@ -177,7 +177,7 @@ function ChatPanel() {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 16, scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      className="glass-strong pointer-events-auto mb-3 flex max-h-[min(60vh,40rem)] w-[min(40rem,calc(100vw-48rem))] min-w-[26rem] flex-col"
+      className="glass-strong pointer-events-auto mb-3 flex max-h-[min(60vh,40rem)] w-(--chat-w) flex-col"
       data-testid="chat-panel"
     >
       <header className="flex items-center gap-2 border-b border-hairline-1 px-4 py-3">
@@ -294,7 +294,13 @@ export function ChatDock() {
   const open = useUniverse((s) => s.chatOpen);
   const reduced = useReducedMotion();
   return (
-    <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center">
+    // Centered, unless the window is too narrow (below ~74rem): then shifted left so the chat ends before the side
+    // panel (right-4, 22rem) instead of covering its buttons. --chat-w is the chat panel's width.
+    <div
+      className="pointer-events-none absolute bottom-4 flex -translate-x-1/2 flex-col items-center [--chat-w:max(26rem,min(40rem,calc(100vw_-_48rem)))]"
+      style={{ left: 'min(50%, calc(100% - 24rem - var(--chat-w) / 2))' }}
+      data-testid="chat-dock"
+    >
       <AnimatePresence initial={!reduced}>{open && <ChatPanel />}</AnimatePresence>
       <div className="pointer-events-auto flex items-end gap-6">
         <Orb />

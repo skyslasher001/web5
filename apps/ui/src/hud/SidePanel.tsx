@@ -26,6 +26,7 @@ export function SidePanel() {
     <aside
       aria-label="Details"
       className="glass pointer-events-auto absolute top-16 right-4 bottom-4 flex w-[22rem] flex-col"
+      data-testid="side-panel"
     >
       <div role="tablist" className="flex flex-wrap gap-1 border-b border-hairline-1 p-2">
         {TABS.map((tab) => (

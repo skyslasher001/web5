@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { printDiagnostics, reportFailure } from './diagnose';
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
 const electronPath = createRequire(join(root, 'apps', 'desktop', 'package.json'))(
@@ -182,7 +183,17 @@ test.beforeAll(async () => {
     .poll(() => app.windows().some((w) => !w.url().endsWith('#command-bar')), { timeout: 30_000 })
     .toBe(true);
   page = app.windows().find((w) => !w.url().endsWith('#command-bar'))!;
-  await expect(page.getByTestId('core-status')).toHaveText(/Core online/, { timeout: 90_000 });
+  try {
+    await expect(page.getByTestId('core-status')).toHaveText(/Core online/, { timeout: 90_000 });
+  } catch (err) {
+    await printDiagnostics('universe setup: Core never came online', page, join(tmp, 'data'));
+    throw err;
+  }
+});
+
+// eslint-disable-next-line no-empty-pattern -- Playwright needs a destructuring pattern here, even with no fixtures
+test.afterEach(async ({}, info) => {
+  await reportFailure(info, page, join(tmp, 'data'));
 });
 
 test.afterAll(async () => {
