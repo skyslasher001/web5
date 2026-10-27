@@ -3,6 +3,7 @@
 Kill Core, watch it come back, and check the restart is on the event timeline.
 """
 
+import hashlib
 import json
 import os
 import secrets
@@ -15,6 +16,7 @@ import pytest
 
 from tests.conftest import REPO, free_port
 from tests.support.fake_ollama import FakeOllama
+from tests.support.forge_repo import FIXED, head, make_repo
 
 pytestmark = pytest.mark.slow
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -120,3 +122,81 @@ def test_kill_core_and_watch_it_restart(tmp_path: Path) -> None:
         urllib.request.build_opener(urllib.request.ProxyHandler({})).open(
             f"http://127.0.0.1:{core_port}/api/v1/health", timeout=2
         )
+
+
+def _forge_branch(repo: Path) -> dict[str, str]:
+    """What Forge leaves behind: `forge/p1` with the fix committed on top of HEAD."""
+
+    def git(*args: str) -> str:
+        cmd = ["git", "-c", "user.name=T", "-c", "user.email=t@example.com", "-C", str(repo), *args]
+        return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+
+    base = head(repo)
+    git("checkout", "-q", "-b", "forge/p1")
+    (repo / "calc" / "__init__.py").write_text(FIXED, encoding="utf-8")
+    git("commit", "-q", "-am", "Forge: fix add")
+    tip = head(repo)
+    git("checkout", "-q", "main")
+    diff = git("diff", "--no-color", "--text", f"{base}..{tip}")
+    return {
+        "proposal_id": "p1",
+        "branch": "forge/p1",
+        "base_commit": base,
+        "head_commit": tip,
+        "diff_sha": hashlib.sha256(diff.encode()).hexdigest(),
+        "title": "Fix add",
+    }
+
+
+def test_releases_answer_while_electron_holds_stdin_open(tmp_path: Path) -> None:
+    """Started the way Electron starts it (stdin a pipe that stays open), the supervisor's git calls must not hang.
+
+    CI's Windows e2e (2026-10-27): the Forge apply never finished and GET /releases timed out, while POST
+    /killswitch (no child process) answered. A git child that inherits the supervisor's stdin, which the
+    stdin-watch thread is blocked reading, can wait on that pipe for as long as Electron keeps it open.
+    """
+    fake = FakeOllama(delay_s=0.001).start()
+    control_token, session_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    repo = make_repo(tmp_path / "forge")
+    proposal = _forge_branch(repo)
+    env = {
+        **os.environ,
+        "UNIVERSE_SUPERVISOR_TOKEN": control_token,
+        "UNIVERSE_SESSION_TOKEN": session_token,
+        "UNIVERSE_DATA_DIR": str(tmp_path / "data"),
+        "UNIVERSE_VAULT_DIR": str(tmp_path / "vault"),
+        "UNIVERSE_REPO_ROOT": str(REPO),
+        "UNIVERSE_REPO_DIR": str(repo),
+        "UNIVERSE_SERVICE_PYTHON": venv_python(),
+        "UNIVERSE_CORE_PORT": str(free_port()),
+        "UNIVERSE_OLLAMA_URL": fake.url,
+        "UNIVERSE_MANAGE_OLLAMA": "0",
+        "UNIVERSE_SUPERVISOR_WATCH_STDIN": "1",
+    }
+    proc = subprocess.Popen(
+        [base_python(), "-I", "-S", str(REPO / "services" / "supervisor" / "run_supervisor.py")],
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert proc.stdout is not None
+        ready = json.loads(proc.stdout.readline())
+        control = f"http://127.0.0.1:{ready['control_port']}"
+        wait(lambda: http("GET", f"{control}/status", control_token)["services"]["core"]["state"] == "healthy")
+
+        # Electron main gives GET /releases 5 s and the apply 60 s; a healthy supervisor needs well under 5 s.
+        started = time.monotonic()
+        assert http("GET", f"{control}/releases", control_token)["releases"] == []
+        assert time.monotonic() - started < 5
+        started = time.monotonic()
+        applied = http("POST", f"{control}/releases/apply", control_token, proposal)
+        assert applied["ok"], applied
+        assert time.monotonic() - started < 5
+        assert "return a + b" in (repo / "calc" / "__init__.py").read_text(encoding="utf-8")
+    finally:
+        assert proc.stdin is not None
+        proc.stdin.close()
+        proc.wait(timeout=15)
+        fake.stop()
