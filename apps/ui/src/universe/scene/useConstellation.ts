@@ -23,6 +23,20 @@ export function shouldAutoSelect(last: string, query: string, hit: string): bool
   return last !== `${query}\u0000${hit}`;
 }
 
+/**
+ * The item to open for an Enter pressed before this query's results arrived (`pendingFly`): the best hit, by id.
+ * Not only hits already in the scene: a file ingested seconds ago reaches the scene a moment later, and the camera
+ * flies to it once it's there.
+ */
+export function pendingFlyTarget(
+  fresh: boolean,
+  pendingFly: string | null,
+  query: string,
+  hitIds: string[],
+): string | null {
+  return fresh && pendingFly !== null && pendingFly === query ? (hitIds[0] ?? null) : null;
+}
+
 export function useConstellation(): void {
   const view = useUniverse((s) => s.view);
   const query = useUniverse((s) => s.query.trim());
@@ -47,7 +61,13 @@ export function useConstellation(): void {
     setResults(indices, fresh ? query : '');
     if (fresh && pendingFly === query) {
       setPendingFly(null);
-      if (indices.length) useUniverse.getState().selectItem(scene.ids[indices[0]!]!);
+      const target = pendingFlyTarget(
+        fresh,
+        pendingFly,
+        query,
+        search.data.hits.map((h) => h.item.id),
+      );
+      if (target) useUniverse.getState().selectItem(target);
     }
     const only = search.data.hits.length === 1 ? search.data.hits[0]?.item.id : undefined;
     if (fresh && only && shouldAutoSelect(autoSelected.current, query, only)) {

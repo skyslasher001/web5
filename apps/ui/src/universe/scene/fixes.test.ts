@@ -15,7 +15,7 @@ import {
 import { enterTarget } from './interaction';
 import { useLayout } from './layoutController';
 import { emptyScene, SceneLoader, useScene } from './sceneData';
-import { shouldAutoSelect } from './useConstellation';
+import { pendingFlyTarget, shouldAutoSelect } from './useConstellation';
 
 function page(ids: string[], serverTime: string, next: string | null = null) {
   return {
@@ -169,6 +169,16 @@ describe('search in the universe', () => {
     expect(enterTarget({ results: [7, 3], resultsFor: 'python' }, 'python ')).toBe(7);
     expect(enterTarget({ results: [7, 3], resultsFor: 'python' }, 'rust')).toBeNull(); // previous query's
     expect(enterTarget({ results: [], resultsFor: 'rust' }, 'rust')).toBeNull();
+  });
+
+  it('Enter pressed before the results arrive opens the best hit, even one not in the scene yet', () => {
+    // Regression (CI, 2026-10-27): only hits already in the 3D scene were selected, so Enter on a file ingested
+    // seconds ago (the scene refreshes a moment later) did nothing at all.
+    expect(pendingFlyTarget(true, 'zephyr song', 'zephyr song', ['new-song', 'old'])).toBe('new-song');
+    expect(pendingFlyTarget(false, 'zephyr song', 'zephyr song', ['new-song'])).toBeNull(); // previous query's
+    expect(pendingFlyTarget(true, null, 'zephyr song', ['new-song'])).toBeNull(); // nobody pressed Enter
+    expect(pendingFlyTarget(true, 'zephyr', 'zephyr song', ['new-song'])).toBeNull(); // pressed for another query
+    expect(pendingFlyTarget(true, 'zephyr song', 'zephyr song', [])).toBeNull();
   });
 
   it('selects a single hit once per search, not on every refresh', () => {
