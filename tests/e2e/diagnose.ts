@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const MAX_SNAPSHOT = 6000;
-const LOG_LINES = 40;
+const LOG_LINES = 60;
 
 export async function reportFailure(info: TestInfo, page: Page | undefined, dataDir: string): Promise<void> {
   if (info.status === info.expectedStatus) return;
@@ -29,10 +29,16 @@ export async function printDiagnostics(
   if (existsSync(logs)) {
     for (const name of readdirSync(logs).sort()) {
       try {
-        const lines = readFileSync(join(logs, name), 'utf-8').trimEnd().split('\n');
+        // Routine model-server polling (httpx) drowns the events; warnings and errors are always kept.
+        const all = readFileSync(join(logs, name), 'utf-8').trimEnd().split('\n');
+        const lines = all.filter((l) => !l.includes('"logger": "httpx"'));
+        const problems = lines.filter((l) => /"level": ?"(warning|error|critical)"/.test(l));
+        const tail = lines.slice(-LOG_LINES);
+        const earlier = problems.filter((l) => !tail.includes(l));
         out.push(
-          `--- ${name} (last ${Math.min(LOG_LINES, lines.length)} lines) ---`,
-          ...lines.slice(-LOG_LINES),
+          `--- ${name} (${all.length} lines; ${earlier.length} earlier warnings/errors, then the last ${tail.length} without httpx) ---`,
+          ...earlier,
+          ...tail,
         );
       } catch {
         // a directory or a file being rotated: skip it
