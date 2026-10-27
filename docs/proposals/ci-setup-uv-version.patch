@@ -7,7 +7,7 @@ index 5032f84..8b047c9 100644
          run: npm install -g pnpm@12.11.2
  
 -      - uses: astral-sh/setup-uv@v10
-+      - uses: astral-sh/setup-uv@v10.3.2  # exact: setup-uv publishes no floating major tags since v8
++      - uses: astral-sh/setup-uv@v10.3.2 # exact: setup-uv publishes no floating major tags since v8
  
        - name: Install dependencies
          run: |

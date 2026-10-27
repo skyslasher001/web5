@@ -1,6 +1,6 @@
 # Proposal: CI can't find `astral-sh/setup-uv@v10`
 
-Status: **applied 2026-10-27** (owner-approved: "apply").
+Status: **applied 2026-10-27** (owner-approved: "apply"). The first run caught that the line had two spaces before its comment, which prettier rejects; it was reformatted to one (same line, same pin).
 
 Patch: [`ci-setup-uv-version.patch`](ci-setup-uv-version.patch). It changes one line in `.github/workflows/ci.yml`,
 which is protected (CI config).
