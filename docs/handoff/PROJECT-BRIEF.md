@@ -355,13 +355,17 @@ The full, binding list is in [`AGENTS.md`](../../AGENTS.md). The essentials:
    list yourself before approving it.
 2. Apply [`docs/proposals/test-policy-clock.patch`](../proposals/test-policy-clock.md): one protected test
    assumed the machine had been up over a minute, and failed right after a boot.
+   Also [`docs/proposals/supervisor-stdin.patch`](../proposals/supervisor-stdin.md): on Windows the supervisor's
+   git calls inherit the stdin pipe Electron holds open and hang, so **a Forge change can't be applied on
+   Windows** and the Releases list never loads. Reproduced on CI's Windows runner; two `stdin=DEVNULL` lines.
 3. Approve Phases 5, 6 and 7; install the voice models (Voice tab) and run the Phase 7 demo script on their own
    hardware (latency, echo cancellation).
 4. Run `pnpm bench:universe` on their PC. The Phase 4 FPS budget: 60 FPS at 50k items in 3D on recommended
    hardware, 30 FPS at 10k in Lite on minimum hardware.
 5. Send the Windows hardware report (`scripts/hardware-report.ps1`). The model loadouts stay unverified until
    then.
-6. Watch the first real CI run (the setup-uv fix is applied, 2026-10-27). **Nothing has run on Windows yet.**
+6. CI runs on Ubuntu and Windows (2026-10-27). Ubuntu is green. On Windows everything passes except the Forge
+   apply, which waits on the supervisor-stdin patch above.
 7. *(Decided 2026-10-14: leave it.)* `main` still holds the old Bolt landing page. The owner chose to keep all
    work on `claude/phase-0-delivery-zuqlfx` with no PR into `main` for now, so always use that branch.
 8. Push the `pre-universe` tag (the build environment couldn't push tags):

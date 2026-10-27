@@ -1,0 +1,71 @@
+diff --git a/services/supervisor/src/universe_supervisor/lkg.py b/services/supervisor/src/universe_supervisor/lkg.py
+index 06fd740..b8f2d67 100644
+--- a/services/supervisor/src/universe_supervisor/lkg.py
++++ b/services/supervisor/src/universe_supervisor/lkg.py
+@@ -13,7 +13,12 @@ def _git(repo: Path, *args: str, timeout: float = 30.0) -> str | None:
+         return None
+     try:
+         result = subprocess.run(
+-            [git, "-C", str(repo), *args], capture_output=True, text=True, timeout=timeout, check=False
++            [git, "-C", str(repo), *args],
++            stdin=subprocess.DEVNULL,  # never our stdin: see Releases._git (a git child hung on Windows)
++            capture_output=True,
++            text=True,
++            timeout=timeout,
++            check=False,
+         )
+     except (OSError, subprocess.SubprocessError):
+         return None
+diff --git a/services/supervisor/src/universe_supervisor/releases.py b/services/supervisor/src/universe_supervisor/releases.py
+index fbca3b9..fe9987c 100644
+--- a/services/supervisor/src/universe_supervisor/releases.py
++++ b/services/supervisor/src/universe_supervisor/releases.py
+@@ -84,6 +84,9 @@ class Releases:
+                 timeout=timeout,
+                 env=env,
+                 check=False,
++                # Never our stdin: Electron holds it open and the stdin-watch thread is blocked reading it. On
++                # Windows a child that inherits it waits on that pipe at startup, so git hung (CI, 2026-10-27).
++                stdin=subprocess.DEVNULL,
+             )
+         except (OSError, subprocess.SubprocessError) as exc:
+             raise ReleaseError(f"git {args[0]} failed: {exc}") from exc
+diff --git a/tests/unit/test_supervisor_stdin.py b/tests/unit/test_supervisor_stdin.py
+new file mode 100644
+index 0000000..807736c
+--- /dev/null
++++ b/tests/unit/test_supervisor_stdin.py
+@@ -0,0 +1,33 @@
++"""No child of the supervisor inherits its stdin (CI's Windows e2e, 2026-10-27).
++
++Electron keeps the supervisor's stdin open and the stdin-watch thread is blocked reading it. On Windows a child
++that inherits that pipe waits on it at startup, so the git calls behind the Forge apply hung. The behaviour is
++covered end to end by `tests/integration/test_supervisor_e2e.py::test_releases_answer_while_electron_holds_stdin_open`
++(it only hangs on Windows); this check holds on every platform, for every call, including ones added later.
++"""
++
++import ast
++from pathlib import Path
++
++from tests.conftest import REPO
++
++SUPERVISOR = REPO / "services" / "supervisor"
++SPAWNERS = {"run", "Popen", "call", "check_call", "check_output"}
++
++
++def _calls_without_stdin(path: Path) -> list[str]:
++    missing = []
++    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
++        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
++            continue
++        owner = node.func.value
++        spawns = isinstance(owner, ast.Name) and owner.id == "subprocess" and node.func.attr in SPAWNERS
++        if spawns and not any(k.arg == "stdin" for k in node.keywords):
++            missing.append(f"{path.relative_to(REPO)}:{node.lineno}")
++    return missing
++
++
++def test_every_supervisor_child_gets_its_own_stdin() -> None:
++    files = sorted(SUPERVISOR.rglob("*.py"))
++    assert files
++    assert [where for path in files for where in _calls_without_stdin(path)] == []

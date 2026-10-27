@@ -32,6 +32,6 @@ Work on the branch `claude/phase-0-delivery-zuqlfx` (`main` holds an old, unrela
 
 ## Optional
 
-- [docs/proposals/](docs/proposals/): protected-core patches (Phase 1.5 and 3 applied; Phase 5 waiting; Phase 6 SearXNG sidecar proposed, gated on a container runtime; Phase 7 microphone consent waiting)
+- [docs/proposals/](docs/proposals/): protected-core patches (Phase 1.5, 3, 5 and 7, review-fixes and the CI setup-uv pin applied; sweep-fixes, test-policy-clock and supervisor-stdin waiting; Phase 6 SearXNG sidecar proposed, gated on a container runtime)
 - [README.md](README.md): overview and Windows setup
 - [protected-core.txt](protected-core.txt): paths no AI may edit

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import time
 import urllib.request
@@ -153,8 +154,28 @@ def test_releases_answer_while_electron_holds_stdin_open(tmp_path: Path) -> None
 
     CI's Windows e2e (2026-10-27): the Forge apply never finished and GET /releases timed out, while POST
     /killswitch (no child process) answered. A git child that inherits the supervisor's stdin, which the
-    stdin-watch thread is blocked reading, can wait on that pipe for as long as Electron keeps it open.
+    stdin-watch thread is blocked reading, waits on that pipe for as long as Electron keeps it open. This test
+    reproduced it on CI's Windows runner (GET /releases timed out; /status answered). The fix is protected
+    core: docs/proposals/supervisor-stdin.md.
     """
+    _releases_round_trip(tmp_path, REPO / "services" / "supervisor")
+
+
+def test_the_supervisor_stdin_proposal_fixes_it(tmp_path: Path) -> None:
+    """The same check on a copy of the supervisor with docs/proposals/supervisor-stdin.patch applied, so CI's
+    Windows runner shows the proposal works before the owner applies it. Remove once the patch is applied."""
+    patch = REPO / "docs" / "proposals" / "supervisor-stdin.patch"
+    copy = tmp_path / "patched"
+    shutil.copytree(REPO / "services" / "supervisor", copy / "services" / "supervisor",
+                    ignore=shutil.ignore_patterns("__pycache__"))  # fmt: skip
+    # Outside a repository, git apply patches the files under the current directory.
+    subprocess.run(["git", "apply", "--include=services/supervisor/*", str(patch)], cwd=copy, check=True)
+    patched = copy / "services" / "supervisor" / "src" / "universe_supervisor" / "releases.py"
+    assert "stdin=subprocess.DEVNULL" in patched.read_text(encoding="utf-8")
+    _releases_round_trip(tmp_path, copy / "services" / "supervisor")
+
+
+def _releases_round_trip(tmp_path: Path, supervisor: Path) -> None:
     fake = FakeOllama(delay_s=0.001).start()
     control_token, session_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
     repo = make_repo(tmp_path / "forge")
@@ -174,7 +195,7 @@ def test_releases_answer_while_electron_holds_stdin_open(tmp_path: Path) -> None
         "UNIVERSE_SUPERVISOR_WATCH_STDIN": "1",
     }
     proc = subprocess.Popen(
-        [base_python(), "-I", "-S", str(REPO / "services" / "supervisor" / "run_supervisor.py")],
+        [base_python(), "-I", "-S", str(supervisor / "run_supervisor.py")],
         env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
